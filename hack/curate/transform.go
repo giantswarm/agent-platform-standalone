@@ -26,20 +26,32 @@ type componentEntry struct {
 	lifted  []namedNode
 }
 
+// Result is the output of Transform.
+type Result struct {
+	// Document is the generated values.yaml.
+	Document *yaml.Node
+	// Components is the fleet component list the dependency list was built from.
+	Components []FleetComponent
+	// Moves records every values path that changed place, for the template
+	// rewrite. ValueKeys are the top-level keys the generated values carry.
+	Moves     []PathMove
+	ValueKeys []string
+}
+
 // Transform derives the umbrella values document from the fleet and
 // connectivity values. Every top-level key of both inputs must have a rule in
 // the config (deny-unknown); an unmapped key is an error, never a silent leak.
-func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
+func Transform(in Inputs) (*Result, error) {
 	config := in.Config
 	fleetRoot := rootMapping(in.Fleet)
 	connectivityRoot := rootMapping(in.Connectivity)
 
 	components, err := readFleetComponents(config, fleetRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := checkDependencyList(config, components); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// The toggle default of a fleet dependency is the fleet's own
@@ -57,6 +69,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 	}
 
 	var kept []namedNode
+	var moves []PathMove
 	blocks := map[string]namedNode{}
 
 	for i := 0; i+1 < len(fleetRoot.Content); i += 2 {
@@ -64,26 +77,30 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		key := keyNode.Value
 		rule, ok := config.Keys[key]
 		if !ok {
-			return nil, nil, fmt.Errorf("fleet key %q has no entry in the curate.yaml keys map (deny-unknown)", key)
+			return nil, fmt.Errorf("fleet key %q has no entry in the curate.yaml keys map (deny-unknown)", key)
 		}
 		switch rule.Action {
 		case ActionKeep:
 			kept = append(kept, namedNode{key: cleanKey(keyNode), value: value})
-		case ActionDrop, ActionDependencies, ActionWiring:
+		case ActionDependencies, ActionWiring:
+		case ActionDrop:
+			moves = append(moves, PathMove{From: []string{key}, Dropped: true})
 		case ActionComponent:
 			component, ok := fleetComponentByValuesFrom(components, key)
 			if !ok {
-				return nil, nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
+				return nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
 			}
 			block, err := componentBlock(keyNode, value, component, rule, entries[component.Chart])
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			blocks[component.Chart] = block
+			moves = append(moves, componentMoves(key, component, rule)...)
 		case ActionLift:
 			if err := liftBlock(key, value, rule, entries[rule.Chart]); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
+			moves = append(moves, liftMoves(key, rule)...)
 		}
 	}
 
@@ -92,7 +109,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		keyNode, value := connectivityRoot.Content[i], connectivityRoot.Content[i+1]
 		rule, ok := config.Keys[keyNode.Value]
 		if !ok {
-			return nil, nil, fmt.Errorf("connectivity key %q has no entry in the curate.yaml keys map (deny-unknown)", keyNode.Value)
+			return nil, fmt.Errorf("connectivity key %q has no entry in the curate.yaml keys map (deny-unknown)", keyNode.Value)
 		}
 		if rule.Action == ActionWiring {
 			wiring = append(wiring, namedNode{key: cleanKey(keyNode), value: value})
@@ -103,7 +120,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 			continue
 		}
 		if _, found := mappingGet(connectivityRoot, key); found == nil {
-			return nil, nil, fmt.Errorf("keys.%s: action wiring, but the connectivity values have no such key", key)
+			return nil, fmt.Errorf("keys.%s: action wiring, but the connectivity values have no such key", key)
 		}
 	}
 
@@ -129,7 +146,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 	}
 
 	if err := applyOverlay(config, out, in.Overlay); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	document := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{out}}
@@ -137,7 +154,32 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		"Do not edit. Change curate.yaml (dependencies, key rules) or overlay/vanilla.yaml\n"+
 		"(vanilla overrides) and run hack/curate.sh again.",
 		config.Fleet.Chart, config.Fleet.Version, config.Fleet.ConnectivityChart, config.Fleet.Version)
-	return document, components, nil
+	return &Result{Document: document, Components: components, Moves: moves, ValueKeys: mappingKeys(out)}, nil
+}
+
+// componentMoves records where a component block's values went: each lifted key
+// into components.<chart>, the rest under the chart name and, when the fleet
+// forwards the block nested, under the wrapper's subchart key.
+func componentMoves(key string, component FleetComponent, rule KeyRule) []PathMove {
+	moves := make([]PathMove, 0, len(rule.Lift)+1)
+	for _, lifted := range rule.Lift {
+		moves = append(moves, PathMove{From: []string{key, lifted}, To: []string{"components", component.Chart, lifted}})
+	}
+	to := []string{component.Chart}
+	if component.ValuesKey != "" {
+		to = append(to, component.ValuesKey)
+	}
+	return append(moves, PathMove{From: []string{key}, To: to})
+}
+
+// liftMoves records where a lift block's keys went: all of them into
+// components.<chart>, which is also where the block's toggle lives.
+func liftMoves(key string, rule KeyRule) []PathMove {
+	moves := make([]PathMove, 0, len(rule.Lift)+1)
+	for _, lifted := range rule.Lift {
+		moves = append(moves, PathMove{From: []string{key, lifted}, To: []string{"components", rule.Chart, lifted}})
+	}
+	return append(moves, PathMove{From: []string{key}, To: []string{"components", rule.Chart}})
 }
 
 func readFleetComponents(config *Config, fleetRoot *yaml.Node) ([]FleetComponent, error) {

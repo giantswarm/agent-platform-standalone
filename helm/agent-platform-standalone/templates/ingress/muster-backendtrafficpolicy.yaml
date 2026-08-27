@@ -1,5 +1,5 @@
 {{- if .Values.ingress.backendTrafficPolicy.enabled }}
-{{- $fullName := include "agent-platform.musterFullname" . }}
+{{- $fullName := include "agent-platform-standalone.musterFullname" . }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:

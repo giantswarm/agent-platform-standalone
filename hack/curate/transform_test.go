@@ -8,8 +8,9 @@ import (
 )
 
 func TestTransformShape(t *testing.T) {
-	document, components, err := Transform(fixtureInputs(t))
+	result, err := Transform(fixtureInputs(t))
 	require.NoError(t, err)
+	document, components := result.Document, result.Components
 	require.Len(t, components, 5)
 
 	values := decodeValues(t, document)
@@ -53,9 +54,9 @@ func TestTransformShape(t *testing.T) {
 }
 
 func TestTransformPreservesCommentsAndSchemaAnnotations(t *testing.T) {
-	document, _, err := Transform(fixtureInputs(t))
+	result, err := Transform(fixtureInputs(t))
 	require.NoError(t, err)
-	out, err := encodeYAML(document)
+	out, err := encodeYAML(result.Document)
 	require.NoError(t, err)
 	text := string(out)
 	require.Contains(t, text, "# route comment survives")
@@ -68,21 +69,21 @@ func TestTransformPreservesCommentsAndSchemaAnnotations(t *testing.T) {
 func TestTransformDenyUnknownFleetKey(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Fleet = parseDocument(t, fixtureFleet+"brandNewFleetKey:\n  foo: bar\n")
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `fleet key "brandNewFleetKey" has no entry`)
 }
 
 func TestTransformDenyUnknownConnectivityKey(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Connectivity = parseDocument(t, fixtureConnectivity+"gatewayApi: {}\n")
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `connectivity key "gatewayApi" has no entry`)
 }
 
 func TestTransformDenyUnknownLiftSubKey(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "agentSandbox:\n", "agentSandbox:\n  surprise: 1\n", 1))
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, "keys.agentSandbox: sub-keys [surprise]")
 }
 
@@ -93,19 +94,19 @@ func TestTransformRejectsLegacyToggle(t *testing.T) {
 	t.Run("component block", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "kagent:\n  # route comment survives\n", "kagent:\n  enabled: true\n  # route comment survives\n", 1))
-		_, _, err := Transform(in)
+		_, err := Transform(in)
 		require.ErrorContains(t, err, "fleet block \"kagent\" carries a top-level `enabled`, which components.kagent.enabled replaced")
 	})
 	t.Run("lift block", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "agentSandbox:\n", "agentSandbox:\n  enabled: false\n", 1))
-		_, _, err := Transform(in)
+		_, err := Transform(in)
 		require.ErrorContains(t, err, "components.agent-sandbox.enabled replaced")
 	})
 	t.Run("keepEnabled allows it", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  muster:\n    action: component\n    keepEnabled: true\n", "  muster: {action: component}\n", 1))
-		_, _, err := Transform(in)
+		_, err := Transform(in)
 		require.ErrorContains(t, err, `fleet block "muster" carries a top-level `+"`enabled`")
 	})
 }
@@ -113,7 +114,7 @@ func TestTransformRejectsLegacyToggle(t *testing.T) {
 func TestTransformRejectsOmitKeys(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "    valuesFrom: kagent\n", "    valuesFrom: kagent\n    omitKeys: [controllerRoute]\n", 1))
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `fleet component "kagent" declares omitKeys`)
 }
 
@@ -121,7 +122,7 @@ func TestTransformNewFleetComponentFails(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "  agent-platform-connectivity:\n",
 		"  shiny:\n    chart: shiny\n    repository: oci://example/charts\n  agent-platform-connectivity:\n", 1))
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `fleet component "shiny" (chart "shiny") is not a dependency`)
 }
 
@@ -129,14 +130,14 @@ func TestTransformDependencyMissingFromFleetFails(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  - name: muster\n    range: \"5.x\"\n",
 		"  - name: muster\n    range: \"5.x\"\n  - name: ghost\n    range: \"1.x\"\n", 1))
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `dependency "ghost" is not a fleet component`)
 }
 
 func TestTransformLiftMissingKeyFails(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Config = parseConfig(t, strings.Replace(fixtureConfig, "lift: [controllerRoute]", "lift: [controllerRoute, uiRoute]", 1))
-	_, _, err := Transform(in)
+	_, err := Transform(in)
 	require.ErrorContains(t, err, `lift key "uiRoute" not found`)
 }
 
@@ -144,21 +145,21 @@ func TestTransformOverlay(t *testing.T) {
 	t.Run("unknown top-level key", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Overlay = parseDocument(t, "policyEngine: none\n")
-		_, _, err := Transform(in)
+		_, err := Transform(in)
 		require.ErrorContains(t, err, `overlay key "policyEngine"`)
 	})
 	t.Run("unknown components entry", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Overlay = parseDocument(t, "components:\n  nope:\n    enabled: true\n")
-		_, _, err := Transform(in)
+		_, err := Transform(in)
 		require.ErrorContains(t, err, "overlay components.nope is not a dependency")
 	})
 	t.Run("applied last", func(t *testing.T) {
 		in := fixtureInputs(t)
 		in.Overlay = parseDocument(t, "components:\n  kagent:\n    enabled: true\nmuster:\n  replicaCount: 2\ningress:\n  parentRefs:\n    - name: edge\n")
-		document, _, err := Transform(in)
+		result, err := Transform(in)
 		require.NoError(t, err)
-		values := decodeValues(t, document)
+		values := decodeValues(t, result.Document)
 		require.Equal(t, true, asMap(t, asMap(t, values["components"])["kagent"])["enabled"])
 		require.Contains(t, asMap(t, asMap(t, values["components"])["kagent"]), "controllerRoute", "overlay merges, it does not replace")
 		require.Equal(t, 2, asMap(t, values["muster"])["replicaCount"])

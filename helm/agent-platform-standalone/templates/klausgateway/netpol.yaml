@@ -1,4 +1,4 @@
-{{- if and (index .Values.components "klaus-gateway").enabled (index .Values "klaus-gateway").a2a.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").a2a.enabled .Values.networkPolicy.enabled }}
 {{- $agentgatewayPort := "8080" }}
 {{- if eq .Values.networkPolicy.flavor "cilium" }}
 ---
@@ -16,7 +16,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ (index .Values "klaus-gateway").fullnameOverride | default "klaus-gateway" | quote }}
   egress:
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
     - toEndpoints:
         - matchLabels:
             gateway.networking.k8s.io/gateway-name: {{ .Values.gateway.name }}
@@ -48,12 +48,12 @@ spec:
           protocol: TCP
 {{- end }}
 {{- end }}
-{{- if and (index .Values.components "klaus-gateway").enabled (index .Values "klaus-gateway").obo.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").obo.enabled .Values.networkPolicy.enabled }}
 {{- if eq .Values.networkPolicy.flavor "cilium" }}
 ---
 # Allow klausgateway Slack-OBO egress: DNS + the muster authorization server on
 # :443. The gateway is a muster OAuth client; it runs RFC 8414 discovery and the
-# OAuth token exchange against the PUBLIC muster URL (klausGateway.obo.musterUrl),
+# OAuth token exchange against the PUBLIC muster URL (klaus-gateway.obo.musterUrl),
 # because muster's discovery doc advertises its public issuer host as the
 # token_endpoint. The a2a-egress policy above (or any other) puts this pod in
 # Cilium default-deny egress, so without this allowance the OBO token call is
@@ -71,7 +71,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ (index .Values "klaus-gateway").fullnameOverride | default "klaus-gateway" | quote }}
   egress:
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
     - toEntities:
         - world
         - cluster
@@ -110,7 +110,7 @@ spec:
           protocol: TCP
 {{- end }}
 {{- end }}
-{{- if and (index .Values.components "klaus-gateway").enabled (index .Values "klaus-gateway").agentgatewayRoute.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").agentgatewayRoute.enabled .Values.networkPolicy.enabled }}
 {{- $klausgatewayPort := "8080" }}
 {{- $fullname := (index .Values "klaus-gateway").fullnameOverride | default "klaus-gateway" }}
 {{- if eq .Values.networkPolicy.flavor "cilium" }}

@@ -1,4 +1,4 @@
-{{- if and (include "agent-platform.ingress.agentgateway" .) .Values.ingress.backendTrafficPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.ingress.backendTrafficPolicy.enabled }}
 {{- $fullName := .Values.gateway.name }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy

@@ -109,7 +109,37 @@ keys:
     action: lift
     chart: agent-sandbox
     lift: [podSecurity]
+templates:
+  rewrite:
+    - from: .Values.muster.enabled
+      to: .Values.components.muster.enabled
+  extra:
+    - NOTES.txt
 `
+
+// fixtureTemplates is the source chart's template tree: one helper file, one
+// template that reads every kind of moved path, and the notes file the umbrella
+// owns.
+var fixtureTemplates = map[string]string{
+	"_helpers.tpl": `{{- define "name" -}}
+{{ .Chart.Name }}
+{{- end -}}
+{{- define "agent-platform.dnsEgress" -}}
+dns
+{{- end -}}
+`,
+	"netpol.yaml": `{{- /* agentSandbox.podSecurity.namespace must match the controller namespace. */ -}}
+{{- if and .Values.muster.enabled .Values.components.kagent.enabled }}
+name: {{ include "name" . }}
+ns: {{ .Values.kagent.namespaceOverride }}
+route: {{ .Values.kagent.controllerRoute.enabled }}
+sandbox: {{ .Values.agentSandbox.podSecurity.enabled }}
+mcps: {{ (index .Values "agent-platform-mcps").mcpServers }}
+dns: {{ include "agent-platform.dnsEgress" . }}
+{{- end }}
+`,
+	"NOTES.txt": "the source chart's notes\n",
+}
 
 func parseConfig(t *testing.T, raw string) *Config {
 	t.Helper()

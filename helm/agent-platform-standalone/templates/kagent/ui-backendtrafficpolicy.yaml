@@ -1,4 +1,4 @@
-{{- if and .Values.components.kagent.enabled .Values.components.kagent.uiRoute.enabled .Values.components.kagent.uiRoute.backendTrafficPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.kagent.uiRoute.enabled .Values.components.kagent.uiRoute.backendTrafficPolicy.enabled }}
 {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
 {{- $btp := .Values.components.kagent.uiRoute.backendTrafficPolicy }}
 # A route-level BackendTrafficPolicy targeting this HTTPRoute overrides the

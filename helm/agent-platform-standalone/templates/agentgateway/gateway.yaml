@@ -1,4 +1,4 @@
-{{- if (include "agent-platform.ingress.agentgateway" .) }}
+{{- if (include "agent-platform-standalone.ingress.agentgateway" .) }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -15,6 +15,6 @@ spec:
     parametersRef:
       group: agentgateway.dev
       kind: AgentgatewayParameters
-      name: {{ include "agent-platform.parametersName" . }}
+      name: {{ include "agent-platform-standalone.parametersName" . }}
   {{- end }}
 {{- end }}

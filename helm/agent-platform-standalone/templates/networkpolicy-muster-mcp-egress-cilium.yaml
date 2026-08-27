@@ -2,7 +2,7 @@
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: {{ include "agent-platform.musterFullname" . }}-mcp-egress
+  name: {{ include "agent-platform-standalone.musterFullname" . }}-mcp-egress
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}

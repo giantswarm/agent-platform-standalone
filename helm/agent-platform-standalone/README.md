@@ -19,7 +19,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | Repository | Name | Version |
 |------------|------|---------|
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.7 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.23 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.3 |
 | oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.199.1 |

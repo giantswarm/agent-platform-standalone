@@ -1,4 +1,4 @@
-{{- if and .Values.components.kagent.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.networkPolicy.enabled }}
 {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
 {{- $controllerPort := "8083" }}
 {{- $clusterName := .Values.postgres.clusterName }}
@@ -81,7 +81,7 @@ spec:
       app.kubernetes.io/component: controller
       app.kubernetes.io/name: kagent
   egress:
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
     - toEntities:
         - cluster
       toPorts:
@@ -102,14 +102,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    {{- if and .Values.components.kagent.enabled .Values.components.muster.enabled }}
+    {{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.muster.enabled }}
     - toEndpoints:
         - matchLabels:
             app.kubernetes.io/name: muster
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
       toPorts:
         - ports:
-            - port: {{ include "agent-platform.musterServicePort" . | quote }}
+            - port: {{ include "agent-platform-standalone.musterServicePort" . | quote }}
               protocol: TCP
     {{- end }}
     - toEndpoints:
@@ -165,7 +165,7 @@ spec:
             - port: "5432"
               protocol: TCP
 
-{{- if and .Values.components.kagent.enabled .Values.components.muster.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.muster.enabled }}
 ---
 # Egress from all kagent-managed agent pods to muster (MCP tool calls)
 # and to the Anthropic API (model inference). DNS included.
@@ -187,7 +187,7 @@ spec:
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
       toPorts:
         - ports:
-            - port: {{ include "agent-platform.musterServicePort" . | quote }}
+            - port: {{ include "agent-platform-standalone.musterServicePort" . | quote }}
               protocol: TCP
     - toEndpoints:
         - matchLabels:
@@ -216,7 +216,7 @@ spec:
               protocol: TCP
             - port: "10443"
               protocol: TCP
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
 {{- end }}
 {{- if index .Values.kagent.kagent "oauth2-proxy" "enabled" }}
 ---
@@ -261,7 +261,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: oauth2-proxy
   egress:
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
     - toEndpoints:
         - matchLabels:
             app.kubernetes.io/name: kagent

@@ -68,7 +68,8 @@ manifest for the lab Dex is not part of this release yet.
 
 ## The chart is generated
 
-`Chart.yaml`, `Chart.lock` and `values.yaml` are generated. Do not edit them.
+`Chart.yaml`, `Chart.lock`, `values.yaml` and everything under `templates/`
+except `NOTES.txt` are generated. Do not edit them.
 The generator `hack/curate.sh` reads the fleet meta-package
 `giantswarm/agent-platform` and the `agent-platform-connectivity` chart at the
 version pinned in `curate.yaml`, and:
@@ -82,7 +83,12 @@ version pinned in `curate.yaml`, and:
    umbrella wiring lifted out of the component blocks, blocks renamed to the
    chart name and nested under the wrapper's subchart key;
 4. merges `overlay/vanilla.yaml` last;
-5. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
+5. copies the connectivity chart's templates, with the helper names prefixed by
+   the chart name and every values path the transform moved rewritten from the
+   same rules. A template the connectivity chart drops is deleted here;
+   `templates.extra` in `curate.yaml` names the files this chart owns itself
+   (`NOTES.txt`);
+6. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
    file when the pins did not change.
 
 The transform is deny-unknown. Every top-level key of the fleet and

@@ -1,4 +1,4 @@
-{{- if and (include "agent-platform.ingress.agentgateway" .) .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "cilium") }}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "cilium") }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -37,7 +37,7 @@ spec:
     - toEntities: ["kube-apiserver"]
     - toEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: {{ include "agent-platform.musterFullname" . }}
+            app.kubernetes.io/name: {{ include "agent-platform-standalone.musterFullname" . }}
       toPorts:
         - ports:
             - port: "8090"
@@ -58,5 +58,5 @@ spec:
               protocol: TCP
     {{- end }}
     {{- end }}
-    {{- include "agent-platform.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
 {{- end }}

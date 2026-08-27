@@ -1,4 +1,4 @@
-{{- if (include "agent-platform.ingress.agentgateway" .) }}
+{{- if (include "agent-platform-standalone.ingress.agentgateway" .) }}
 {{- $fullName := .Values.gateway.name }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -7,10 +7,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
-    {{- with (include "agent-platform.httpRouteLabels" (dict "ctx" . "route" "mcp")) }}
+    {{- with (include "agent-platform-standalone.httpRouteLabels" (dict "ctx" . "route" "mcp")) }}
     {{- . | nindent 4 }}
     {{- end }}
-  {{- with (include "agent-platform.httpRouteAnnotations" (dict "ctx" . "route" "mcp")) }}
+  {{- with (include "agent-platform-standalone.httpRouteAnnotations" (dict "ctx" . "route" "mcp")) }}
   annotations:
     {{- . | nindent 4 }}
   {{- end }}

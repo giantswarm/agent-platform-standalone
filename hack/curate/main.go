@@ -8,8 +8,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,16 +47,30 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 	}
 	defer os.RemoveAll(workDir)
 
-	fleet, err := pullValues(helm, config.Fleet.Repository, config.Fleet.Chart, config.Fleet.Version, workDir)
+	fleetDir, err := pullChart(helm, config.Fleet.Repository, config.Fleet.Chart, config.Fleet.Version, workDir)
 	if err != nil {
 		return err
 	}
-	connectivity, err := pullValues(helm, config.Fleet.Repository, config.Fleet.ConnectivityChart, config.Fleet.Version, workDir)
+	connectivityDir, err := pullChart(helm, config.Fleet.Repository, config.Fleet.ConnectivityChart, config.Fleet.Version, workDir)
+	if err != nil {
+		return err
+	}
+	fleet, err := loadYAMLFile(filepath.Join(fleetDir, "values.yaml"))
+	if err != nil {
+		return err
+	}
+	connectivity, err := loadYAMLFile(filepath.Join(connectivityDir, "values.yaml"))
 	if err != nil {
 		return err
 	}
 
-	values, components, err := Transform(Inputs{Config: config, Fleet: fleet, Connectivity: connectivity, Overlay: overlay})
+	result, err := Transform(Inputs{Config: config, Fleet: fleet, Connectivity: connectivity, Overlay: overlay})
+	if err != nil {
+		return err
+	}
+	values, components := result.Document, result.Components
+
+	templates, err := RenderTemplates(config, filepath.Join(connectivityDir, "templates"), result.Moves, result.ValueKeys)
 	if err != nil {
 		return err
 	}
@@ -105,14 +122,26 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 		filepath.Join(chartDir, "Chart.yaml"):  chartBytes,
 		filepath.Join(chartDir, "values.yaml"): valuesBytes,
 	}
+	for name, content := range templates {
+		outputs[filepath.Join(chartDir, "templates", name)] = content
+	}
 	if check {
+		if err := checkNoStaleTemplates(config, chartDir, templates); err != nil {
+			return err
+		}
 		return verify(outputs, chartDir, helm)
 	}
 	for path, content := range outputs {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
 		if err := os.WriteFile(path, content, 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "curate: wrote", path)
+	}
+	fmt.Fprintf(os.Stderr, "curate: wrote Chart.yaml, values.yaml and %d templates\n", len(templates))
+	if err := removeStaleTemplates(config, chartDir, templates); err != nil {
+		return err
 	}
 	return refreshLock(chartDir, helm)
 }
@@ -150,12 +179,83 @@ func loadOverlay(path string) (*yaml.Node, error) {
 	return parseYAML(raw, path)
 }
 
-func pullValues(helm Helm, repository, chart, version, workDir string) (*yaml.Node, error) {
+// pullChart pulls a chart and returns the directory it was unpacked into.
+func pullChart(helm Helm, repository, chart, version, workDir string) (string, error) {
 	destDir := filepath.Join(workDir, chart)
 	if err := helm.Pull(repository, chart, version, destDir); err != nil {
-		return nil, fmt.Errorf("pull %s %s: %w", chart, version, err)
+		return "", fmt.Errorf("pull %s %s: %w", chart, version, err)
 	}
-	return loadYAMLFile(filepath.Join(destDir, chart, "values.yaml"))
+	return filepath.Join(destDir, chart), nil
+}
+
+// templateFiles lists the files under the chart's templates directory.
+func templateFiles(chartDir string) ([]string, error) {
+	root := filepath.Join(chartDir, "templates")
+	var names []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		names = append(names, filepath.ToSlash(relative))
+		return nil
+	})
+	return names, err
+}
+
+// staleTemplates lists committed templates the generator no longer produces and
+// curate.yaml does not declare as its own.
+func staleTemplates(config *Config, chartDir string, templates TemplateSet) ([]string, error) {
+	names, err := templateFiles(chartDir)
+	if err != nil {
+		return nil, err
+	}
+	var stale []string
+	for _, name := range names {
+		if _, generated := templates[name]; generated || slices.Contains(config.Templates.Extra, name) {
+			continue
+		}
+		stale = append(stale, name)
+	}
+	sort.Strings(stale)
+	return stale, nil
+}
+
+// removeStaleTemplates deletes a template the source chart stopped shipping, so
+// a fleet removal reaches this chart without a hand edit.
+func removeStaleTemplates(config *Config, chartDir string, templates TemplateSet) error {
+	stale, err := staleTemplates(config, chartDir, templates)
+	if err != nil {
+		return err
+	}
+	for _, name := range stale {
+		path := filepath.Join(chartDir, "templates", name)
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "curate: removed", path)
+	}
+	return nil
+}
+
+func checkNoStaleTemplates(config *Config, chartDir string, templates TemplateSet) error {
+	stale, err := staleTemplates(config, chartDir, templates)
+	if err != nil {
+		return err
+	}
+	if len(stale) > 0 {
+		return fmt.Errorf("templates %v are neither generated nor listed in curate.yaml templates.extra; run hack/curate.sh", stale)
+	}
+	return nil
 }
 
 // verify is the CI mode: the committed files must equal the generator output

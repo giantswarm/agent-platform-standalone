@@ -1,5 +1,6 @@
 # Input of hack/curate.sh, the generator that produces
-# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock}.
+# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock} and the
+# chart's templates.
 #
 # The fleet meta-package (giantswarm/agent-platform) is the source of truth for
 # component defaults until step 2 of the plan. The generator reads its values
@@ -14,8 +15,8 @@ fleet:
   connectivityChart: agent-platform-connectivity
   # Exact pin, bumped by the weekly curation job.
   version: 3.0.4
-  # Fleet components that are not dependencies: their templates live in this
-  # chart (copied once from the connectivity chart).
+  # Fleet components that are not dependencies: this chart renders their
+  # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
     - agent-platform-connectivity
 
@@ -126,3 +127,20 @@ keys:
     action: lift
     chart: agent-sandbox
     lift: [podSecurity]
+
+# The connectivity chart's templates are copied into this chart on every run.
+# Helper names take the chart-name prefix, and every values path the transform
+# moved is rewritten from the rules above. A template that reads a path this
+# chart does not carry fails the run.
+templates:
+  # The one path the values rules cannot derive: `muster.enabled` exists in both
+  # layouts (the muster chart owns it), but the netpol gate asks whether the
+  # component has a release, which is components.muster.enabled.
+  rewrite:
+    - from: .Values.muster.enabled
+      to: .Values.components.muster.enabled
+  # Files under templates/ this generator does not produce. The install notes
+  # are the umbrella's own: the fleet's version tells the reader to install the
+  # meta-package.
+  extra:
+    - NOTES.txt

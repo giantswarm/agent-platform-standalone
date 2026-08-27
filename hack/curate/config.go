@@ -66,11 +66,36 @@ type FleetConfig struct {
 	InlineComponents  []string `yaml:"inlineComponents"`
 }
 
+// PathRewrite moves a values path in the copied templates. It covers the one
+// case the values rules cannot derive: a path whose key exists in both layouts
+// while the template must read a different one.
+type PathRewrite struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
+type TemplatesConfig struct {
+	Rewrite []PathRewrite `yaml:"rewrite"`
+	// Extra names files under the chart's templates directory that this
+	// generator does not produce and must not delete.
+	Extra []string `yaml:"extra"`
+}
+
 type Config struct {
 	Fleet        FleetConfig        `yaml:"fleet"`
 	Chart        yaml.Node          `yaml:"chart"`
 	Dependencies []Dependency       `yaml:"dependencies"`
 	Keys         map[string]KeyRule `yaml:"keys"`
+	Templates    TemplatesConfig    `yaml:"templates"`
+}
+
+// ChartName is the umbrella chart's name, the prefix of every copied helper.
+func (c *Config) ChartName() string {
+	_, name := mappingGet(&c.Chart, "name")
+	if name == nil {
+		return ""
+	}
+	return name.Value
 }
 
 var (

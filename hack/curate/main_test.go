@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,7 +12,8 @@ import (
 
 // fakeHelm serves the fixtures from memory and records the lock it "writes".
 type fakeHelm struct {
-	values   map[string]string
+	values    map[string]string
+	templates map[string]map[string]string
 	versions map[string]string
 	lock     string
 	resolves int
@@ -28,7 +30,19 @@ func (h *fakeHelm) Pull(_, chart, _, destDir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "values.yaml"), []byte(values), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "values.yaml"), []byte(values), 0o644); err != nil {
+		return err
+	}
+	for name, content := range h.templates[chart] {
+		path := filepath.Join(dir, "templates", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *fakeHelm) ResolveVersion(_, chart, _ string) (string, error) {
@@ -55,6 +69,10 @@ func newFakeHelm() *fakeHelm {
 		values: map[string]string{
 			"agent-platform":              fixtureFleet,
 			"agent-platform-connectivity": fixtureConnectivity,
+		},
+		templates: map[string]map[string]string{
+			// Copied: a test that drops a template must not mutate the fixture.
+			"agent-platform-connectivity": maps.Clone(fixtureTemplates),
 		},
 		versions: map[string]string{
 			"muster": "5.5.3", "kagent": "0.1.37", "agent-platform-mcps": "0.6.7", "agent-sandbox": "0.2.23", "backstage": "0.195.2",
@@ -149,10 +167,53 @@ func TestRunWritesUpdatedLockWhenPinsChange(t *testing.T) {
 func snapshot(t *testing.T, chartDir string) map[string]string {
 	t.Helper()
 	files := map[string]string{}
-	for _, name := range []string{"Chart.yaml", "values.yaml", "Chart.lock"} {
+	for _, name := range []string{"Chart.yaml", "values.yaml", "Chart.lock", "templates/_helpers.tpl", "templates/netpol.yaml"} {
 		content, err := os.ReadFile(filepath.Join(chartDir, name))
 		require.NoError(t, err)
 		files[name] = string(content)
 	}
 	return files
+}
+
+func TestRunCheckDetectsHandEditedTemplate(t *testing.T) {
+	configPath, overlayPath, chartDir := setupRepo(t)
+	helm := newFakeHelm()
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+
+	path := filepath.Join(chartDir, "templates", "netpol.yaml")
+	edited, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(edited, []byte("handEdited: true\n")...), 0o644))
+
+	require.ErrorContains(t, run(configPath, overlayPath, chartDir, true, helm), "netpol.yaml differs from the generator output")
+}
+
+// A template the source chart stops shipping is deleted, so a fleet removal
+// needs no hand edit here; check mode reports it instead of deleting.
+func TestRunRemovesTemplateTheSourceChartDropped(t *testing.T) {
+	configPath, overlayPath, chartDir := setupRepo(t)
+	helm := newFakeHelm()
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+	require.FileExists(t, filepath.Join(chartDir, "templates", "netpol.yaml"))
+
+	delete(helm.templates["agent-platform-connectivity"], "netpol.yaml")
+	require.ErrorContains(t, run(configPath, overlayPath, chartDir, true, helm), "templates [netpol.yaml] are neither generated nor listed")
+
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+	require.NoFileExists(t, filepath.Join(chartDir, "templates", "netpol.yaml"))
+}
+
+// The umbrella's own file survives every run.
+func TestRunKeepsExtraTemplate(t *testing.T) {
+	configPath, overlayPath, chartDir := setupRepo(t)
+	helm := newFakeHelm()
+	notes := filepath.Join(chartDir, "templates", "NOTES.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notes), 0o755))
+	require.NoError(t, os.WriteFile(notes, []byte("the umbrella's own notes\n"), 0o644))
+
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+	content, err := os.ReadFile(notes)
+	require.NoError(t, err)
+	require.Equal(t, "the umbrella's own notes\n", string(content))
+	require.NoError(t, run(configPath, overlayPath, chartDir, true, helm))
 }

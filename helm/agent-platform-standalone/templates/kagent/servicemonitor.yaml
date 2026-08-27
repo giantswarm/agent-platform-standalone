@@ -1,4 +1,4 @@
-{{- if and .Values.components.kagent.enabled .Values.kagent.kagent.serviceMonitor.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.kagent.kagent.serviceMonitor.enabled }}
 {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
 {{- $releaseName := .Release.Name }}
 # Headless Service exposing the kagent controller metrics port (:8080).

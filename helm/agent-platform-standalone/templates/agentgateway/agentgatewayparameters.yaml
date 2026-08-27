@@ -1,8 +1,8 @@
-{{- if and (include "agent-platform.ingress.agentgateway" .) .Values.gateway.parameters.enabled }}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.gateway.parameters.enabled }}
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayParameters
 metadata:
-  name: {{ include "agent-platform.parametersName" . }}
+  name: {{ include "agent-platform-standalone.parametersName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
