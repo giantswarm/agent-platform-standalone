@@ -5,7 +5,7 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@9.5.2
+  architect: giantswarm/architect@10.1.0
 
 workflows:
   build:
@@ -20,7 +20,7 @@ workflows:
         name: build-chart
         app_catalog: giantswarm-catalog
         app_catalog_test: giantswarm-test-catalog
-        chart: template-app
+        chart: agent-platform-standalone
         push_to_appcatalog: false
         push_to_oci_registry: false
         persist_chart_archive: true
@@ -65,7 +65,7 @@ workflows:
         name: push-chart-release
         app_catalog: giantswarm-catalog
         app_catalog_test: giantswarm-test-catalog
-        chart: template-app
+        chart: agent-platform-standalone
         requires:
         - execute-chart-tests-release
         filters:
