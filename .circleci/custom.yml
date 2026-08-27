@@ -1,0 +1,36 @@
+# Repo-specific CircleCI jobs. The dynamic-config setup workflow in
+# .circleci/config.yml deep-merges this file into the generated
+# .circleci/workflows.yml at pipeline runtime. devctl never touches this file.
+#
+# verify: the generator and render checks (`make verify`): unit tests of
+# hack/curate, `hack/curate.sh --check` (generated files current, Chart.lock in
+# sync via `helm dependency build`, never `update`), every example rendered,
+# schema strictness. Runs on branches and tags.
+version: 2.1
+
+jobs:
+  verify:
+    docker:
+      - image: cimg/go:1.26
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: install helm
+          command: |
+            # Same Helm line as the app-build-suite image; pinned so a Helm
+            # release cannot change the render mid-queue.
+            curl -fsSL https://get.helm.sh/helm-v3.21.4-linux-amd64.tar.gz | tar xz -C /tmp
+            sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+            helm version
+      - run:
+          name: make verify
+          command: make verify
+
+workflows:
+  build:
+    jobs:
+      - verify:
+          filters:
+            tags:
+              only: /^v.*/

@@ -1,0 +1,18 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed in namespace {{ .Release.Namespace }}.
+
+Components on: {{- range $name, $component := .Values.components }}{{- if $component.enabled }} {{ $name }}{{- end }}{{- end }}
+
+Gateway:        {{ .Values.gateway.name }} (class {{ .Values.gateway.gatewayClassName }})
+Listener port:  {{ (index .Values.gateway.listeners 0).port }}
+Service type:   {{ .Values.gateway.parameters.serviceType }} (data-plane Service forced via AgentgatewayParameters overlay)
+
+Cluster prerequisites (the chart does not install them):
+  kubectl get crd gateways.gateway.networking.k8s.io   # Gateway API CRDs + one implementation
+
+The component charts ship their own CRDs in their crds/ directories (muster,
+agentgateway, kagent, agent-sandbox, klaus-gateway). Helm installs them on the
+first install but never upgrades them: after `helm upgrade` to a release that
+bumps a component, re-apply that component's CRDs.
+
+Verify the data-plane Deployment renders after the controller picks up the Gateway:
+  kubectl -n {{ .Release.Namespace }} get gateway,deployment -l gateway.networking.k8s.io/gateway-name={{ .Values.gateway.name }}

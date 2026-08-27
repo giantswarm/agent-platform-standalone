@@ -1,0 +1,66 @@
+# Render-valid values for `ct lint` and the app-build-suite template validator
+# (see .abs/main.yaml). The defaults alone do not render: the ingress guard
+# rejects an empty ingress.parentRefs and muster's OAuth server rejects empty
+# OIDC fields, both on purpose. Every component is on so the full render path
+# is exercised; cloudnative-pg stays off because its chart requires
+# kubeVersion >= 1.29 and `ct lint` templates against Helm's default version.
+components:
+  muster:
+    enabled: true
+  valkey:
+    enabled: true
+  kagent:
+    enabled: true
+    controllerRoute:
+      enabled: true
+      hostname: agentgateway.ci.example.com
+  agentgateway:
+    enabled: true
+  agent-platform-mcps:
+    enabled: true
+  klaus-gateway:
+    enabled: true
+  dicebear:
+    enabled: true
+  agent-sandbox:
+    enabled: true
+  backstage:
+    enabled: true
+  cloudnative-pg:
+    enabled: false
+
+ingress:
+  mode: agentgateway-muster
+  parentRefs:
+    - name: giantswarm-default
+      namespace: envoy-gateway-system
+  hostnames:
+    - muster.ci.example.com
+
+muster:
+  muster:
+    oauth:
+      server:
+        baseUrl: https://muster.ci.example.com
+        dex:
+          issuerUrl: https://dex.ci.example.com
+          clientId: agent-platform
+        existingSecret: muster-oauth
+
+valkey:
+  valkey:
+    auth:
+      # The same Secret muster reads `valkey-password` from.
+      usersExistingSecret: muster-oauth
+
+dicebear:
+  route:
+    parentRefs:
+      - name: giantswarm-default
+        namespace: envoy-gateway-system
+    hostnames:
+      - avatars.ci.example.com
+
+agent-platform-mcps:
+  agentgateway:
+    viaMuster: true

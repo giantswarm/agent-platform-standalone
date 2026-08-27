@@ -1,0 +1,116 @@
+# Input of hack/curate.sh, the generator that produces
+# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock}.
+#
+# The fleet meta-package (giantswarm/agent-platform) is the source of truth for
+# component defaults until step 2 of the plan. The generator reads its values
+# and the frozen agent-platform-connectivity values at the pinned version, and
+# transforms them with the rules below. Every top-level key of both charts must
+# have a rule (deny-unknown): a fleet rename or a new Giant Swarm-only default
+# fails the run instead of leaking into the vanilla defaults.
+
+fleet:
+  repository: oci://gsoci.azurecr.io/charts/giantswarm
+  chart: agent-platform
+  connectivityChart: agent-platform-connectivity
+  # Exact pin, bumped by the weekly curation job.
+  version: 2.13.0
+  # Fleet components that are not dependencies: their templates live in this
+  # chart (copied once from the connectivity chart).
+  inlineComponents:
+    - agent-platform-connectivity
+
+# Static Chart.yaml metadata. `dependencies` is generated; `version` stays
+# 0.0.0-dev because app-build-suite stamps the git version at build time.
+chart:
+  apiVersion: v2
+  name: agent-platform-standalone
+  type: application
+  description: |
+    Giant Swarm Agent Platform as one plain Helm chart: muster (MCP gateway),
+    kagent (agent runtime), agentgateway (data plane), valkey, the platform MCP
+    servers, klaus-gateway, DiceBear avatars, agent-sandbox, Backstage and the
+    CloudNativePG operator as dependencies, plus the wiring (routes, gateway,
+    network policies) that makes them one platform. Installs on any conformant
+    Kubernetes cluster with `helm install`; no GitOps controller required.
+  home: https://github.com/giantswarm/agent-platform-standalone
+  icon: https://s.giantswarm.io/app-icons/giantswarm/1/light.svg
+  sources:
+    - https://github.com/giantswarm/agent-platform-standalone
+    - https://github.com/giantswarm/agent-platform
+  appVersion: "0.1.0"
+  version: 0.0.0-dev
+  annotations:
+    io.giantswarm.application.audience: all
+    io.giantswarm.application.managed: "false"
+    io.giantswarm.application.team: bumblebee
+    artifacthub.io/license: Apache-2.0
+    artifacthub.io/links: |
+      - name: Support
+        url: https://github.com/giantswarm/agent-platform-standalone/issues
+
+# One dependency per component, keyed by the exact chart name (the values key;
+# no alias). `range` is major-bounded (<major>.x); the generator resolves it to
+# the newest published version and writes that exact pin into Chart.yaml.
+# A dependency with a `repository` is an extra one the fleet does not ship;
+# it needs an explicit `enabled` default.
+dependencies:
+  - name: muster
+    range: "5.x"
+  - name: valkey
+    range: "0.x"
+  - name: kagent
+    range: "0.x"
+  - name: agentgateway
+    range: "1.x"
+  - name: agent-platform-mcps
+    range: "0.x"
+  - name: klaus-gateway
+    range: "0.x"
+  - name: dicebear
+    range: "0.x"
+  - name: agent-sandbox
+    range: "0.x"
+  - name: backstage
+    range: "0.x"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    enabled: false
+  - name: cloudnative-pg
+    range: "0.x"
+    repository: oci://ghcr.io/cloudnative-pg/charts
+    enabled: false
+
+# Rule per top-level key of the fleet and connectivity values.
+#   keep          copy the fleet block under the same key
+#   drop          fleet-only mechanics, not part of the umbrella
+#   dependencies  the fleet `components` map: source of the dependency list
+#   wiring        umbrella-owned block, copied from the connectivity values
+#                 (its templates read it and live in this chart)
+#   component     a component's values: renamed to the chart name, `enabled`
+#                 moved to components.<chart>.enabled, `lift` keys moved to
+#                 components.<chart>.*, nested under the fleet valuesKey
+#   toggle        a block that only holds a toggle (`enabled`) plus `lift`
+#                 wiring keys; any other sub-key fails the run
+keys:
+  global: {action: keep}
+  gitops: {action: drop}
+  components: {action: dependencies}
+  ingress: {action: wiring}
+  gateway: {action: wiring}
+  networkPolicy: {action: wiring}
+  kyvernoPolicies: {action: wiring}
+  extraObjects: {action: wiring}
+  postgres: {action: wiring}
+  muster: {action: component}
+  valkey: {action: component}
+  kagent:
+    action: component
+    # Read by the umbrella templates, not by the kagent chart.
+    lift: [controllerRoute, uiRoute, modelConfigs, remoteMcpServers]
+  agentgateway: {action: component}
+  klausGateway: {action: component}
+  dicebear: {action: component}
+  agent-platform-mcps: {action: component}
+  mcps: {action: toggle}
+  agentSandbox:
+    action: toggle
+    lift: [podSecurity]

@@ -36,4 +36,8 @@
       enabled: false,
     },
   ],
+  // Chart dependencies are the curated BOM: hack/curate.sh refreshes Chart.yaml
+  // and Chart.lock. Renovate must never touch them (two bots on Chart.yaml fight).
+  "helmv3": { "enabled": false },
+  "helm-values": { "enabled": false },
 }

@@ -1,25 +1,621 @@
 {
-    "$schema": "http://json-schema.org/schema#",
-    "type": "object",
-    "properties": {
-        "image": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "tag": {
-                    "type": "string"
-                }
-            }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Hand-written. Strict (additionalProperties: false) only for the keys the umbrella owns: global, components and the wiring blocks copied once from the agent-platform-connectivity schema. Every component block is opaque here and validated by the component chart's own schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imagePullSecrets": {
+          "type": "array"
         },
         "registry": {
-            "type": "object",
-            "properties": {
-                "domain": {
-                    "type": "string"
-                }
-            }
+          "type": "string"
         }
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "muster": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "valkey": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "kagent": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "controllerRoute": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "uiRoute": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "modelConfigs": {
+              "type": "array"
+            },
+            "remoteMcpServers": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "agentgateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "agent-platform-mcps": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "klaus-gateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "dicebear": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "agent-sandbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "podSecurity": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "backstage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "cloudnative-pg": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backendTrafficPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "timeout": {
+              "type": "string"
+            }
+          }
+        },
+        "hostnames": {
+          "type": "array"
+        },
+        "httpRoute": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "mcp": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "annotations": {
+                  "type": "object",
+                  "additionalProperties": false
+                },
+                "labels": {
+                  "type": "object",
+                  "additionalProperties": false
+                }
+              }
+            },
+            "muster": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "annotations": {
+                  "type": "object",
+                  "additionalProperties": false
+                },
+                "labels": {
+                  "type": "object",
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "mode": {
+          "type": "string"
+        },
+        "parentRefs": {
+          "type": "array"
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gatewayClassName": {
+          "type": "string"
+        },
+        "jwksEgress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "podSelector": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "listeners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allowedRoutes": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "namespaces": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "protocol": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "containerSecurityContext": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowPrivilegeEscalation": {
+                  "type": "boolean"
+                },
+                "capabilities": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "drop": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "readOnlyRootFilesystem": {
+                  "type": "boolean"
+                },
+                "runAsNonRoot": {
+                  "type": "boolean"
+                },
+                "seccompProfile": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "dataPlaneEnv": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "dataPlaneResources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "ephemeral-storage": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "ephemeral-storage": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "dataPlaneVolumeMounts": {
+              "type": "array"
+            },
+            "dataPlaneVolumes": {
+              "type": "array"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "podSecurityContext": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "runAsNonRoot": {
+                  "type": "boolean"
+                },
+                "seccompProfile": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "serviceType": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "additionalEgressCIDRs": {
+          "type": "array"
+        },
+        "additionalEgressFQDNs": {
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "flavor": {
+          "type": "string"
+        },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiServerCIDR": {
+              "type": "string"
+            },
+            "worldExcludedCIDRs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "musterInClusterMcpPorts": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "kyvernoPolicies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "policyExceptionNamespace": {
+          "type": "string"
+        },
+        "seccompPolicyName": {
+          "type": "string"
+        },
+        "seccompRuleNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "extraObjects": {
+      "type": "array"
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "applicationDatabase": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "clusterName": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "instances": {
+          "type": "integer"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "sessionsDatabase": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string"
+            },
+            "storageClass": {
+              "type": "string"
+            }
+          }
+        },
+        "vector": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "extensionImage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "reference": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "muster": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "muster chart values"
+    },
+    "valkey": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "valkey chart values"
+    },
+    "kagent": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "kagent chart values; the upstream chart is a subchart, so its values sit under kagent.kagent"
+    },
+    "agentgateway": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "agentgateway chart values; the upstream chart is a subchart, so its values sit under agentgateway.agentgateway"
+    },
+    "agent-platform-mcps": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "agent-platform-mcps chart values"
+    },
+    "klaus-gateway": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "klaus-gateway chart values"
+    },
+    "dicebear": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "dicebear chart values"
+    },
+    "agent-sandbox": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "agent-sandbox chart values"
+    },
+    "backstage": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "backstage chart values"
+    },
+    "cloudnative-pg": {
+      "type": "object",
+      "additionalProperties": true,
+      "$comment": "cloudnative-pg chart values"
     }
+  }
 }

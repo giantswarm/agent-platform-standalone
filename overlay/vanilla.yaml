@@ -1,0 +1,7 @@
+# Vanilla overrides, merged last by hack/curate.sh on top of the transformed
+# fleet defaults. Only umbrella-owned keys (global, components, the wiring
+# blocks) and dependency names are allowed at the top level.
+#
+# Empty on purpose in this slice: the vanilla defaults (network policies off,
+# ServiceMonitors off, OTLP unset, policyEngine none) arrive with the
+# `components.*` / `global.*` contract in a later slice.

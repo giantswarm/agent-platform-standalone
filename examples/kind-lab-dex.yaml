@@ -1,0 +1,119 @@
+# kind quick start: agentgateway as the edge Gateway, a lab Dex as the IdP.
+#
+#   helm dependency build helm/agent-platform-standalone
+#   helm install agent-platform helm/agent-platform-standalone -n agent-platform \
+#     --create-namespace -f examples/kind-lab-dex.yaml
+#
+# LAB ONLY. The lab Dex (static password users, no upstream connector) and the
+# self-signed wildcard certificate come from prerequisites/lab-dex.yaml, which a
+# later slice adds together with the `global.*` input contract. Until then the
+# values below use the component charts' own keys (nested under the wrapper
+# chart's subchart key for kagent and agentgateway).
+#
+# Prerequisites on the cluster: Gateway API CRDs, a Secret `agent-platform-idp`
+# in the release namespace with the Dex client secret, and DNS for
+# *.127.0.0.1.nip.io (the nip.io wildcard resolves to localhost).
+
+components:
+  muster:
+    enabled: true
+  valkey:
+    enabled: true
+  kagent:
+    enabled: true
+    controllerRoute:
+      enabled: true
+      hostname: agentgateway.127.0.0.1.nip.io
+      # The data-plane Gateway rendered by this chart is the edge on kind.
+      parentRef:
+        name: agentgateway
+        namespace: agent-platform
+  agentgateway:
+    enabled: true
+  agent-platform-mcps:
+    enabled: true
+  dicebear:
+    enabled: true
+  backstage:
+    enabled: true
+  klaus-gateway:
+    enabled: false
+  agent-sandbox:
+    enabled: false
+  cloudnative-pg:
+    enabled: false
+
+# client -> agentgateway /mcp -> muster. The agentgateway data-plane Gateway
+# (gateway.name, rendered by this chart) is also the public edge: the muster
+# and avatar routes attach to it.
+ingress:
+  mode: agentgateway-muster
+  parentRefs:
+    - name: agentgateway
+      namespace: agent-platform
+  hostnames:
+    - muster.127.0.0.1.nip.io
+
+gateway:
+  parameters:
+    # No OTLP gateway on kind: an empty list renders no OTEL env.
+    dataPlaneEnv: []
+
+# kind has no Cilium and no Kyverno.
+networkPolicy:
+  enabled: false
+kyvernoPolicies:
+  enabled: false
+
+muster:
+  networkPolicy:
+    enabled: false
+  muster:
+    oauth:
+      server:
+        baseUrl: https://muster.127.0.0.1.nip.io
+        dex:
+          issuerUrl: https://dex.127.0.0.1.nip.io
+          clientId: agent-platform
+        existingSecret: agent-platform-idp
+    observability:
+      metrics:
+        prometheus:
+          serviceMonitor:
+            enabled: false
+          prometheusRule:
+            enabled: false
+
+valkey:
+  ciliumNetworkPolicy:
+    enabled: false
+  valkey:
+    auth:
+      # The same Secret muster reads `valkey-password` from.
+      usersExistingSecret: agent-platform-idp
+
+kagent:
+  kagent:
+    serviceMonitor:
+      enabled: false
+    otel:
+      tracing:
+        enabled: false
+      logging:
+        enabled: false
+    oauth2-proxy:
+      metrics:
+        serviceMonitor:
+          enabled: false
+
+dicebear:
+  route:
+    parentRefs:
+      - name: agentgateway
+        namespace: agent-platform
+    hostnames:
+      - avatars.127.0.0.1.nip.io
+
+agent-platform-mcps:
+  agentgateway:
+    viaMuster: true
