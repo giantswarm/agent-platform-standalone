@@ -1,7 +1,74 @@
-# Vanilla overrides, merged last by hack/curate.sh on top of the transformed
-# fleet defaults. Only umbrella-owned keys (global, components, the wiring
-# blocks) and dependency names are allowed at the top level.
-#
-# Empty on purpose in this slice: the vanilla defaults (network policies off,
-# ServiceMonitors off, OTLP unset, policyEngine none) arrive with the
-# `components.*` / `global.*` contract in a later slice.
+# The fleet defaults a vanilla cluster turns off, merged last by
+# hack/curate.sh (after overlay/contract.yaml). examples/giantswarm.yaml is
+# generated from this file: every leaf here comes back there with its fleet
+# value. Only umbrella-owned keys and dependency names are allowed at the top
+# level.
+
+global:
+  networkPolicy:
+    enabled: false
+    flavor: kubernetes
+
+components:
+  # The dicebear route needs Envoy Gateway's HTTPRouteFilter; off until the
+  # avatar route renders on agentgateway too.
+  dicebear:
+    enabled: false
+  # The agent-sandbox pod-security policy is a Kyverno mutate policy; without
+  # Kyverno the controller runs with the upstream chart's own security context.
+  agent-sandbox:
+    podSecurity:
+      enabled: false
+
+kyvernoPolicies:
+  enabled: false
+
+muster:
+  networkPolicy:
+    enabled: false
+  muster:
+    observability:
+      metrics:
+        prometheus:
+          serviceMonitor:
+            enabled: false
+          prometheusRule:
+            enabled: false
+
+valkey:
+  ciliumNetworkPolicy:
+    enabled: false
+  valkey:
+    metrics:
+      podMonitor:
+        enabled: false
+
+kagent:
+  kagent:
+    controller:
+      env:
+        - name: METRICS_BIND_ADDRESS
+          value: ":8080"
+        - name: METRICS_SECURE
+          value: "false"
+    serviceMonitor:
+      enabled: false
+    otel:
+      tracing:
+        enabled: false
+        exporter:
+          otlp:
+            endpoint: ""
+      logging:
+        enabled: false
+        exporter:
+          otlp:
+            endpoint: ""
+    oauth2-proxy:
+      metrics:
+        serviceMonitor:
+          enabled: false
+
+dicebear:
+  route:
+    enabled: false

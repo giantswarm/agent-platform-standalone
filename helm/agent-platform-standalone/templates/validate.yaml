@@ -1,1 +1,2 @@
 {{- include "agent-platform.validateIngress" . -}}
+{{- include "agent-platform.validateGlobal" . -}}

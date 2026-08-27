@@ -5,6 +5,83 @@
 global:
   registry: gsoci.azurecr.io
   imagePullSecrets: []
+  networkPolicy:
+    enabled: false
+    flavor: kubernetes
+    # Extra CIDR egress for in-cluster Gateway VIPs the entity selectors miss.
+    # Example:
+    #   additionalEgressCIDRs:
+    #     - 10.223.16.0/24
+    additionalEgressCIDRs: []
+    # FQDN egress (cilium flavor only — requires a cluster Cilium DNS visibility
+    # policy). Example:
+    #   additionalEgressFQDNs:
+    #     - matchName: dex.example.gigantic.io
+    additionalEgressFQDNs: []
+    # Extra in-cluster egress ports for muster -> MCP backends reached via a
+    # ClusterIP whose pod listens on a non-80/443 port (e.g. the in-cluster
+    # pro / runbooks MCP servers on 8080, or tunnelport RemoteApp tunnels whose
+    # ghostunnel sidecar terminates TLS on 8443). Muster's own CNP permits
+    # cluster-entity egress only on 80/443, so those connections time out; this
+    # renders a supplementary CiliumNetworkPolicy that widens muster's egress to
+    # these ports (Cilium policies are additive — no sub-chart fork). cilium
+    # flavor only; [] disables the supplementary policy.
+    musterInClusterMcpPorts:
+      - 8080
+      - 8443
+    # CIDR replacements for the kubernetes flavor. Vanilla NetworkPolicy has no
+    # entity selectors.
+    kubernetes:
+      apiServerCIDR: 0.0.0.0/0
+      worldExcludedCIDRs:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 169.254.0.0/16
+  # The one hostname input. Public hostnames derive from it by convention
+  # (muster., agentgateway., kagent., backstage.<domain>), each overridable on
+  # its component. TLS and DNS for *.<domain> stay outside the chart.
+  domain: ""
+  # The platform's login identity provider: one OIDC provider per installation.
+  # The umbrella templates read this block (kagent JWT policy, Backstage
+  # appConfig, oauth2-proxy arguments). The muster chart keeps its own
+  # muster.oauth.server.* keys for now; the render fails when the two disagree.
+  identity:
+    # OIDC issuer URL, https and a hostname (never an IP literal). Example:
+    # https://dex.<domain>
+    issuerUrl: ""
+    # OAuth client registered at the provider for the platform.
+    clientId: agent-platform
+    # Secret in the release namespace with the platform credentials:
+    #   dex-client-secret, registration-token, oauth-encryption-key,
+    #   valkey-password           muster and valkey
+    #   backstage-session-secret  Backstage cookie signing key
+    existingSecret: agent-platform-idp
+    # CA of a provider with a private certificate (the lab Dex). Mounted into
+    # Backstage (NODE_EXTRA_CA_CERTS). muster reads the same Secret through
+    # muster.muster.extraCaFile.secret.name. Empty: system trust only.
+    ca:
+      secretName: ""
+      key: ca.crt
+  gatewayApi:
+    # The public Gateway every route attaches to when its component does not
+    # name one. Unused when gatewayApi.gateway.create is true.
+    parentRefs: []
+  observability:
+    metrics:
+      # Gates every ServiceMonitor and PodMonitor the umbrella renders; needs
+      # the monitoring.coreos.com CRDs. Metrics endpoints stay exposed.
+      serviceMonitor:
+        enabled: false
+        interval: 60s
+        labels: {}  # @schema type: object; additionalProperties: true
+    traces:
+      # OTLP exporter for the agentgateway data plane. An empty endpoint renders
+      # no OTEL_* environment variable.
+      otlp:
+        endpoint: ""
+        protocol: grpc
+        headers: {}  # @schema type: object; additionalProperties: true
 # Umbrella-owned map: one entry per dependency, keyed by chart name.
 # `enabled` is the Helm dependency condition. The other keys are wiring the
 # umbrella templates render for that component; they are never forwarded to
@@ -31,8 +108,8 @@ components:
       # at https://<hostname><pathPrefix> through this Gateway, which forwards to
       # the agentgateway Service (inner hop handles JWT validation + path rewrite).
       parentRef:
-        name: giantswarm-default
-        namespace: envoy-gateway-system
+        name: ""
+        namespace: ""
       # JWT validation on the inner kagent-controller HTTPRoute. Renders an
       # AgentgatewayPolicy (plus a static AgentgatewayBackend for the JWKS
       # endpoint) so agentgateway verifies the bearer's signature, issuer, and
@@ -70,8 +147,8 @@ components:
       enabled: false
       hostname: ""  # Required: kagent.<cluster>.<base-domain>
       parentRef:
-        name: giantswarm-default
-        namespace: envoy-gateway-system
+        name: ""
+        namespace: ""
       backendTrafficPolicy:
         # A route-level BackendTrafficPolicy opts this route out of the gateway-wide
         # error-pages responseOverride, which would otherwise replace 4xx bodies
@@ -117,7 +194,7 @@ components:
   klaus-gateway:
     enabled: false
   dicebear:
-    enabled: true
+    enabled: false
   agent-sandbox:
     enabled: false
     # The agent-sandbox chart is kept vendor-agnostic (no securityContext knob on
@@ -125,7 +202,7 @@ components:
     # admission via the Kyverno mutate policy in
     # templates/agent-sandbox/pod-security.yaml. These values feed that policy.
     podSecurity:
-      enabled: true
+      enabled: false
       # Must match the agent-sandbox chart's namespace.name (upstream default).
       namespace: agent-sandbox-system
       podSecurityContext:
@@ -141,6 +218,34 @@ components:
           type: RuntimeDefault
   backstage:
     enabled: false
+    # Public hostname; empty derives backstage.<global.domain>.
+    hostname: ""
+    # Gateway of the Backstage route; empty follows the platform default.
+    parentRefs: []
+    # Extra OIDC scopes the Backstage login requests. The two defaults are
+    # Dex cross-client scopes: muster trusts the dex-k8s-authenticator
+    # audience on forwarded tokens. Set [] for a provider that rejects unknown
+    # scopes (Keycloak, Entra ID).
+    extraScopes:
+      - federated:id
+      - audience:server:client_id:dex-k8s-authenticator
+    # Sidebar pages of the Giant Swarm portal hidden on the vanilla UI.
+    disabledExtensions:
+      - page:gs/clusters
+      - nav-item:gs/clusters
+      - page:gs/deployments
+      - nav-item:gs/deployments
+      - page:gs/installations
+      - nav-item:gs/installations
+      - page:flux
+      - nav-item:flux
+      - page:ai-chat
+      - api:ai-chat/service
+      - api:ai-chat/drawer
+      - app-root-element:ai-chat/drawer
+    # Skill repositories offered when an agent is created.
+    skillsRepositories:
+      - https://github.com/giantswarm/agent-skills
   cloudnative-pg:
     enabled: false
 # === Ingress topology ===
@@ -159,23 +264,30 @@ ingress:
   parentRefs: []  # ALL modes: public Gateway, shared by both rendered routes
   hostnames: []  # ALL modes: muster public hostname(s)
   httpRoute:  # shared base, applied to both rendered HTTPRoutes
-    annotations: {}
-    labels: {}
+    # Free-form maps: the schema generator would close an unannotated `{}`.
+    annotations: {}  # @schema type: object; additionalProperties: true
+    labels: {}  # @schema type: object; additionalProperties: true
     # Optional per-route overrides, merged on top of the shared maps above
     # (per-route keys win on collision). `muster` = the muster `/` route;
     # `mcp` = the agentgateway `/mcp` route. Use for diverging cert-manager
     # issuers, Envoy route policies, etc., without forking the shared block.
     muster:
-      annotations: {}
-      labels: {}
+      annotations: {}  # @schema type: object; additionalProperties: true
+      labels: {}  # @schema type: object; additionalProperties: true
     mcp:
-      annotations: {}
-      labels: {}
+      annotations: {}  # @schema type: object; additionalProperties: true
+      labels: {}  # @schema type: object; additionalProperties: true
+    # Portable stream timeout on the umbrella-owned routes (muster `/`, the
+    # agentgateway `/mcp`): `0s` asks the implementation to disable the request
+    # timeout so MCP/SSE streams stay open. Envoy-specific policies stay opt-in
+    # under ingress.backendTrafficPolicy.
+    timeouts:
+      request: "0s"
   backendTrafficPolicy:  # agentgateway-* modes only; preserves WWW-Authenticate
     enabled: false
     timeout: "0s"
-    annotations: {}
-    labels: {}
+    annotations: {}  # @schema type: object; additionalProperties: true
+    labels: {}  # @schema type: object; additionalProperties: true
 # Data-plane infrastructure — agentgateway-* modes only. Reconciled by the
 # agentgateway controller. Both public routes (muster's `/` and the agentgateway
 # `/mcp`) are owned by the umbrella and configured via the `ingress.*` block above.
@@ -216,14 +328,9 @@ gateway:
         drop: [ALL]
       seccompProfile:
         type: RuntimeDefault
-    # Strategic-merge env appended to the data-plane container.
-    # Defaults push OTel traces to the cluster-wide otlp-gateway in kube-system.
-    # Override or extend for per-cluster backends.
-    dataPlaneEnv:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: http://otlp-gateway.kube-system.svc:4317
-      - name: OTEL_EXPORTER_OTLP_PROTOCOL
-        value: grpc
+    # OTEL env comes from global.observability.traces.otlp; this list is for
+    # extra data-plane env only.
+    dataPlaneEnv: []
     dataPlaneVolumes: []
     dataPlaneVolumeMounts: []
     # Resources for the agentgateway data-plane container. ephemeral-storage
@@ -237,46 +344,6 @@ gateway:
         ephemeral-storage: 50Mi
       limits:
         ephemeral-storage: 512Mi
-networkPolicy:
-  enabled: true
-  # cilium     — CiliumNetworkPolicy (entity selectors + FQDN egress)
-  # kubernetes — vanilla networking.k8s.io/v1 NetworkPolicy
-  #
-  # Governs the agentgateway policies owned by this chart, plus the supplementary
-  # muster MCP-egress policy below. Muster's own ciliumNetworkPolicy is otherwise
-  # independent — set muster.ciliumNetworkPolicy.enabled to false when running
-  # the kubernetes flavor.
-  flavor: cilium
-  # Extra CIDR egress for in-cluster Gateway VIPs the entity selectors miss.
-  # Example:
-  #   additionalEgressCIDRs:
-  #     - 10.223.16.0/24
-  additionalEgressCIDRs: []
-  # FQDN egress (cilium flavor only — requires a cluster Cilium DNS visibility
-  # policy). Example:
-  #   additionalEgressFQDNs:
-  #     - matchName: dex.example.gigantic.io
-  additionalEgressFQDNs: []
-  # Extra in-cluster egress ports for muster -> MCP backends reached via a
-  # ClusterIP whose pod listens on a non-80/443 port (e.g. the in-cluster
-  # pro / runbooks MCP servers on 8080, or tunnelport RemoteApp tunnels whose
-  # ghostunnel sidecar terminates TLS on 8443). Muster's own CNP permits
-  # cluster-entity egress only on 80/443, so those connections time out; this
-  # renders a supplementary CiliumNetworkPolicy that widens muster's egress to
-  # these ports (Cilium policies are additive — no sub-chart fork). cilium
-  # flavor only; [] disables the supplementary policy.
-  musterInClusterMcpPorts:
-    - 8080
-    - 8443
-  # CIDR replacements for the kubernetes flavor. Vanilla NetworkPolicy has no
-  # entity selectors.
-  kubernetes:
-    apiServerCIDR: 0.0.0.0/0
-    worldExcludedCIDRs:
-      - 10.0.0.0/8
-      - 172.16.0.0/12
-      - 192.168.0.0/16
-      - 169.254.0.0/16
 # The chart's kyverno.io objects: the kagent declarative-agent mutate policies, the
 # kagent seccomp PolicyException, and the agent-sandbox pod-security policy. Requires
 # Kyverno on the cluster. Set enabled: false on a cluster without it, where these
@@ -293,7 +360,7 @@ networkPolicy:
 # clusters restrict-polex-namespaces confines the PolicyException to
 # policy-exceptions, giantswarm, flux-giantswarm or kube-system.
 kyvernoPolicies:
-  enabled: true
+  enabled: false
   policyExceptionNamespace: policy-exceptions
   seccompPolicyName: restrict-seccomp-strict
   seccompRuleNames:  # @schema minItems: 1; item: string; uniqueItems: true
@@ -368,6 +435,18 @@ postgres:
     enabled: false
     name: sessions
     owner: sessions
+# Chart-owned public edge: the agentgateway data-plane Gateway (gateway.*)
+# also terminates TLS for *.<global.domain>. Off by default; on for kind.
+gatewayApi:
+  gateway:
+    create: false
+    # Wildcard certificate Secret for *.<global.domain>, in the release
+    # namespace. Required when create is true (the prerequisites manifest ships
+    # one for the lab).
+    tls:
+      secretName: ""
+    # Service type of the data-plane Service when it is the edge.
+    serviceType: LoadBalancer
 muster:  # @schema skipProperties: true; additionalProperties: true
   image:
     registry: gsoci.azurecr.io
@@ -418,7 +497,7 @@ muster:  # @schema skipProperties: true; additionalProperties: true
   # umbrella top level — flip `flavor: kubernetes` here too when running on
   # a non-Cilium cluster.
   networkPolicy:
-    enabled: true
+    enabled: false
     flavor: cilium
     cilium:
       # Reaches Dex / OIDC / MCPServers fronted by in-cluster ingress.
@@ -469,7 +548,7 @@ muster:  # @schema skipProperties: true; additionalProperties: true
       metrics:
         prometheus:
           serviceMonitor:
-            enabled: true
+            enabled: false
             interval: 60s
             labels:
               observability.giantswarm.io/tenant: giantswarm
@@ -487,7 +566,7 @@ muster:  # @schema skipProperties: true; additionalProperties: true
           # its own schema with additionalProperties: false, so this key
           # must not be set for a muster older than 4.1.0.
           prometheusRule:
-            enabled: true
+            enabled: false
             labels:
               observability.giantswarm.io/tenant: giantswarm
 # Bundled giantswarm/valkey-app for muster's OAuth session storage.
@@ -498,7 +577,7 @@ muster:  # @schema skipProperties: true; additionalProperties: true
 # Single-pod Deployment + PVC; writable Service at muster-valkey.<ns>.svc:6379.
 valkey:  # @schema skipProperties: true; additionalProperties: true
   ciliumNetworkPolicy:
-    enabled: true
+    enabled: false
   vpa:
     enabled: false
   valkey:
@@ -570,6 +649,8 @@ valkey:  # @schema skipProperties: true; additionalProperties: true
           runAsUser: 1000
           seccompProfile:
             type: RuntimeDefault
+      podMonitor:
+        enabled: false
 # kagent — Kubernetes-native AI agent runtime (controller + UI).
 # All keys pass through to the kagent subchart (no strict schema filtering).
 # The kagent.dev + kmcp CRDs ship with the kagent app chart itself (app-owned
@@ -634,23 +715,11 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
         # stable human identity and matches muster's trusted-issuer subjectClaim,
         # so UI (oauth2-proxy) and A2A sessions key identically.
         userIdClaim: email
-      # Expose controller-runtime Prometheus metrics on :8080 (HTTP, no TLS).
-      # The default --metrics-bind-address is "0" (disabled) and the chart never
-      # sets it. We enable it here and wire a ServiceMonitor via extraObjects.
-      # metrics-secure=false avoids needing a cert for the in-cluster scrape.
-      # X-Scope-OrgID routes OTLP traces and logs to the correct Loki/Tempo
-      # tenant. The configmap template has no headers field so we inject via env.
       env:
         - name: METRICS_BIND_ADDRESS
           value: ":8080"
-        # false: HTTP scrape, no cert needed. The network policy on port 8083
-        # already restricts access; HTTP on :8080 is acceptable for in-cluster
-        # scraping. Set to "true" + configure ServiceMonitor tlsConfig with a
-        # cert-manager-issued CA if HTTPS is required.
         - name: METRICS_SECURE
           value: "false"
-        - name: OTEL_EXPORTER_OTLP_HEADERS
-          value: "X-Scope-OrgID=giantswarm"
     ui:
       image:
         repository: kagent-ui
@@ -686,7 +755,7 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
     # ServiceMonitor for controller-runtime Prometheus metrics.
     # Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1).
     serviceMonitor:
-      enabled: true
+      enabled: false
       interval: 60s
       # Extra labels on the ServiceMonitor metadata. The tenant label routes
       # metrics to the correct Mimir instance in the GS Observability Platform.
@@ -696,17 +765,17 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
     # X-Scope-OrgID header routes to the correct Loki/Tempo tenant.
     otel:
       tracing:
-        enabled: true
+        enabled: false
         exporter:
           otlp:
-            endpoint: http://otlp-gateway.kube-system.svc:4317
+            endpoint: ""
             protocol: grpc
             insecure: true
       logging:
-        enabled: true
+        enabled: false
         exporter:
           otlp:
-            endpoint: http://otlp-gateway.kube-system.svc:4317
+            endpoint: ""
             insecure: true
     # --- UI auth: oauth2-proxy in front of the kagent UI ---
     # Disabled by default. Enable and supply Dex OIDC credentials to secure the UI.
@@ -744,17 +813,12 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
         clientSecret: ""
         cookieSecret: ""
       extraEnv:
-        - name: OIDC_ISSUER_URL
-          value: ""  # e.g. https://dex.<cluster>.<base-domain>
-        - name: OIDC_REDIRECT_URL
-          value: ""  # e.g. https://kagent.<cluster>.<base-domain>/oauth2/callback
-        # kagent.fullnameOverride=kagent, so the UI service is kagent-ui.
         - name: UPSTREAM_URL
           value: http://kagent-ui:8080
       extraArgs:
         provider: oidc
-        oidc-issuer-url: "$(OIDC_ISSUER_URL)"
-        redirect-url: "$(OIDC_REDIRECT_URL)"
+        oidc-issuer-url: "{{ .Values.global.identity.issuerUrl }}"
+        redirect-url: "https://kagent.{{ .Values.global.domain }}/oauth2/callback"
         upstream: "$(UPSTREAM_URL)"
         email-domain: "*"
         pass-authorization-header: true
@@ -771,13 +835,14 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
         skip-auth-route: "^/(health|login)$"
         skip-auth-regex: "^/(login|_next/static|_next/image|login-bg\\.(jpg|png|webp)|logo-.*\\.png|favicon\\.ico).*$"
         custom-templates-dir: /templates
+        client-id: "{{ .Values.global.identity.clientId }}"
       service:
         type: ClusterIP
         portNumber: 4180
       metrics:
         enabled: true
         serviceMonitor:
-          enabled: true
+          enabled: false
           interval: 60s
           labels:
             observability.giantswarm.io/tenant: giantswarm
@@ -1064,12 +1129,42 @@ klaus-gateway:  # @schema skipProperties: true; additionalProperties: true
 # route.hostnames (e.g. [avatars.<domain>]); the chart hard-fails otherwise, by design.
 dicebear:  # @schema skipProperties: true; additionalProperties: true
   route:
-    enabled: true
+    enabled: false
     parentRefs: []  # REQUIRED per cluster: public Gateway parentRef(s)
     hostnames: []  # REQUIRED per cluster: e.g. [avatars.example.com]
 # Values forwarded to the agent-sandbox chart. The fleet ships no defaults for it.
 agent-sandbox: {}  # @schema skipProperties: true; additionalProperties: true
 # Values forwarded to the backstage chart. The fleet ships no defaults for it.
-backstage: {}  # @schema skipProperties: true; additionalProperties: true
+backstage:  # @schema skipProperties: true; additionalProperties: true
+  ingress:
+    enabled: false
+  backstage:
+    extraAppConfig:
+      - filename: app-config.agent-platform.yaml
+        configMapRef: agent-platform-backstage-app-config
+    # Rendered through tpl against the backstage chart root, so the Secret
+    # names follow global.identity.
+    extraEnvVars:
+      - name: AUTH_SESSION_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: backstage-session-secret
+      - name: AGENT_PLATFORM_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: dex-client-secret
+      - name: NODE_EXTRA_CA_CERTS
+        value: "/etc/agent-platform/idp-ca/{{ .Values.global.identity.ca.key }}"
+    extraVolumes:
+      - name: idp-ca
+        secret:
+          secretName: "{{ .Values.global.identity.ca.secretName | default \"agent-platform-idp-ca\" }}"
+          optional: true
+    extraVolumeMounts:
+      - name: idp-ca
+        mountPath: /etc/agent-platform/idp-ca
+        readOnly: true
 # Values forwarded to the cloudnative-pg chart. The fleet ships no defaults for it.
 cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true

@@ -1,4 +1,5 @@
 {{- if and (include "agent-platform.ingress.agentgateway" .) .Values.gateway.parameters.enabled }}
+{{- $env := concat (include "agent-platform.otlpEnv" . | fromYamlArray) (.Values.gateway.parameters.dataPlaneEnv | default list) }}
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayParameters
 metadata:
@@ -16,7 +17,11 @@ spec:
     {{- end }}
   {{- end }}
   service:
+    {{- if (include "agent-platform.edgeIsDataPlane" .) }}
+    type: {{ .Values.gatewayApi.gateway.serviceType }}
+    {{- else }}
     type: {{ .Values.gateway.parameters.serviceType }}
+    {{- end }}
   deployment:
     spec:
       template:
@@ -36,7 +41,7 @@ spec:
               resources:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
-              {{- with .Values.gateway.parameters.dataPlaneEnv }}
+              {{- with $env }}
               env:
                 {{- toYaml . | nindent 16 }}
               {{- end }}

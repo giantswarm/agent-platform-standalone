@@ -1,4 +1,4 @@
-{{- if and (include "agent-platform.ingress.agentgateway" .) .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "cilium") }}
+{{- if and (include "agent-platform.ingress.agentgateway" .) .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "cilium") }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -16,6 +16,15 @@ spec:
         - ports:
             - port: "{{ (index .Values.gateway.listeners 0).port }}"
               protocol: TCP
+    {{- if (include "agent-platform.edgeIsDataPlane" .) }}
+    # The data plane is the public edge: the HTTPS listener takes traffic from
+    # outside the cluster.
+    - fromEntities: ["world", "cluster"]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    {{- end }}
   egress:
     - toEntities: ["kube-apiserver"]
     {{- include "agent-platform.dnsEgress" . | nindent 4 }}
@@ -68,7 +77,7 @@ spec:
               protocol: TCP
     {{- end }}
     {{- end }}
-    {{- with .Values.networkPolicy.additionalEgressCIDRs }}
+    {{- with .Values.global.networkPolicy.additionalEgressCIDRs }}
     - toCIDR:
         {{- toYaml . | nindent 8 }}
       toPorts:
@@ -76,7 +85,7 @@ spec:
             - port: "443"
               protocol: TCP
     {{- end }}
-    {{- with .Values.networkPolicy.additionalEgressFQDNs }}
+    {{- with .Values.global.networkPolicy.additionalEgressFQDNs }}
     - toFQDNs:
         {{- toYaml . | nindent 8 }}
       toPorts:

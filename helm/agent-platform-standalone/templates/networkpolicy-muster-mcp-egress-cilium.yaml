@@ -1,4 +1,4 @@
-{{- if and .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "cilium") .Values.networkPolicy.musterInClusterMcpPorts }}
+{{- if and .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "cilium") .Values.global.networkPolicy.musterInClusterMcpPorts }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -22,7 +22,7 @@ spec:
         - cluster
       toPorts:
         - ports:
-          {{- range .Values.networkPolicy.musterInClusterMcpPorts }}
+          {{- range .Values.global.networkPolicy.musterInClusterMcpPorts }}
             - port: {{ . | quote }}
               protocol: TCP
           {{- end }}

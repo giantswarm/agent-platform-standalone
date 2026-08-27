@@ -1,0 +1,181 @@
+# The umbrella's input contract, merged by hack/curate.sh on top of the
+# transformed fleet defaults before overlay/vanilla.yaml: new global.* keys,
+# the umbrella-only keys, and the wiring the umbrella templates need inside
+# component blocks. Every installation keeps these; examples/giantswarm.yaml
+# never reverts them. Only umbrella-owned keys and dependency names are
+# allowed at the top level.
+
+global:
+  # The one hostname input. Public hostnames derive from it by convention
+  # (muster., agentgateway., kagent., backstage.<domain>), each overridable on
+  # its component. TLS and DNS for *.<domain> stay outside the chart.
+  domain: ""
+  # The platform's login identity provider: one OIDC provider per installation.
+  # The umbrella templates read this block (kagent JWT policy, Backstage
+  # appConfig, oauth2-proxy arguments). The muster chart keeps its own
+  # muster.oauth.server.* keys for now; the render fails when the two disagree.
+  identity:
+    # OIDC issuer URL, https and a hostname (never an IP literal). Example:
+    # https://dex.<domain>
+    issuerUrl: ""
+    # OAuth client registered at the provider for the platform.
+    clientId: agent-platform
+    # Secret in the release namespace with the platform credentials:
+    #   dex-client-secret, registration-token, oauth-encryption-key,
+    #   valkey-password           muster and valkey
+    #   backstage-session-secret  Backstage cookie signing key
+    existingSecret: agent-platform-idp
+    # CA of a provider with a private certificate (the lab Dex). Mounted into
+    # Backstage (NODE_EXTRA_CA_CERTS). muster reads the same Secret through
+    # muster.muster.extraCaFile.secret.name. Empty: system trust only.
+    ca:
+      secretName: ""
+      key: ca.crt
+  gatewayApi:
+    # The public Gateway every route attaches to when its component does not
+    # name one. Unused when gatewayApi.gateway.create is true.
+    parentRefs: []
+  observability:
+    metrics:
+      # Gates every ServiceMonitor and PodMonitor the umbrella renders; needs
+      # the monitoring.coreos.com CRDs. Metrics endpoints stay exposed.
+      serviceMonitor:
+        enabled: false
+        interval: 60s
+        labels: {}  # @schema type: object; additionalProperties: true
+    traces:
+      # OTLP exporter for the agentgateway data plane. An empty endpoint renders
+      # no OTEL_* environment variable.
+      otlp:
+        endpoint: ""
+        protocol: grpc
+        headers: {}  # @schema type: object; additionalProperties: true
+
+components:
+  kagent:
+    controllerRoute:
+      # Empty: the route attaches to the chart-owned edge or to
+      # global.gatewayApi.parentRefs. Set both to pin another Gateway.
+      parentRef:
+        name: ""
+        namespace: ""
+    uiRoute:
+      parentRef:
+        name: ""
+        namespace: ""
+  backstage:
+    # Public hostname; empty derives backstage.<global.domain>.
+    hostname: ""
+    # Gateway of the Backstage route; empty follows the platform default.
+    parentRefs: []
+    # Extra OIDC scopes the Backstage login requests. The two defaults are
+    # Dex cross-client scopes: muster trusts the dex-k8s-authenticator
+    # audience on forwarded tokens. Set [] for a provider that rejects unknown
+    # scopes (Keycloak, Entra ID).
+    extraScopes:
+      - federated:id
+      - audience:server:client_id:dex-k8s-authenticator
+    # Sidebar pages of the Giant Swarm portal hidden on the vanilla UI.
+    disabledExtensions:
+      - page:gs/clusters
+      - nav-item:gs/clusters
+      - page:gs/deployments
+      - nav-item:gs/deployments
+      - page:gs/installations
+      - nav-item:gs/installations
+      - page:flux
+      - nav-item:flux
+      - page:ai-chat
+      - api:ai-chat/service
+      - api:ai-chat/drawer
+      - app-root-element:ai-chat/drawer
+    # Skill repositories offered when an agent is created.
+    skillsRepositories:
+      - https://github.com/giantswarm/agent-skills
+
+# Chart-owned public edge: the agentgateway data-plane Gateway (gateway.*)
+# also terminates TLS for *.<global.domain>. Off by default; on for kind.
+gatewayApi:
+  gateway:
+    create: false
+    # Wildcard certificate Secret for *.<global.domain>, in the release
+    # namespace. Required when create is true (the prerequisites manifest ships
+    # one for the lab).
+    tls:
+      secretName: ""
+    # Service type of the data-plane Service when it is the edge.
+    serviceType: LoadBalancer
+
+ingress:
+  httpRoute:
+    # Portable stream timeout on the umbrella-owned routes (muster `/`, the
+    # agentgateway `/mcp`): `0s` asks the implementation to disable the request
+    # timeout so MCP/SSE streams stay open. Envoy-specific policies stay opt-in
+    # under ingress.backendTrafficPolicy.
+    timeouts:
+      request: "0s"
+    # Free-form maps: the schema generator would close an unannotated `{}`.
+    annotations: {}  # @schema type: object; additionalProperties: true
+    labels: {}  # @schema type: object; additionalProperties: true
+    muster:
+      annotations: {}  # @schema type: object; additionalProperties: true
+      labels: {}  # @schema type: object; additionalProperties: true
+    mcp:
+      annotations: {}  # @schema type: object; additionalProperties: true
+      labels: {}  # @schema type: object; additionalProperties: true
+  backendTrafficPolicy:
+    annotations: {}  # @schema type: object; additionalProperties: true
+    labels: {}  # @schema type: object; additionalProperties: true
+
+gateway:
+  parameters:
+    # OTEL env comes from global.observability.traces.otlp; this list is for
+    # extra data-plane env only.
+    dataPlaneEnv: []
+
+kagent:
+  kagent:
+    oauth2-proxy:
+      # The oauth2-proxy chart renders extraArgs through tpl against its own
+      # root, which carries the umbrella's global.* block.
+      extraArgs:
+        oidc-issuer-url: "{{ .Values.global.identity.issuerUrl }}"
+        client-id: "{{ .Values.global.identity.clientId }}"
+        redirect-url: "https://kagent.{{ .Values.global.domain }}/oauth2/callback"
+      extraEnv:
+        - name: UPSTREAM_URL
+          value: http://kagent-ui:8080
+
+# The Backstage chart's own Ingress is off; the umbrella renders the HTTPRoute
+# and the app-config ConfigMap (templates/backstage/) from global.*.
+backstage:
+  ingress:
+    enabled: false
+  backstage:
+    extraAppConfig:
+      - filename: app-config.agent-platform.yaml
+        configMapRef: agent-platform-backstage-app-config
+    # Rendered through tpl against the backstage chart root, so the Secret
+    # names follow global.identity.
+    extraEnvVars:
+      - name: AUTH_SESSION_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: backstage-session-secret
+      - name: AGENT_PLATFORM_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: dex-client-secret
+      - name: NODE_EXTRA_CA_CERTS
+        value: "/etc/agent-platform/idp-ca/{{ .Values.global.identity.ca.key }}"
+    extraVolumes:
+      - name: idp-ca
+        secret:
+          secretName: "{{ .Values.global.identity.ca.secretName | default \"agent-platform-idp-ca\" }}"
+          optional: true
+    extraVolumeMounts:
+      - name: idp-ca
+        mountPath: /etc/agent-platform/idp-ca
+        readOnly: true

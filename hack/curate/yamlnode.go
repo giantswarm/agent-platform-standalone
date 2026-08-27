@@ -124,17 +124,50 @@ func scalarString(node *yaml.Node, what string) (string, error) {
 	return node.Value, nil
 }
 
+// cloneNode deep-copies a node tree, comments included.
+func cloneNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	clone := *node
+	clone.Alias = cloneNode(node.Alias)
+	clone.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		clone.Content[i] = cloneNode(child)
+	}
+	return &clone
+}
+
 // deepMerge merges overlay into base. Mappings merge recursively, any other
-// node from the overlay replaces the base node.
+// node from the overlay replaces the base node. An empty overlay mapping
+// changes no values but its comments (schema annotations) move onto the base
+// node.
 func deepMerge(base *yaml.Node, overlay *yaml.Node) {
 	for i := 0; i+1 < len(overlay.Content); i += 2 {
 		key, value := overlay.Content[i], overlay.Content[i+1]
-		_, existing := mappingGet(base, key.Value)
+		existingKey, existing := mappingGet(base, key.Value)
 		if existing != nil && existing.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
+			if len(value.Content) == 0 {
+				copyComments(existingKey, key)
+				copyComments(existing, value)
+			}
 			deepMerge(existing, value)
 			continue
 		}
 		mappingSet(base, key, value)
+	}
+}
+
+// copyComments overwrites the comments of dst with the non-empty ones of src.
+func copyComments(dst, src *yaml.Node) {
+	if src.HeadComment != "" {
+		dst.HeadComment = src.HeadComment
+	}
+	if src.LineComment != "" {
+		dst.LineComment = src.LineComment
+	}
+	if src.FootComment != "" {
+		dst.FootComment = src.FootComment
 	}
 }
 

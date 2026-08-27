@@ -14,16 +14,19 @@ metadata:
   {{- end }}
 spec:
   parentRefs:
-    {{- toYaml .Values.ingress.parentRefs | nindent 4 }}
-  {{- with .Values.ingress.hostnames }}
+    {{- include "agent-platform.parentRefs" (dict "ctx" . "override" .Values.ingress.parentRefs "key" "ingress.parentRefs") | nindent 4 }}
   hostnames:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- if .Values.ingress.hostnames }}
+    {{- toYaml .Values.ingress.hostnames | nindent 4 }}
+    {{- else }}
+    - {{ include "agent-platform.hostname" (dict "ctx" . "prefix" "muster" "key" "ingress.hostnames") | quote }}
+    {{- end }}
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
+      {{- include "agent-platform.routeTimeouts" . | nindent 6 }}
       backendRefs:
         - name: {{ include "agent-platform.musterFullname" . }}
           port: {{ include "agent-platform.musterServicePort" . }}

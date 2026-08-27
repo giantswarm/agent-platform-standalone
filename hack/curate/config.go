@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,12 +33,19 @@ const (
 	// ActionToggle handles a fleet block that only carries a component's on/off
 	// switch (plus optional umbrella wiring sub-keys listed in Lift).
 	ActionToggle Action = "toggle"
+	// ActionUmbrella declares a top-level key the umbrella owns and the fleet
+	// does not know. The overlay must define it; a fleet or connectivity block
+	// under the same key is an error.
+	ActionUmbrella Action = "umbrella"
 )
 
 type KeyRule struct {
 	Action Action `yaml:"action"`
 	// Lift lists sub-keys moved out of the block into components.<chart>.
 	Lift []string `yaml:"lift"`
+	// MoveTo relocates a wiring block under a dotted path of the output, for
+	// example global.networkPolicy.
+	MoveTo string `yaml:"moveTo"`
 }
 
 type Dependency struct {
@@ -127,7 +135,7 @@ func (c *Config) Validate() error {
 	dependenciesKeys := 0
 	for key, rule := range c.Keys {
 		switch rule.Action {
-		case ActionKeep, ActionDrop, ActionWiring:
+		case ActionKeep, ActionDrop, ActionWiring, ActionUmbrella:
 			if len(rule.Lift) > 0 {
 				return fmt.Errorf("keys.%s: lift is only valid with action component or toggle", key)
 			}
@@ -136,6 +144,12 @@ func (c *Config) Validate() error {
 			dependenciesKeys++
 		default:
 			return fmt.Errorf("keys.%s: unknown action %q", key, rule.Action)
+		}
+		if rule.MoveTo != "" && rule.Action != ActionWiring {
+			return fmt.Errorf("keys.%s: moveTo is only valid with action wiring", key)
+		}
+		if rule.MoveTo != "" && !strings.Contains(rule.MoveTo, ".") {
+			return fmt.Errorf("keys.%s: moveTo %q must be a dotted path below a top-level key", key, rule.MoveTo)
 		}
 	}
 	if dependenciesKeys != 1 {

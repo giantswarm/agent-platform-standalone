@@ -1,0 +1,90 @@
+{{- if .Values.components.backstage.enabled }}
+{{- $backstage := .Values.components.backstage }}
+{{- $domain := include "agent-platform.domain" (dict "ctx" . "for" "components.backstage.hostname") }}
+{{- $hostname := include "agent-platform.hostname" (dict "ctx" . "prefix" "backstage" "override" $backstage.hostname "key" "components.backstage.hostname") }}
+{{- $issuer := include "agent-platform.issuerUrl" (dict "ctx" . "for" "the Backstage login provider") }}
+{{- $provider := "oidc-agent-platform" }}
+{{- $musterHostname := include "agent-platform.hostname" (dict "ctx" . "prefix" "muster" "key" "ingress.hostnames") }}
+{{- if .Values.ingress.hostnames }}
+{{- $musterHostname = index .Values.ingress.hostnames 0 }}
+{{- end }}
+# Backstage app-config layered on the image's own: the login provider from
+# global.identity, one installation named after the release, the matching
+# in-cluster Kubernetes entry (the frontend mints the kagent token from it),
+# the muster installation, and app.extensions limited to the Agent Platform
+# pages. The backstage chart mounts it through backstage.extraAppConfig; the
+# ConfigMap name and the file name are fixed there.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-platform-backstage-app-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+data:
+  app-config.agent-platform.yaml: |
+    app:
+      title: Agent Platform
+      baseUrl: https://{{ $hostname }}
+      rootRedirect: /agent-platform
+      extensions:
+        - page:agent-platform
+        - nav-item:agent-platform
+        {{- range $backstage.disabledExtensions }}
+        - {{ . }}: false
+        {{- end }}
+    backend:
+      baseUrl: https://{{ $hostname }}
+      cors:
+        origin: https://{{ $hostname }}
+      csp:
+        img-src:
+          - "'self'"
+          - "data:"
+          - https://avatars.{{ $domain }}
+    auth:
+      environment: production
+      session:
+        secret: ${AUTH_SESSION_SECRET}
+      providers:
+        {{ $provider }}:
+          production:
+            metadataUrl: {{ $issuer }}/.well-known/openid-configuration
+            clientId: {{ .Values.global.identity.clientId }}
+            clientSecret: ${AGENT_PLATFORM_OIDC_CLIENT_SECRET}
+    gs:
+      authProvider: {{ $provider }}
+      {{- with $backstage.extraScopes }}
+      auth:
+        extraScopes:
+          {{- toYaml . | nindent 10 }}
+      {{- end }}
+      installations:
+        {{ .Release.Name }}:
+          authProvider: oidc
+          oidcTokenProvider: {{ $provider }}
+          pipeline: stable
+          baseDomain: {{ $domain }}
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - name: {{ .Release.Name }}
+              url: https://kubernetes.default.svc
+              caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              authProvider: oidc
+              oidcTokenProvider: {{ $provider }}
+    muster:
+      installations:
+        - name: {{ .Release.Name }}
+          url: https://{{ $musterHostname }}
+          authProvider: {{ $provider }}
+    {{- with $backstage.skillsRepositories }}
+    agentPlatform:
+      skills:
+        repositories:
+          {{- toYaml . | nindent 10 }}
+    {{- end }}
+{{- end }}

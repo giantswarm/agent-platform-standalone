@@ -47,6 +47,9 @@ kagent:
     enabled: false
   controller:
     image: kagent-controller
+    env:
+      - name: OTEL_EXPORTER_OTLP_HEADERS
+        value: X-Scope-OrgID=giantswarm
 mcps:
   enabled: true
 agent-platform-mcps:
@@ -62,6 +65,15 @@ const fixtureConnectivity = `global:
 ingress:
   parentRefs: []
   fromConnectivity: true
+  httpRoute:
+    labels: {}
+# netpol comment survives the move
+networkPolicy:
+  enabled: true
+  flavor: cilium
+postgres:
+  enabled: false
+  clusterName: kagent-pg
 muster:
   fullnameOverride: muster
 kagent: {}
@@ -70,6 +82,38 @@ mcps:
 agent-platform-mcps: {}
 agentSandbox:
   enabled: false
+`
+
+const fixtureContract = `global:
+  domain: ""
+gatewayApi:
+  gateway:
+    create: false
+ingress:
+  httpRoute:
+    labels: {}  # @schema type: object; additionalProperties: true
+backstage:
+  ingress:
+    enabled: false
+`
+
+const fixtureOverlay = `global:
+  networkPolicy:
+    enabled: false
+    flavor: kubernetes
+muster:
+  replicaCount: 1
+kagent:
+  kagent:
+    controller:
+      env: []
+`
+
+const fixtureGiantswarmInputs = `global:
+  domain: example.gigantic.io
+gatewayApi:
+  gateway:
+    create: true
 `
 
 const fixtureConfig = `fleet:
@@ -100,6 +144,9 @@ keys:
   gitops: {action: drop}
   components: {action: dependencies}
   ingress: {action: wiring}
+  networkPolicy: {action: wiring, moveTo: global.networkPolicy}
+  postgres: {action: wiring}
+  gatewayApi: {action: umbrella}
   muster: {action: component}
   kagent:
     action: component
@@ -132,7 +179,8 @@ func fixtureInputs(t *testing.T) Inputs {
 		Config:       parseConfig(t, fixtureConfig),
 		Fleet:        parseDocument(t, fixtureFleet),
 		Connectivity: parseDocument(t, fixtureConnectivity),
-		Overlay:      parseDocument(t, ""),
+		Contract:     parseDocument(t, fixtureContract),
+		Overlay:      parseDocument(t, fixtureOverlay),
 	}
 }
 

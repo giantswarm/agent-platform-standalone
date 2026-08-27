@@ -1,6 +1,7 @@
-{{- if and .Values.components.kagent.enabled .Values.kagent.kagent.serviceMonitor.enabled }}
+{{- if and .Values.components.kagent.enabled (include "agent-platform.serviceMonitor" .) }}
 {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
 {{- $releaseName := .Release.Name }}
+{{- $monitor := .Values.global.observability.metrics.serviceMonitor }}
 # Headless Service exposing the kagent controller metrics port (:8080).
 # The upstream controller-service.yaml only exposes port 8083 (API). We add a
 # separate Service here so the ServiceMonitor below can target it without
@@ -37,7 +38,7 @@ metadata:
   namespace: {{ $kagentNs }}
   labels:
     {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
-    {{- with .Values.kagent.kagent.serviceMonitor.labels }}
+    {{- with $monitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
@@ -53,5 +54,5 @@ spec:
     - port: metrics
       path: /metrics
       scheme: http
-      interval: {{ .Values.kagent.kagent.serviceMonitor.interval | default "60s" }}
+      interval: {{ $monitor.interval | default "60s" }}
 {{- end }}

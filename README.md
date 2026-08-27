@@ -30,6 +30,20 @@ CloudNativePG `Cluster`.
 ## Values layout
 
 ```yaml
+global:                # the input contract, forwarded to every component chart
+  domain: agents.example.com          # public hostnames derive from it
+  identity:                           # the one login provider (OIDC)
+    issuerUrl: https://dex.example.com
+    clientId: agent-platform
+    existingSecret: agent-platform-idp
+  gatewayApi:
+    parentRefs: []                    # the cluster's public Gateway
+  networkPolicy: {enabled: false, flavor: kubernetes}
+  observability:
+    metrics: {serviceMonitor: {enabled: false}}
+    traces: {otlp: {endpoint: ""}}
+gatewayApi:
+  gateway: {create: false}            # or: the chart's agentgateway Gateway is the edge
 components:            # umbrella-owned: one entry per dependency
   kagent:
     enabled: true      # the Helm dependency condition
@@ -37,21 +51,62 @@ components:            # umbrella-owned: one entry per dependency
       enabled: true
 ingress:               # umbrella-owned wiring blocks
 gateway:
-networkPolicy:
+kyvernoPolicies:
+postgres:
 kagent:                # the kagent chart's own values, forwarded verbatim
   kagent:              # nested: the Giant Swarm kagent chart vendors upstream as a subchart
     controller: {}
 ```
 
+- `global.domain` is the one hostname input: `muster.`, `agentgateway.`,
+  `kagent.`, `backstage.<domain>` by convention, each overridable on its
+  component (`ingress.hostnames`, `components.kagent.controllerRoute.hostname`,
+  `components.kagent.uiRoute.hostname`, `components.backstage.hostname`).
+- Every public route attaches to the per-route override, else to the
+  chart-owned edge when `gatewayApi.gateway.create` is true, else to
+  `global.gatewayApi.parentRefs`. The render fails when none is set.
+- `gatewayApi.gateway.create: true` adds an HTTPS listener for
+  `*.<global.domain>` to the agentgateway Gateway (`gatewayApi.gateway.tls.secretName`
+  names the wildcard certificate Secret). TLS and DNS stay outside the chart.
+- `global.identity` is read by the umbrella templates (kagent JWT policy,
+  Backstage app-config, kagent oauth2-proxy arguments). The muster chart still
+  reads `muster.muster.oauth.server.*`; set the same values there, the render
+  fails when they differ.
+- Vanilla defaults: no network policy, no Kyverno object, no ServiceMonitor or
+  PodMonitor, no OTLP endpoint. `examples/giantswarm.yaml` (generated) turns
+  them back on.
 - `components.<name>.enabled` turns a dependency on or off. Hyphenated names
   need quotes on the command line: `--set 'components.klaus-gateway.enabled=true'`.
-- `global`, `components` and the wiring blocks (`ingress`, `gateway`,
-  `networkPolicy`, `kyvernoPolicies`, `extraObjects`, `postgres`) are validated
+- `global`, `components`, `gatewayApi` and the wiring blocks (`ingress`,
+  `gateway`, `kyvernoPolicies`, `extraObjects`, `postgres`) are validated
   strictly by `values.schema.json`. A component block is opaque here; the
   component chart validates it with its own schema.
 - `kagent` and `agentgateway` values are nested one level (`kagent.kagent.*`,
   `agentgateway.agentgateway.*`) because the Giant Swarm charts vendor the
   upstream chart as a subchart. A later release flattens them.
+
+### Backstage
+
+`components.backstage.enabled: true` installs the Giant Swarm Backstage chart
+as the vanilla UI. The umbrella renders its app-config from `global.*`: the
+login provider `oidc-agent-platform` from `global.identity`, one installation
+named after the release with `baseDomain: global.domain`, the in-cluster
+Kubernetes entry and the muster installation, `app.extensions` limited to the
+Agent Platform pages, and `/` redirects to `/agent-platform`. The route is
+`backstage.<domain>`. The identity Secret must carry `backstage-session-secret`
+and `dex-client-secret`. `components.backstage.extraScopes` defaults to the two
+Dex cross-client scopes; set `[]` for a provider that rejects unknown scopes.
+The agent create flow needs Flux on the cluster.
+
+### Databases
+
+kagent uses its bundled single-container Postgres by default (demo grade).
+`components.cloudnative-pg.enabled: true` installs the CloudNativePG operator;
+`postgres.enabled: true` renders the platform `Cluster`. The two need two
+revisions: the operator chart templates its CRDs, so the `Cluster` has no API
+to map to in the same first install. Install with the operator on, then
+`helm upgrade --set postgres.enabled=true`. The `Cluster` carries
+`helm.sh/resource-policy: keep`.
 
 ## Install
 
@@ -62,9 +117,11 @@ helm install agent-platform helm/agent-platform-standalone \
   -f examples/kind-lab-dex.yaml
 ```
 
-`examples/kind-lab-dex.yaml` is a kind quick start with agentgateway as the
-edge and a lab Dex as the identity provider. It is lab-only. The prerequisites
-manifest for the lab Dex is not part of this release yet.
+`examples/kind-lab-dex.yaml` is a kind quick start: the chart's agentgateway
+Gateway is the public edge and a lab Dex is the identity provider. It is
+lab-only. The prerequisites manifest (lab Dex, wildcard certificate, the
+identity Secret) is not part of this release yet; the example lists the Secrets
+it expects.
 
 ## The chart is generated
 
@@ -79,10 +136,15 @@ version pinned in `curate.yaml`, and:
    writes that exact pin into `Chart.yaml`;
 3. transforms the fleet values into the layout above: fleet-only keys dropped,
    each component's `enabled` moved to `components.<name>.enabled`, umbrella
-   wiring lifted out of the component blocks, blocks renamed to the chart name
-   and nested under the wrapper's subchart key;
-4. merges `overlay/vanilla.yaml` last;
-5. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
+   wiring lifted out of the component blocks, `networkPolicy` moved under
+   `global`, blocks renamed to the chart name and nested under the wrapper's
+   subchart key;
+4. merges `overlay/contract.yaml` (the `global.*` contract, `gatewayApi`, the
+   wiring the umbrella templates need inside component blocks), then
+   `overlay/vanilla.yaml` (the fleet defaults a vanilla cluster turns off);
+5. writes `examples/giantswarm.yaml`: every leaf of `overlay/vanilla.yaml`
+   restored to its fleet value, plus the inputs of `overlay/giantswarm.yaml`;
+6. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
    file when the pins did not change.
 
 The transform is deny-unknown. Every top-level key of the fleet and

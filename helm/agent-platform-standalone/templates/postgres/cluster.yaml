@@ -11,6 +11,10 @@ metadata:
   namespace: {{ $ns }}
   labels:
     {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+  annotations:
+    # The database outlives the release: an uninstall or a postgres.enabled
+    # flip must not drop the platform's data.
+    helm.sh/resource-policy: keep
 spec:
   instances: {{ .Values.postgres.instances | default 3 }}
   {{- if .Values.postgres.image.name }}
@@ -55,24 +59,24 @@ spec:
   # CNPG Barman supports S3, Azure Blob, GCS, and S3-compatible (MinIO via
   # endpointURL) — pick credentials per cloud (IRSA on EKS, azureCredentials on
   # Azure, static key for MinIO).
+  {{- if (include "agent-platform.serviceMonitor" .) }}
+  {{- with .Values.global.observability.metrics.serviceMonitor.labels }}
   # Labels the operator copies onto every object it creates for this Cluster,
-  # including the generated PodMonitor. Giant Swarm's monitoring agent
-  # (alloy-metrics) discovers PodMonitors by a label on the PodMonitor
-  # *object* -- observability.giantswarm.io/tenant In [<tenant>], or the
-  # legacy application.giantswarm.io/team Exists -- and a PodMonitor matching
-  # neither selector is created and silently never scraped. CNPG's stock
-  # PodMonitor labels carry neither, so the tenant label must be inherited
-  # here; a podMonitorRelabelings entry cannot do this, it only rewrites
-  # scraped series, not the object's labels.
+  # including the generated PodMonitor. A monitoring agent that discovers
+  # PodMonitors by a label on the PodMonitor object (Giant Swarm:
+  # observability.giantswarm.io/tenant) never scrapes one without it; a
+  # podMonitorRelabelings entry only rewrites scraped series, not the object.
   inheritedMetadata:
     labels:
-      observability.giantswarm.io/tenant: giantswarm
-  # Enable built-in CNPG PodMonitor for metrics scraping.
-  # Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1).
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
+  # Built-in CNPG PodMonitor. Requires the Prometheus Operator CRDs
+  # (monitoring.coreos.com/v1).
   monitoring:
     enablePodMonitor: true
     podMonitorMetricRelabelings:
       - sourceLabels: [__name__]
         regex: cnpg_.*
         action: keep
+  {{- end }}
 {{- end }}

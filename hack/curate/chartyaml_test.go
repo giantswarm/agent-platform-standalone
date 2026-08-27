@@ -15,12 +15,12 @@ func mustGet(t *testing.T, mapping *yaml.Node, key string) *yaml.Node {
 }
 
 func TestBuildChartYAML(t *testing.T) {
-	_, components, err := Transform(fixtureInputs(t))
+	result, err := Transform(fixtureInputs(t))
 	require.NoError(t, err)
 	resolved := map[string]string{
 		"muster": "5.5.3", "kagent": "0.1.37", "agent-platform-mcps": "0.6.7", "agent-sandbox": "0.2.23", "backstage": "0.195.2",
 	}
-	document, err := BuildChartYAML(parseConfig(t, fixtureConfig), components, resolved)
+	document, err := BuildChartYAML(parseConfig(t, fixtureConfig), result.Components, resolved)
 	require.NoError(t, err)
 	out, err := encodeYAML(document)
 	require.NoError(t, err)
@@ -48,18 +48,18 @@ func TestBuildChartYAML(t *testing.T) {
 }
 
 func TestBuildChartYAMLRejectsVersionOutsideRange(t *testing.T) {
-	_, components, err := Transform(fixtureInputs(t))
+	result, err := Transform(fixtureInputs(t))
 	require.NoError(t, err)
 	resolved := map[string]string{
 		"muster": "6.0.0", "kagent": "0.1.37", "agent-platform-mcps": "0.6.7", "agent-sandbox": "0.2.23", "backstage": "0.195.2",
 	}
-	_, err = BuildChartYAML(parseConfig(t, fixtureConfig), components, resolved)
+	_, err = BuildChartYAML(parseConfig(t, fixtureConfig), result.Components, resolved)
 	require.ErrorContains(t, err, `dependency "muster" resolved to 6.0.0, outside range 5.x`)
 }
 
 func TestBuildChartYAMLRejectsMissingResolution(t *testing.T) {
-	_, components, err := Transform(fixtureInputs(t))
+	result, err := Transform(fixtureInputs(t))
 	require.NoError(t, err)
-	_, err = BuildChartYAML(parseConfig(t, fixtureConfig), components, map[string]string{"muster": "5.5.3"})
+	_, err = BuildChartYAML(parseConfig(t, fixtureConfig), result.Components, map[string]string{"muster": "5.5.3"})
 	require.ErrorContains(t, err, "no resolved version")
 }

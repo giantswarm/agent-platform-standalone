@@ -1,5 +1,6 @@
 # Input of hack/curate.sh, the generator that produces
-# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock}.
+# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock} and
+# examples/giantswarm.yaml.
 #
 # The fleet meta-package (giantswarm/agent-platform) is the source of truth for
 # component defaults until step 2 of the plan. The generator reads its values
@@ -84,7 +85,10 @@ dependencies:
 #   drop          fleet-only mechanics, not part of the umbrella
 #   dependencies  the fleet `components` map: source of the dependency list
 #   wiring        umbrella-owned block, copied from the connectivity values
-#                 (its templates read it and live in this chart)
+#                 (its templates read it and live in this chart); `moveTo`
+#                 relocates it under a dotted path, e.g. global.networkPolicy
+#   umbrella      umbrella-only key the fleet does not know; the overlay
+#                 defines it, a fleet block under the same key fails the run
 #   component     a component's values: renamed to the chart name, `enabled`
 #                 moved to components.<chart>.enabled, `lift` keys moved to
 #                 components.<chart>.*, nested under the fleet valuesKey
@@ -96,10 +100,13 @@ keys:
   components: {action: dependencies}
   ingress: {action: wiring}
   gateway: {action: wiring}
-  networkPolicy: {action: wiring}
+  # Under global so a component chart can read the same flavor split later;
+  # Helm forwards only global.* to subcharts.
+  networkPolicy: {action: wiring, moveTo: global.networkPolicy}
   kyvernoPolicies: {action: wiring}
   extraObjects: {action: wiring}
   postgres: {action: wiring}
+  gatewayApi: {action: umbrella}
   muster: {action: component}
   valkey: {action: component}
   kagent:

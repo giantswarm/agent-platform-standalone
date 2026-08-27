@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -12,7 +13,13 @@ type Inputs struct {
 	Config       *Config
 	Fleet        *yaml.Node
 	Connectivity *yaml.Node
-	Overlay      *yaml.Node
+	// Contract is overlay/contract.yaml: the umbrella's input contract (new
+	// global.* keys, umbrella-only keys, wiring the umbrella templates need).
+	// Always applied; the Giant Swarm example never reverts it.
+	Contract *yaml.Node
+	// Overlay is overlay/vanilla.yaml: the fleet defaults a vanilla cluster
+	// turns off. The Giant Swarm example reverts every leaf of it.
+	Overlay *yaml.Node
 }
 
 type namedNode struct {
@@ -26,20 +33,36 @@ type componentEntry struct {
 	lifted  []namedNode
 }
 
+// Result is the output of Transform.
+type Result struct {
+	// Document is the generated values.yaml.
+	Document *yaml.Node
+	// Components is the fleet component list the dependency list was built from.
+	Components []FleetComponent
+	// BeforeOverlay is the values mapping before the overlay was merged: the
+	// fleet defaults in the umbrella layout, the input of the Giant Swarm example.
+	BeforeOverlay *yaml.Node
+}
+
+type wiringBlock struct {
+	node   namedNode
+	moveTo string
+}
+
 // Transform derives the umbrella values document from the fleet and
 // connectivity values. Every top-level key of both inputs must have a rule in
 // the config (deny-unknown); an unmapped key is an error, never a silent leak.
-func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
+func Transform(in Inputs) (*Result, error) {
 	config := in.Config
 	fleetRoot := rootMapping(in.Fleet)
 	connectivityRoot := rootMapping(in.Connectivity)
 
 	components, err := readFleetComponents(config, fleetRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := checkDependencyList(config, components); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Toggle defaults are read before any block is mutated: a toggle block
@@ -51,10 +74,10 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		}
 		node, err := pathGet(fleetRoot, component.EnabledFrom)
 		if err != nil {
-			return nil, nil, fmt.Errorf("fleet component %q: enabledFrom: %w", component.Chart, err)
+			return nil, fmt.Errorf("fleet component %q: enabledFrom: %w", component.Chart, err)
 		}
 		if toggles[component.Chart], err = scalarBool(node, component.EnabledFrom); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
@@ -74,44 +97,49 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		key := keyNode.Value
 		rule, ok := config.Keys[key]
 		if !ok {
-			return nil, nil, fmt.Errorf("fleet key %q has no entry in the curate.yaml keys map (deny-unknown)", key)
+			return nil, fmt.Errorf("fleet key %q has no entry in the curate.yaml keys map (deny-unknown)", key)
 		}
 		switch rule.Action {
 		case ActionKeep:
 			kept = append(kept, namedNode{key: cleanKey(keyNode), value: value})
 		case ActionDrop, ActionDependencies, ActionWiring:
+		case ActionUmbrella:
+			return nil, fmt.Errorf("fleet key %q is declared umbrella-only in curate.yaml but the fleet values define it", key)
 		case ActionComponent:
 			component, ok := fleetComponentByValuesFrom(components, key)
 			if !ok {
-				return nil, nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
+				return nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
 			}
 			block, enabled, err := componentBlock(keyNode, value, component, rule, entries[component.Chart], toggles)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			blocks[component.Chart] = block
 			entries[component.Chart].enabled = enabled
 		case ActionToggle:
 			component, ok := fleetComponentByToggleKey(components, key)
 			if !ok {
-				return nil, nil, fmt.Errorf("keys.%s: action toggle, but no fleet component has enabledFrom under %q", key, key)
+				return nil, fmt.Errorf("keys.%s: action toggle, but no fleet component has enabledFrom under %q", key, key)
 			}
 			if err := toggleBlock(key, value, component, rule, entries[component.Chart]); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			entries[component.Chart].enabled = toggles[component.Chart]
 		}
 	}
 
-	var wiring []namedNode
+	var wiring []wiringBlock
 	for i := 0; i+1 < len(connectivityRoot.Content); i += 2 {
 		keyNode, value := connectivityRoot.Content[i], connectivityRoot.Content[i+1]
 		rule, ok := config.Keys[keyNode.Value]
 		if !ok {
-			return nil, nil, fmt.Errorf("connectivity key %q has no entry in the curate.yaml keys map (deny-unknown)", keyNode.Value)
+			return nil, fmt.Errorf("connectivity key %q has no entry in the curate.yaml keys map (deny-unknown)", keyNode.Value)
 		}
-		if rule.Action == ActionWiring {
-			wiring = append(wiring, namedNode{key: cleanKey(keyNode), value: value})
+		switch rule.Action {
+		case ActionWiring:
+			wiring = append(wiring, wiringBlock{node: namedNode{key: cleanKey(keyNode), value: value}, moveTo: rule.MoveTo})
+		case ActionUmbrella:
+			return nil, fmt.Errorf("connectivity key %q is declared umbrella-only in curate.yaml but the connectivity values define it", keyNode.Value)
 		}
 	}
 	for key, rule := range config.Keys {
@@ -119,7 +147,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 			continue
 		}
 		if _, found := mappingGet(connectivityRoot, key); found == nil {
-			return nil, nil, fmt.Errorf("keys.%s: action wiring, but the connectivity values have no such key", key)
+			return nil, fmt.Errorf("keys.%s: action wiring, but the connectivity values have no such key", key)
 		}
 	}
 
@@ -133,8 +161,18 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		"umbrella templates render for that component; they are never forwarded to\n" +
 		"the component chart."
 	mappingSet(out, componentsKey, buildComponents(config, entries))
-	for _, node := range wiring {
-		mappingSet(out, node.key, node.value)
+	for _, block := range wiring {
+		if block.moveTo == "" {
+			mappingSet(out, block.node.key, block.node.value)
+		}
+	}
+	for _, block := range wiring {
+		if block.moveTo == "" {
+			continue
+		}
+		if err := pathSet(out, block.moveTo, block.node); err != nil {
+			return nil, fmt.Errorf("keys.%s: moveTo: %w", block.node.key.Value, err)
+		}
 	}
 	for _, dependency := range config.Dependencies {
 		block, ok := blocks[dependency.Name]
@@ -144,8 +182,15 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		mappingSet(out, block.key, block.value)
 	}
 
-	if err := applyOverlay(config, out, in.Overlay); err != nil {
-		return nil, nil, err
+	if err := mergeOverlay(config, out, in.Contract, "contract"); err != nil {
+		return nil, err
+	}
+	beforeOverlay := cloneNode(out)
+	if err := mergeOverlay(config, out, in.Overlay, "overlay"); err != nil {
+		return nil, err
+	}
+	if err := finishOverlays(config, out, in.Contract, in.Overlay); err != nil {
+		return nil, err
 	}
 
 	document := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{out}}
@@ -153,7 +198,30 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		"Do not edit. Change curate.yaml (dependencies, key rules) or overlay/vanilla.yaml\n"+
 		"(vanilla overrides) and run hack/curate.sh again.",
 		config.Fleet.Chart, config.Fleet.Version, config.Fleet.ConnectivityChart, config.Fleet.Version)
-	return document, components, nil
+	return &Result{Document: document, Components: components, BeforeOverlay: beforeOverlay}, nil
+}
+
+// pathSet stores node under the dotted path in root. Intermediate mappings
+// are created; the last segment becomes the key name, the original key node
+// keeps its comments.
+func pathSet(root *yaml.Node, path string, node namedNode) error {
+	segments := strings.Split(path, ".")
+	current := root
+	for _, segment := range segments[:len(segments)-1] {
+		_, next := mappingGet(current, segment)
+		if next == nil {
+			next = newMapping()
+			mappingSet(current, newScalar(segment), next)
+		}
+		if next.Kind != yaml.MappingNode {
+			return fmt.Errorf("%q is not a mapping", segment)
+		}
+		current = next
+	}
+	key := cleanKey(node.key)
+	key.Value = segments[len(segments)-1]
+	mappingSet(current, key, node.value)
+	return nil
 }
 
 func readFleetComponents(config *Config, fleetRoot *yaml.Node) ([]FleetComponent, error) {
@@ -280,15 +348,15 @@ func buildComponents(config *Config, entries map[string]*componentEntry) *yaml.N
 	return components
 }
 
-// applyOverlay merges overlay/vanilla.yaml on top. Only umbrella-owned keys
-// and dependency names are allowed at the top level.
-func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
+// mergeOverlay merges one overlay document on top of out. Only umbrella-owned
+// keys and dependency names are allowed at the top level.
+func mergeOverlay(config *Config, out *yaml.Node, overlay *yaml.Node, what string) error {
 	if overlay == nil {
 		return nil
 	}
 	allowed := map[string]bool{"components": true}
 	for key, rule := range config.Keys {
-		if rule.Action == ActionKeep || rule.Action == ActionWiring {
+		if rule.Action == ActionKeep || rule.Action == ActionWiring || rule.Action == ActionUmbrella {
 			allowed[key] = true
 		}
 	}
@@ -298,21 +366,76 @@ func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
 	overlayRoot := rootMapping(overlay)
 	for _, key := range mappingKeys(overlayRoot) {
 		if !allowed[key] {
-			return fmt.Errorf("overlay key %q is neither umbrella-owned nor a dependency name (deny-unknown)", key)
+			return fmt.Errorf("%s key %q is neither umbrella-owned nor a dependency name (deny-unknown)", what, key)
 		}
 	}
 	if _, components := mappingGet(overlayRoot, "components"); components != nil {
 		if components.Kind != yaml.MappingNode {
-			return fmt.Errorf("overlay components must be a mapping")
+			return fmt.Errorf("%s components must be a mapping", what)
 		}
 		for _, name := range mappingKeys(components) {
 			if _, ok := config.Dependency(name); !ok {
-				return fmt.Errorf("overlay components.%s is not a dependency", name)
+				return fmt.Errorf("%s components.%s is not a dependency", what, name)
 			}
 		}
 	}
-	deepMerge(out, overlayRoot)
+	deepMerge(out, cloneNode(overlayRoot))
 	return nil
+}
+
+// finishOverlays runs after both overlays merged: every umbrella-only key
+// (action umbrella) must be defined by one of them, the output keeps the order
+// kept keys, components, wiring, umbrella keys, dependency blocks, and a
+// dependency block that received values is written in block style.
+func finishOverlays(config *Config, out *yaml.Node, overlays ...*yaml.Node) error {
+	var umbrellaKeys []string
+	for _, overlay := range overlays {
+		if overlay == nil {
+			continue
+		}
+		for _, key := range mappingKeys(rootMapping(overlay)) {
+			if config.Keys[key].Action == ActionUmbrella && !slices.Contains(umbrellaKeys, key) {
+				umbrellaKeys = append(umbrellaKeys, key)
+			}
+		}
+	}
+	for _, key := range config.SortedKeys() {
+		if config.Keys[key].Action == ActionUmbrella && !slices.Contains(umbrellaKeys, key) {
+			return fmt.Errorf("keys.%s: action umbrella, but neither overlay defines it", key)
+		}
+	}
+	reorderTopLevel(config, out, umbrellaKeys)
+	for _, dependency := range config.Dependencies {
+		keyNode, value := mappingGet(out, dependency.Name)
+		if value != nil && value.Kind == yaml.MappingNode && len(value.Content) > 0 && value.Style == yaml.FlowStyle {
+			value.Style = 0
+			keyNode.LineComment = value.LineComment
+			value.LineComment = ""
+		}
+	}
+	return nil
+}
+
+// reorderTopLevel puts the umbrella-only keys right after the wiring blocks,
+// where deepMerge appended them after the dependency blocks.
+func reorderTopLevel(config *Config, out *yaml.Node, umbrellaKeys []string) {
+	dependencyNames := map[string]bool{}
+	for _, dependency := range config.Dependencies {
+		dependencyNames[dependency.Name] = true
+	}
+	var head, umbrella, tail []*yaml.Node
+	for i := 0; i+1 < len(out.Content); i += 2 {
+		pair := out.Content[i : i+2]
+		switch key := out.Content[i].Value; {
+		case slices.Contains(umbrellaKeys, key):
+			umbrella = append(umbrella, pair...)
+		case dependencyNames[key]:
+			tail = append(tail, pair...)
+		default:
+			head = append(head, pair...)
+		}
+	}
+	out.Content = slices.Concat(head, umbrella, tail)
 }
 
 // opaqueBlockAnnotation tells helm-values-schema-json (the GS pre-commit hook

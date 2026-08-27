@@ -37,7 +37,7 @@ spec:
     jwtAuthentication:
       mode: {{ $jwt.mode | default "Strict" }}
       providers:
-        - issuer: {{ $jwt.issuer | quote }}
+        - issuer: {{ $jwt.issuer | default (include "agent-platform.issuerUrl" (dict "ctx" . "for" "components.kagent.controllerRoute.jwtAuthentication")) | quote }}
           # No audiences: any audience the issuer minted is accepted. dex
           # id_tokens carry the originating client id as aud, which varies per
           # caller; requiring one would break the dex human path.
