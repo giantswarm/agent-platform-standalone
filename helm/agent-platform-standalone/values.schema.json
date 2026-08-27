@@ -1,6 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
+    "additionalProperties": false,
     "properties": {
         "agent-platform-mcps": {
             "type": "object",
@@ -18,39 +19,75 @@
             "type": "object",
             "additionalProperties": true
         },
+        "baseDomain": {
+            "type": "string"
+        },
+        "bootstrapMode": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "chartOperator": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "ciliumNetworkPolicy": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "cloudnative-pg": {
             "type": "object",
             "additionalProperties": true
         },
+        "cluster": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "clusterCA": {
+            "type": "string"
+        },
+        "clusterCIDR": {
+            "type": "string"
+        },
+        "clusterDNSIP": {
+            "type": "string"
+        },
+        "clusterID": {
+            "type": "string"
+        },
         "components": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "agent-platform-mcps": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "agent-sandbox": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         },
                         "podSecurity": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "containerSecurityContext": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "allowPrivilegeEscalation": {
                                             "type": "boolean"
                                         },
                                         "capabilities": {
                                             "type": "object",
+                                            "additionalProperties": false,
                                             "properties": {
                                                 "drop": {
                                                     "type": "array",
@@ -58,23 +95,21 @@
                                                         "type": "string"
                                                     }
                                                 }
-                                            },
-                                            "additionalProperties": false
+                                            }
                                         },
                                         "runAsNonRoot": {
                                             "type": "boolean"
                                         },
                                         "seccompProfile": {
                                             "type": "object",
+                                            "additionalProperties": false,
                                             "properties": {
                                                 "type": {
                                                     "type": "string"
                                                 }
-                                            },
-                                            "additionalProperties": false
+                                            }
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "enabled": {
                                     "type": "boolean"
@@ -84,70 +119,70 @@
                                 },
                                 "podSecurityContext": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "runAsNonRoot": {
                                             "type": "boolean"
                                         },
                                         "seccompProfile": {
                                             "type": "object",
+                                            "additionalProperties": false,
                                             "properties": {
                                                 "type": {
                                                     "type": "string"
                                                 }
-                                            },
-                                            "additionalProperties": false
+                                            }
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "agentgateway": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "backstage": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "cloudnative-pg": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "dicebear": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "kagent": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "controllerRoute": {
-                            "description": "- Routing (read by umbrella templates/kagent/, not passed to subchart) --- Expose kagent controller API through agentgateway (JWT-validated). Creates AgentgatewayBackend + HTTPRoute in the release namespace.",
                             "type": "object",
+                            "description": "- Routing (read by umbrella templates/kagent/, not passed to subchart) --- Expose kagent controller API through agentgateway (JWT-validated). Creates AgentgatewayBackend + HTTPRoute in the release namespace.",
+                            "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean"
@@ -157,6 +192,7 @@
                                 },
                                 "jwtAuthentication": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "enabled": {
                                             "type": "boolean"
@@ -166,6 +202,7 @@
                                         },
                                         "jwks": {
                                             "type": "object",
+                                            "additionalProperties": false,
                                             "properties": {
                                                 "host": {
                                                     "type": "string"
@@ -176,17 +213,16 @@
                                                 "port": {
                                                     "type": "integer"
                                                 }
-                                            },
-                                            "additionalProperties": false
+                                            }
                                         },
                                         "mode": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "parentRef": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "name": {
                                             "type": "string"
@@ -194,14 +230,12 @@
                                         "namespace": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "pathPrefix": {
                                     "type": "string"
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         },
                         "enabled": {
                             "type": "boolean"
@@ -214,9 +248,11 @@
                         },
                         "uiRoute": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "backendTrafficPolicy": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "annotations": {
                                             "type": "object",
@@ -232,8 +268,7 @@
                                         "timeout": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "enabled": {
                                     "type": "boolean"
@@ -243,6 +278,7 @@
                                 },
                                 "parentRef": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "name": {
                                             "type": "string"
@@ -250,44 +286,40 @@
                                         "namespace": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "klaus-gateway": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "muster": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "valkey": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 }
-            },
-            "additionalProperties": false
+            }
         },
         "dicebear": {
             "type": "object",
@@ -298,12 +330,14 @@
         },
         "gateway": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "gatewayClassName": {
                     "type": "string"
                 },
                 "jwksEgress": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
@@ -318,28 +352,28 @@
                         "port": {
                             "type": "integer"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "listeners": {
                     "type": "array",
                     "items": {
                         "type": "object",
+                        "additionalProperties": false,
                         "properties": {
                             "allowedRoutes": {
                                 "type": "object",
+                                "additionalProperties": false,
                                 "properties": {
                                     "namespaces": {
                                         "type": "object",
+                                        "additionalProperties": false,
                                         "properties": {
                                             "from": {
                                                 "type": "string"
                                             }
-                                        },
-                                        "additionalProperties": false
+                                        }
                                     }
-                                },
-                                "additionalProperties": false
+                                }
                             },
                             "name": {
                                 "type": "string"
@@ -350,8 +384,7 @@
                             "protocol": {
                                 "type": "string"
                             }
-                        },
-                        "additionalProperties": false
+                        }
                     }
                 },
                 "name": {
@@ -359,15 +392,18 @@
                 },
                 "parameters": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "containerSecurityContext": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "allowPrivilegeEscalation": {
                                     "type": "boolean"
                                 },
                                 "capabilities": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "drop": {
                                             "type": "array",
@@ -375,8 +411,7 @@
                                                 "type": "string"
                                             }
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "readOnlyRootFilesystem": {
                                     "type": "boolean"
@@ -386,20 +421,20 @@
                                 },
                                 "seccompProfile": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "type": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         },
                         "dataPlaneEnv": {
                             "type": "array",
                             "items": {
                                 "type": "object",
+                                "additionalProperties": false,
                                 "properties": {
                                     "name": {
                                         "type": "string"
@@ -407,33 +442,32 @@
                                     "value": {
                                         "type": "string"
                                     }
-                                },
-                                "additionalProperties": false
+                                }
                             }
                         },
                         "dataPlaneResources": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "limits": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "ephemeral-storage": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 },
                                 "requests": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "ephemeral-storage": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         },
                         "dataPlaneVolumeMounts": {
                             "type": "array"
@@ -449,33 +483,35 @@
                         },
                         "podSecurityContext": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "runAsNonRoot": {
                                     "type": "boolean"
                                 },
                                 "seccompProfile": {
                                     "type": "object",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "type": {
                                             "type": "string"
                                         }
-                                    },
-                                    "additionalProperties": false
+                                    }
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         },
                         "serviceType": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 }
-            },
-            "additionalProperties": false
+            }
+        },
+        "gcpProject": {
+            "type": "string"
         },
         "global": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "imagePullSecrets": {
                     "type": "array"
@@ -483,14 +519,15 @@
                 "registry": {
                     "type": "string"
                 }
-            },
-            "additionalProperties": false
+            }
         },
         "ingress": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "backendTrafficPolicy": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "annotations": {
                             "type": "object",
@@ -506,14 +543,14 @@
                         "timeout": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "hostnames": {
                     "type": "array"
                 },
                 "httpRoute": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "annotations": {
                             "type": "object",
@@ -525,6 +562,7 @@
                         },
                         "mcp": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "annotations": {
                                     "type": "object",
@@ -534,11 +572,11 @@
                                     "type": "object",
                                     "additionalProperties": false
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         },
                         "muster": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "annotations": {
                                     "type": "object",
@@ -548,11 +586,9 @@
                                     "type": "object",
                                     "additionalProperties": false
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "mode": {
                     "type": "string"
@@ -560,8 +596,7 @@
                 "parentRefs": {
                     "type": "array"
                 }
-            },
-            "additionalProperties": false
+            }
         },
         "kagent": {
             "type": "object",
@@ -573,6 +608,7 @@
         },
         "kyvernoPolicies": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "enabled": {
                     "type": "boolean"
@@ -585,14 +621,13 @@
                 },
                 "seccompRuleNames": {
                     "type": "array",
-                    "minItems": 1,
-                    "uniqueItems": true,
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
                 }
-            },
-            "additionalProperties": false
+            }
         },
         "muster": {
             "type": "object",
@@ -600,6 +635,7 @@
         },
         "networkPolicy": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "additionalEgressCIDRs": {
                     "type": "array"
@@ -615,6 +651,7 @@
                 },
                 "kubernetes": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "apiServerCIDR": {
                             "type": "string"
@@ -625,8 +662,7 @@
                                 "type": "string"
                             }
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "musterInClusterMcpPorts": {
                     "type": "array",
@@ -634,14 +670,15 @@
                         "type": "integer"
                     }
                 }
-            },
-            "additionalProperties": false
+            }
         },
         "postgres": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "applicationDatabase": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string"
@@ -652,8 +689,7 @@
                         "schema": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "clusterName": {
                     "type": "string"
@@ -663,12 +699,12 @@
                 },
                 "image": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "instances": {
                     "type": "integer"
@@ -678,6 +714,7 @@
                 },
                 "sessionsDatabase": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
@@ -688,11 +725,11 @@
                         "owner": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "storage": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "size": {
                             "type": "string"
@@ -700,34 +737,37 @@
                         "storageClass": {
                             "type": "string"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "vector": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean"
                         },
                         "extensionImage": {
                             "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                                 "reference": {
                                     "type": "string"
                                 }
-                            },
-                            "additionalProperties": false
+                            }
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 }
-            },
-            "additionalProperties": false
+            }
+        },
+        "provider": {
+            "type": "string"
+        },
+        "subscriptionID": {
+            "type": "string"
         },
         "valkey": {
             "type": "object",
             "additionalProperties": true
         }
-    },
-    "additionalProperties": false
+    }
 }

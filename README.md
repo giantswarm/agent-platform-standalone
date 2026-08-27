@@ -97,8 +97,9 @@ block carries `skipProperties: true; additionalProperties: true`, so the schema
 is strict for the umbrella-owned keys only.
 
 ```sh
-make curate          # regenerate
-make verify          # what CI runs: go test, curate --check, render every example, schema checks
+make curate                  # regenerate Chart.yaml, values.yaml, Chart.lock
+pre-commit run --all-files   # regenerate values.schema.json and the chart README
+make verify                  # what CI runs: go test, curate --check, render every example, schema checks
 ```
 
 Requirements: Go 1.26, Helm 3.8 or newer. No registry login is needed; the
