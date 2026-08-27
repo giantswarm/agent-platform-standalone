@@ -42,28 +42,18 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 		return nil, nil, err
 	}
 
-	// Toggle defaults are read before any block is mutated: a toggle block
-	// (mcps.enabled) can precede the component block that points at it.
-	toggles := map[string]bool{}
-	for _, component := range components {
-		if component.EnabledFrom == "" {
-			continue
-		}
-		node, err := pathGet(fleetRoot, component.EnabledFrom)
-		if err != nil {
-			return nil, nil, fmt.Errorf("fleet component %q: enabledFrom: %w", component.Chart, err)
-		}
-		if toggles[component.Chart], err = scalarBool(node, component.EnabledFrom); err != nil {
-			return nil, nil, err
-		}
-	}
-
+	// The toggle default of a fleet dependency is the fleet's own
+	// components.<name>.enabled, the single on/off switch. An extra dependency
+	// has no fleet entry, so curate.yaml carries its default.
 	entries := map[string]*componentEntry{}
 	for _, dependency := range config.Dependencies {
-		entries[dependency.Name] = &componentEntry{enabled: true}
+		entry := &componentEntry{enabled: true}
 		if dependency.IsExtra() {
-			entries[dependency.Name].enabled = *dependency.Enabled
+			entry.enabled = *dependency.Enabled
+		} else if component, ok := fleetComponentByChart(components, dependency.Name); ok {
+			entry.enabled = component.IsEnabled()
 		}
+		entries[dependency.Name] = entry
 	}
 
 	var kept []namedNode
@@ -85,21 +75,15 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 			if !ok {
 				return nil, nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
 			}
-			block, enabled, err := componentBlock(keyNode, value, component, rule, entries[component.Chart], toggles)
+			block, err := componentBlock(keyNode, value, component, rule, entries[component.Chart])
 			if err != nil {
 				return nil, nil, err
 			}
 			blocks[component.Chart] = block
-			entries[component.Chart].enabled = enabled
-		case ActionToggle:
-			component, ok := fleetComponentByToggleKey(components, key)
-			if !ok {
-				return nil, nil, fmt.Errorf("keys.%s: action toggle, but no fleet component has enabledFrom under %q", key, key)
-			}
-			if err := toggleBlock(key, value, component, rule, entries[component.Chart]); err != nil {
+		case ActionLift:
+			if err := liftBlock(key, value, rule, entries[rule.Chart]); err != nil {
 				return nil, nil, err
 			}
-			entries[component.Chart].enabled = toggles[component.Chart]
 		}
 	}
 
@@ -201,24 +185,19 @@ func checkDependencyList(config *Config, components []FleetComponent) error {
 }
 
 // componentBlock turns a fleet component values block into the dependency's
-// block: `enabled` stripped, lifted keys moved to components.<chart>, the rest
-// nested under valuesKey when the fleet forwards the block nested.
-func componentBlock(keyNode *yaml.Node, value *yaml.Node, component FleetComponent, rule KeyRule, entry *componentEntry, toggles map[string]bool) (namedNode, bool, error) {
+// block: lifted keys moved to components.<chart>, the rest nested under
+// valuesKey when the fleet forwards the block nested.
+func componentBlock(keyNode *yaml.Node, value *yaml.Node, component FleetComponent, rule KeyRule, entry *componentEntry) (namedNode, error) {
 	if value.Kind != yaml.MappingNode {
-		return namedNode{}, false, fmt.Errorf("fleet block %q is not a mapping", keyNode.Value)
+		return namedNode{}, fmt.Errorf("fleet block %q is not a mapping", keyNode.Value)
 	}
-	enabled := true
-	if component.EnabledFrom != "" {
-		enabled = toggles[component.Chart]
-	}
-	if _, enabledNode := mappingDelete(value, "enabled"); enabledNode != nil && component.EnabledFrom == "" {
-		var err error
-		if enabled, err = scalarBool(enabledNode, keyNode.Value+".enabled"); err != nil {
-			return namedNode{}, false, err
+	if !rule.KeepEnabled {
+		if err := rejectBlockToggle(keyNode.Value, value, component.Chart); err != nil {
+			return namedNode{}, err
 		}
 	}
 	if err := lift(value, keyNode.Value, rule.Lift, entry); err != nil {
-		return namedNode{}, false, err
+		return namedNode{}, err
 	}
 	outKey := newScalar(component.Chart)
 	outKey.HeadComment = keyNode.HeadComment
@@ -233,26 +212,38 @@ func componentBlock(keyNode *yaml.Node, value *yaml.Node, component FleetCompone
 		inner.LineComment = fmt.Sprintf("# the %s chart vendors upstream as a subchart of this name; Helm hands it only values under this key", component.Chart)
 		mappingSet(block, inner, value)
 	}
-	return namedNode{key: outKey, value: block}, enabled, nil
+	return namedNode{key: outKey, value: block}, nil
 }
 
-// toggleBlock consumes a fleet block that carries only a component's on/off
-// switch plus lifted umbrella wiring. Any other sub-key is an error.
-func toggleBlock(key string, value *yaml.Node, component FleetComponent, rule KeyRule, entry *componentEntry) error {
+// liftBlock consumes a fleet block that carries no component values: every
+// sub-key is umbrella wiring and moves to components.<chart>. Any other
+// sub-key is an error.
+func liftBlock(key string, value *yaml.Node, rule KeyRule, entry *componentEntry) error {
 	if value.Kind != yaml.MappingNode {
 		return fmt.Errorf("fleet block %q is not a mapping", key)
 	}
-	if component.EnabledFrom != key+".enabled" {
-		return fmt.Errorf("keys.%s: fleet component %q reads its toggle from %q, expected %q", key, component.Chart, component.EnabledFrom, key+".enabled")
+	if err := rejectBlockToggle(key, value, rule.Chart); err != nil {
+		return err
 	}
-	mappingDelete(value, "enabled")
 	if err := lift(value, key, rule.Lift, entry); err != nil {
 		return err
 	}
 	if remaining := mappingKeys(value); len(remaining) > 0 {
-		return fmt.Errorf("keys.%s: sub-keys %v are neither `enabled` nor listed in lift (deny-unknown)", key, remaining)
+		return fmt.Errorf("keys.%s: sub-keys %v are not listed in lift (deny-unknown)", key, remaining)
 	}
 	return nil
+}
+
+// rejectBlockToggle fails on a fleet block that carries a top-level `enabled`.
+// components.<chart>.enabled is the single on/off switch, and these blocks
+// accept unknown keys, so a second toggle here would be read by nothing while
+// it looks authoritative.
+func rejectBlockToggle(key string, block *yaml.Node, chart string) error {
+	if _, enabled := mappingGet(block, "enabled"); enabled == nil {
+		return nil
+	}
+	return fmt.Errorf("fleet block %q carries a top-level `enabled`, which components.%s.enabled replaced; "+
+		"set keepEnabled on keys.%s when the %s chart owns a value of that name", key, chart, key, chart)
 }
 
 func lift(block *yaml.Node, source string, keys []string, entry *componentEntry) error {

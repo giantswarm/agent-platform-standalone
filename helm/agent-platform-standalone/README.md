@@ -21,12 +21,12 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.23 |
-| oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 1.0.13 |
-| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.196.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.199.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.37 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.30.17 |
-| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.5.6 |
+| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.6.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
 ## Values
@@ -147,6 +147,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | postgres.sessionsDatabase.enabled | bool | `false` |  |
 | postgres.sessionsDatabase.name | string | `"sessions"` |  |
 | postgres.sessionsDatabase.owner | string | `"sessions"` |  |
+| muster.enabled | bool | `true` |  |
 | muster.image.registry | string | `"gsoci.azurecr.io"` |  |
 | muster.fullnameOverride | string | `"muster"` |  |
 | muster.crds.install | bool | `false` |  |
@@ -314,23 +315,23 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kagent.kagent.cilium-debug-agent.namespaceOverride | string | `"kagent"` |  |
 | kagent.kagent.kmcp.enabled | bool | `false` |  |
 | kagent.kagent.kmcp.namespaceOverride | string | `"kagent"` |  |
-| agentgateway.agentgateway.fullnameOverride | string | `"agentgateway-controller"` |  |
-| agentgateway.agentgateway.image.registry | string | `"gsoci.azurecr.io"` |  |
-| agentgateway.agentgateway.controller.image.repository | string | `"giantswarm/agentgateway-controller"` |  |
-| agentgateway.agentgateway.proxy.image.registry | string | `"gsoci.azurecr.io"` |  |
-| agentgateway.agentgateway.proxy.image.repository | string | `"giantswarm/agentgateway"` |  |
-| agentgateway.agentgateway.podAnnotations."application.giantswarm.io/team" | string | `"bumblebee"` |  |
-| agentgateway.agentgateway.podSecurityContext.runAsNonRoot | bool | `true` |  |
-| agentgateway.agentgateway.podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
-| agentgateway.agentgateway.securityContext.allowPrivilegeEscalation | bool | `false` |  |
-| agentgateway.agentgateway.securityContext.readOnlyRootFilesystem | bool | `true` |  |
-| agentgateway.agentgateway.securityContext.runAsNonRoot | bool | `true` |  |
-| agentgateway.agentgateway.securityContext.capabilities.drop[0] | string | `"ALL"` |  |
-| agentgateway.agentgateway.securityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
-| agentgateway.agentgateway.resources.requests.cpu | string | `"50m"` |  |
-| agentgateway.agentgateway.resources.requests.memory | string | `"128Mi"` |  |
-| agentgateway.agentgateway.resources.limits.cpu | string | `"500m"` |  |
-| agentgateway.agentgateway.resources.limits.memory | string | `"512Mi"` |  |
+| agentgateway.fullnameOverride | string | `"agentgateway-controller"` |  |
+| agentgateway.image.registry | string | `"gsoci.azurecr.io"` |  |
+| agentgateway.controller.image.repository | string | `"giantswarm/agentgateway-controller"` |  |
+| agentgateway.proxy.image.registry | string | `"gsoci.azurecr.io"` |  |
+| agentgateway.proxy.image.repository | string | `"giantswarm/agentgateway"` |  |
+| agentgateway.podAnnotations."application.giantswarm.io/team" | string | `"bumblebee"` |  |
+| agentgateway.podSecurityContext.runAsNonRoot | bool | `true` |  |
+| agentgateway.podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
+| agentgateway.securityContext.allowPrivilegeEscalation | bool | `false` |  |
+| agentgateway.securityContext.readOnlyRootFilesystem | bool | `true` |  |
+| agentgateway.securityContext.runAsNonRoot | bool | `true` |  |
+| agentgateway.securityContext.capabilities.drop[0] | string | `"ALL"` |  |
+| agentgateway.securityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
+| agentgateway.resources.requests.cpu | string | `"50m"` |  |
+| agentgateway.resources.requests.memory | string | `"128Mi"` |  |
+| agentgateway.resources.limits.cpu | string | `"500m"` |  |
+| agentgateway.resources.limits.memory | string | `"512Mi"` |  |
 | agent-platform-mcps.agentgateway.enabled | bool | `true` |  |
 | agent-platform-mcps.agentgateway.viaMuster | bool | `false` |  |
 | agent-platform-mcps.agentgateway.musterUrl | string | `"http://muster.agent-platform.svc.cluster.local:8090/mcp"` |  |

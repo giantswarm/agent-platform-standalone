@@ -115,7 +115,8 @@ inconsistent. Rendered exactly once via templates/validate.yaml.
 {{- fail "ingress.parentRefs is required in all modes — the umbrella-owned muster `/` route (and the agentgateway `/mcp` route in agentgateway-* modes) attaches to it; an empty parentRefs renders a route bound to no Gateway, leaving muster unreachable while install reports success" -}}
 {{- end -}}
 {{- /* viaMuster only matters when the mcps sub-chart is installed; with no MCP
-servers there is nothing to route, so the consistency check is scoped to mcps.enabled. */ -}}
+servers there is nothing to route, so the consistency check is scoped to
+components.agent-platform-mcps.enabled. */ -}}
 {{- if (index .Values.components "agent-platform-mcps").enabled -}}
 {{- $mcpsVals := index .Values "agent-platform-mcps" | default dict -}}
 {{- $viaMuster := dig "agentgateway" "viaMuster" false $mcpsVals -}}
@@ -131,10 +132,10 @@ servers there is nothing to route, so the consistency check is scoped to mcps.en
 {{- end -}}
 {{- $agentgatewayEnabled := or (eq .Values.components.agentgateway.enabled true) (eq (toString .Values.components.agentgateway.enabled) "true") -}}
 {{- if and $isAgentgateway (not $agentgatewayEnabled) -}}
-{{- fail "agentgateway.enabled must be true in agentgateway-* modes; the controller dependency condition must match ingress.mode" -}}
+{{- fail "components.agentgateway.enabled must be true in agentgateway-* modes; the controller dependency condition must match ingress.mode" -}}
 {{- end -}}
 {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
-{{- fail "agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+{{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
 {{- end -}}
 {{- end -}}
 

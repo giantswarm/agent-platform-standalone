@@ -20,7 +20,7 @@
 #
 #   kyvernoPolicies.enabled: false drops this policy, so the Deployment then carries
 #   no securityContext from anywhere. A cluster that enforces restricted PSS without
-#   Kyverno must set agentSandbox.enabled: false too.
+#   Kyverno must set components.agent-sandbox.enabled: false too.
 #
 # WHEN TO REMOVE:
 #   Upstream added podSecurityContext / containerSecurityContext values to the
@@ -29,7 +29,7 @@
 #   *stable* and republishes, do the born-compliant migration and DELETE this file:
 #     1. set `agent-sandbox.podSecurityContext` + `agent-sandbox.containerSecurityContext`
 #        in values.yaml (forwarded to the subchart, like kagent/valkey/agentgateway)
-#     2. delete this template AND the `agentSandbox.podSecurity` block in values.yaml
+#     2. delete this template AND the `components.agent-sandbox.podSecurity` block in values.yaml
 #        (+ its values.schema.json / README entries)
 # =====================================================================================
 apiVersion: kyverno.io/v1

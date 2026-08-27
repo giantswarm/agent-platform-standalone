@@ -13,7 +13,7 @@ fleet:
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
   # Exact pin, bumped by the weekly curation job.
-  version: 2.13.0
+  version: 3.0.0
   # Fleet components that are not dependencies: their templates live in this
   # chart (copied once from the connectivity chart).
   inlineComponents:
@@ -61,7 +61,9 @@ dependencies:
   - name: kagent
     range: "0.x"
   - name: agentgateway
-    range: "1.x"
+    # The 2.x line flattened the upstream keys onto the chart root, so the fleet
+    # forwards this block unnested. A 1.x chart would read none of it.
+    range: "2.x"
   - name: agent-platform-mcps
     range: "0.x"
   - name: klaus-gateway
@@ -85,11 +87,17 @@ dependencies:
 #   dependencies  the fleet `components` map: source of the dependency list
 #   wiring        umbrella-owned block, copied from the connectivity values
 #                 (its templates read it and live in this chart)
-#   component     a component's values: renamed to the chart name, `enabled`
-#                 moved to components.<chart>.enabled, `lift` keys moved to
-#                 components.<chart>.*, nested under the fleet valuesKey
-#   toggle        a block that only holds a toggle (`enabled`) plus `lift`
-#                 wiring keys; any other sub-key fails the run
+#   component     a component's values: renamed to the chart name, `lift` keys
+#                 moved to components.<chart>.*, nested under the fleet
+#                 valuesKey. `keepEnabled` forwards an `enabled` key the
+#                 component chart owns; without it a top-level `enabled` fails
+#                 the run, because components.<chart>.enabled is the only toggle
+#   lift          a block that holds no component values: every sub-key must be
+#                 listed in `lift` and names the dependency in `chart`; any
+#                 other sub-key fails the run
+#
+# The on/off default of every fleet component comes from the fleet's own
+# components.<name>.enabled. Nothing here restates it.
 keys:
   global: {action: keep}
   gitops: {action: drop}
@@ -100,7 +108,11 @@ keys:
   kyvernoPolicies: {action: wiring}
   extraObjects: {action: wiring}
   postgres: {action: wiring}
-  muster: {action: component}
+  muster:
+    action: component
+    # The muster chart has an `enabled` value of its own, so this one block
+    # keeps the key instead of failing on it.
+    keepEnabled: true
   valkey: {action: component}
   kagent:
     action: component
@@ -110,7 +122,7 @@ keys:
   klausGateway: {action: component}
   dicebear: {action: component}
   agent-platform-mcps: {action: component}
-  mcps: {action: toggle}
   agentSandbox:
-    action: toggle
+    action: lift
+    chart: agent-sandbox
     lift: [podSecurity]

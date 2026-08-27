@@ -21,16 +21,16 @@ components:
     repository: oci://example/charts
     valuesFrom: kagent
     valuesKey: kagent
-    enabledFrom: kagent.enabled
+    enabled: false
   agent-platform-mcps:
     chart: agent-platform-mcps
     repository: oci://example/charts
     valuesFrom: agent-platform-mcps
-    enabledFrom: mcps.enabled
+    enabled: true
   agent-sandbox:
     chart: agent-sandbox
     repository: oci://example/charts
-    enabledFrom: agentSandbox.enabled
+    enabled: false
   agent-platform-connectivity:
     chart: agent-platform-connectivity
     repository: oci://example/charts
@@ -41,42 +41,40 @@ muster:  # @schema skipProperties: true
   enabled: true
   fullnameOverride: muster
 kagent:
-  enabled: false
   # route comment survives
   controllerRoute:
     enabled: false
   controller:
     image: kagent-controller
-mcps:
-  enabled: true
 agent-platform-mcps:
   mcpServers: []
 agentSandbox:
-  enabled: false
   podSecurity:
     enabled: true
 `
 
 const fixtureConnectivity = `global:
   registry: gsoci.azurecr.io
+components:
+  kagent:
+    enabled: false
 ingress:
   parentRefs: []
   fromConnectivity: true
 muster:
   fullnameOverride: muster
 kagent: {}
-mcps:
-  enabled: false
 agent-platform-mcps: {}
 agentSandbox:
-  enabled: false
+  podSecurity:
+    enabled: true
 `
 
 const fixtureConfig = `fleet:
   repository: oci://example/charts
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
-  version: 2.13.0
+  version: 3.0.0
   inlineComponents: [agent-platform-connectivity]
 chart:
   apiVersion: v2
@@ -100,14 +98,16 @@ keys:
   gitops: {action: drop}
   components: {action: dependencies}
   ingress: {action: wiring}
-  muster: {action: component}
+  muster:
+    action: component
+    keepEnabled: true
   kagent:
     action: component
     lift: [controllerRoute]
-  mcps: {action: toggle}
   agent-platform-mcps: {action: component}
   agentSandbox:
-    action: toggle
+    action: lift
+    chart: agent-sandbox
     lift: [podSecurity]
 `
 

@@ -33,7 +33,7 @@ func TestConfigValidate(t *testing.T) {
 			want:   "must have the form <major>.x",
 		},
 		"fleet pin must be exact": {
-			mutate: strings.Replace(fixtureConfig, "version: 2.13.0", "version: 2.x", 1),
+			mutate: strings.Replace(fixtureConfig, "version: 3.0.0", "version: 3.x", 1),
 			want:   "must be an exact version",
 		},
 		"extra dependency needs enabled": {
@@ -52,9 +52,21 @@ func TestConfigValidate(t *testing.T) {
 			mutate: strings.Replace(fixtureConfig, "{action: keep}", "{action: forward}", 1),
 			want:   `unknown action "forward"`,
 		},
-		"lift only with component or toggle": {
+		"lift only with component or lift": {
 			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring}", "ingress: {action: wiring, lift: [x]}", 1),
 			want:   "lift is only valid",
+		},
+		"action lift needs a chart": {
+			mutate: strings.Replace(fixtureConfig, "    chart: agent-sandbox\n", "", 1),
+			want:   "action lift must name the dependency it wires",
+		},
+		"chart must be a dependency": {
+			mutate: strings.Replace(fixtureConfig, "chart: agent-sandbox", "chart: ghost", 1),
+			want:   `chart "ghost" is not a dependency`,
+		},
+		"keepEnabled only with component": {
+			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring}", "ingress: {action: wiring, keepEnabled: true}", 1),
+			want:   "keepEnabled is only valid with action component",
 		},
 		"exactly one dependencies key": {
 			mutate: strings.Replace(fixtureConfig, "components: {action: dependencies}", "components: {action: drop}", 1),

@@ -26,18 +26,25 @@ const (
 	// umbrella's own templates read these keys.
 	ActionWiring Action = "wiring"
 	// ActionComponent turns a fleet component values block into the block of
-	// the matching dependency (renamed to the chart name, `enabled` stripped,
-	// nested under valuesKey when the fleet forwards it nested).
+	// the matching dependency (renamed to the chart name, nested under
+	// valuesKey when the fleet forwards it nested).
 	ActionComponent Action = "component"
-	// ActionToggle handles a fleet block that only carries a component's on/off
-	// switch (plus optional umbrella wiring sub-keys listed in Lift).
-	ActionToggle Action = "toggle"
+	// ActionLift handles a fleet block that carries no component values at all:
+	// every sub-key is umbrella wiring and must be listed in Lift.
+	ActionLift Action = "lift"
 )
 
 type KeyRule struct {
 	Action Action `yaml:"action"`
 	// Lift lists sub-keys moved out of the block into components.<chart>.
 	Lift []string `yaml:"lift"`
+	// Chart names the dependency a lift block belongs to. Only action lift has
+	// no fleet component to derive it from.
+	Chart string `yaml:"chart"`
+	// KeepEnabled forwards the block's `enabled` key to the component chart,
+	// for the one component whose chart owns a value of that name. A top-level
+	// `enabled` in any other component block fails the run.
+	KeepEnabled bool `yaml:"keepEnabled"`
 }
 
 type Dependency struct {
@@ -126,12 +133,30 @@ func (c *Config) Validate() error {
 	}
 	dependenciesKeys := 0
 	for key, rule := range c.Keys {
+		if rule.Chart != "" {
+			if rule.Action != ActionLift {
+				return fmt.Errorf("keys.%s: chart is only valid with action lift", key)
+			}
+			if _, ok := c.Dependency(rule.Chart); !ok {
+				return fmt.Errorf("keys.%s: chart %q is not a dependency", key, rule.Chart)
+			}
+		}
+		if rule.KeepEnabled && rule.Action != ActionComponent {
+			return fmt.Errorf("keys.%s: keepEnabled is only valid with action component", key)
+		}
 		switch rule.Action {
 		case ActionKeep, ActionDrop, ActionWiring:
 			if len(rule.Lift) > 0 {
-				return fmt.Errorf("keys.%s: lift is only valid with action component or toggle", key)
+				return fmt.Errorf("keys.%s: lift is only valid with action component or lift", key)
 			}
-		case ActionComponent, ActionToggle:
+		case ActionComponent:
+		case ActionLift:
+			if rule.Chart == "" {
+				return fmt.Errorf("keys.%s: action lift must name the dependency it wires (chart)", key)
+			}
+			if len(rule.Lift) == 0 {
+				return fmt.Errorf("keys.%s: action lift must list the keys it lifts", key)
+			}
 		case ActionDependencies:
 			dependenciesKeys++
 		default:

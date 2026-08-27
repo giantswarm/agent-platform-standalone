@@ -78,16 +78,19 @@ version pinned in `curate.yaml`, and:
 2. resolves each major-bounded range (`5.x`) to the newest published version and
    writes that exact pin into `Chart.yaml`;
 3. transforms the fleet values into the layout above: fleet-only keys dropped,
-   each component's `enabled` moved to `components.<name>.enabled`, umbrella
-   wiring lifted out of the component blocks, blocks renamed to the chart name
-   and nested under the wrapper's subchart key;
+   each toggle default taken from the fleet's own `components.<name>.enabled`,
+   umbrella wiring lifted out of the component blocks, blocks renamed to the
+   chart name and nested under the wrapper's subchart key;
 4. merges `overlay/vanilla.yaml` last;
 5. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
    file when the pins did not change.
 
 The transform is deny-unknown. Every top-level key of the fleet and
 connectivity values must have a rule in `curate.yaml`; a fleet rename or a new
-Giant Swarm-only default fails the run instead of leaking into the defaults.
+Giant Swarm-only default fails the run instead of leaking into the defaults. A
+component values block that carries a top-level `enabled` fails too: since
+`agent-platform` 3.0.0 the fleet's `components.<name>.enabled` is the single
+on/off switch, and a second toggle would be read by nothing.
 Running the generator twice yields no diff.
 
 `values.schema.json` is generated from `values.yaml` with the `helm schema`

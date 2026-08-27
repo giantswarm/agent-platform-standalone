@@ -2,20 +2,24 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // FleetComponent is one entry of the fleet meta-package's `components` map.
 type FleetComponent struct {
-	Key         string
-	Chart       string
-	Repository  string
-	ValuesFrom  string
-	ValuesKey   string
-	EnabledFrom string
+	Key        string
+	Chart      string
+	Repository string
+	ValuesFrom string
+	ValuesKey  string
+	// Enabled is the entry's own toggle, the single on/off switch. Absent means
+	// on, the reading of the fleet's own componentEnabled helper.
+	Enabled *bool
 }
+
+// IsEnabled reports the component's default toggle.
+func (c FleetComponent) IsEnabled() bool { return c.Enabled == nil || *c.Enabled }
 
 // parseFleetComponents reads the fleet `components` map.
 func parseFleetComponents(components *yaml.Node) ([]FleetComponent, error) {
@@ -30,11 +34,10 @@ func parseFleetComponents(components *yaml.Node) ([]FleetComponent, error) {
 		}
 		component := FleetComponent{Key: key}
 		fields := map[string]*string{
-			"chart":       &component.Chart,
-			"repository":  &component.Repository,
-			"valuesFrom":  &component.ValuesFrom,
-			"valuesKey":   &component.ValuesKey,
-			"enabledFrom": &component.EnabledFrom,
+			"chart":      &component.Chart,
+			"repository": &component.Repository,
+			"valuesFrom": &component.ValuesFrom,
+			"valuesKey":  &component.ValuesKey,
 		}
 		for field, target := range fields {
 			_, value := mappingGet(entry, field)
@@ -43,6 +46,21 @@ func parseFleetComponents(components *yaml.Node) ([]FleetComponent, error) {
 				return nil, err
 			}
 			*target = text
+		}
+		if _, enabled := mappingGet(entry, "enabled"); enabled != nil {
+			value, err := scalarBool(enabled, fmt.Sprintf("fleet component %q field enabled", key))
+			if err != nil {
+				return nil, err
+			}
+			component.Enabled = &value
+		}
+		// omitKeys names a key the fleet withholds from a component's forwarded
+		// values because the umbrella owns it, not the component chart. This
+		// generator has no equivalent: such a key belongs in a lift rule, so an
+		// entry that declares one fails instead of forwarding a key the
+		// component chart rejects.
+		if _, omitKeys := mappingGet(entry, "omitKeys"); omitKeys != nil {
+			return nil, fmt.Errorf("fleet component %q declares omitKeys; lift those keys in curate.yaml", key)
 		}
 		if component.Chart == "" || component.Repository == "" {
 			return nil, fmt.Errorf("fleet component %q lacks chart or repository", key)
@@ -66,18 +84,6 @@ func fleetComponentByChart(components []FleetComponent, name string) (FleetCompo
 func fleetComponentByValuesFrom(components []FleetComponent, key string) (FleetComponent, bool) {
 	for _, component := range components {
 		if component.ValuesFrom == key {
-			return component, true
-		}
-	}
-	return FleetComponent{}, false
-}
-
-// fleetComponentByToggleKey returns the fleet component whose enabledFrom path
-// starts with key.
-func fleetComponentByToggleKey(components []FleetComponent, key string) (FleetComponent, bool) {
-	for _, component := range components {
-		first, _, _ := strings.Cut(component.EnabledFrom, ".")
-		if component.EnabledFrom != "" && first == key {
 			return component, true
 		}
 	}
