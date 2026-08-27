@@ -1,0 +1,8 @@
+# app-test-suite config. Consumed by the generated `run-tests-with-ats`
+# CircleCI job (execute-chart-tests). Without `smoke-tests-cluster-type` ATS
+# errors out before testing ("Unknown cluster type 'None'").
+app-tests-deploy-namespace: agent-platform-standalone
+
+smoke-tests-cluster-type: kind
+
+skip-steps: [functional,upgrade]
