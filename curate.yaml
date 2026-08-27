@@ -13,7 +13,7 @@ fleet:
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
   # Exact pin, bumped by the weekly curation job.
-  version: 3.0.0
+  version: 3.0.4
   # Fleet components that are not dependencies: their templates live in this
   # chart (copied once from the connectivity chart).
   inlineComponents:

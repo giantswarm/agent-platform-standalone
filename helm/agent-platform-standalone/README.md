@@ -21,7 +21,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.23 |
-| oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.3 |
 | oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.199.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.37 |
@@ -131,6 +131,9 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kyvernoPolicies.seccompPolicyName | string | `"restrict-seccomp-strict"` |  |
 | kyvernoPolicies.seccompRuleNames[0] | string | `"check-seccomp-strict"` |  |
 | kyvernoPolicies.seccompRuleNames[1] | string | `"autogen-check-seccomp-strict"` |  |
+| kyvernoPolicies.volumeTypesPolicyName | string | `"restrict-volume-types"` |  |
+| kyvernoPolicies.volumeTypesRuleNames[0] | string | `"restricted-volumes"` |  |
+| kyvernoPolicies.volumeTypesRuleNames[1] | string | `"autogen-restricted-volumes"` |  |
 | extraObjects | list | `[]` |  |
 | postgres.enabled | bool | `false` |  |
 | postgres.namespace | string | `"kagent"` |  |
@@ -185,6 +188,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | valkey.vpa.enabled | bool | `false` |  |
 | valkey.valkey.fullnameOverride | string | `"muster-valkey"` |  |
 | valkey.valkey.replicaCount | int | `1` |  |
+| valkey.valkey.deploymentStrategy | string | `"Recreate"` |  |
 | valkey.valkey.auth.enabled | bool | `true` |  |
 | valkey.valkey.auth.usersExistingSecret | string | `""` |  |
 | valkey.valkey.auth.aclUsers.default.permissions | string | `"~* &* +@all"` |  |

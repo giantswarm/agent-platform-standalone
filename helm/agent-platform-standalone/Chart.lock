@@ -10,7 +10,7 @@ dependencies:
   version: 0.1.37
 - name: agentgateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 2.0.1
+  version: 2.0.3
 - name: agent-platform-mcps
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.6.7
@@ -29,5 +29,5 @@ dependencies:
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:2303e92cdb94071925f5713e4edd3a223a83e63b35f3a299ead841cef1f87a75
-generated: "2026-08-27T21:50:21.970982205+02:00"
+digest: sha256:ceba501b8e9123e60760185ae14b6d1fc4e22f2e4e9bb3efafbb3e099e9528ad
+generated: "2026-08-27T22:23:02.451698762+02:00"
