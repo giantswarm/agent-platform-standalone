@@ -139,7 +139,7 @@ func Transform(in Inputs) (*yaml.Node, []FleetComponent, error) {
 	for _, dependency := range config.Dependencies {
 		block, ok := blocks[dependency.Name]
 		if !ok {
-			continue
+			block = emptyBlock(dependency.Name)
 		}
 		mappingSet(out, block.key, block.value)
 	}
@@ -222,6 +222,10 @@ func componentBlock(keyNode *yaml.Node, value *yaml.Node, component FleetCompone
 	}
 	outKey := newScalar(component.Chart)
 	outKey.HeadComment = keyNode.HeadComment
+	outKey.LineComment = keyNode.LineComment
+	if !strings.Contains(outKey.LineComment, "@schema") {
+		outKey.LineComment = opaqueBlockAnnotation
+	}
 	block := value
 	if component.ValuesKey != "" {
 		block = newMapping()
@@ -311,12 +315,25 @@ func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
 	return nil
 }
 
-// cleanKey copies a key node without the fleet's schema-generator annotations
-// (`# @schema ...`), which mean nothing to the hand-written umbrella schema.
+// opaqueBlockAnnotation tells helm-values-schema-json (the GS pre-commit hook
+// that generates values.schema.json) to leave a component block open: the
+// component chart validates it with its own schema.
+const opaqueBlockAnnotation = "# @schema skipProperties: true; additionalProperties: true"
+
+// cleanKey copies a key node so the output never aliases the input tree.
 func cleanKey(key *yaml.Node) *yaml.Node {
 	clone := *key
-	if strings.Contains(clone.LineComment, "@schema") {
-		clone.LineComment = ""
-	}
 	return &clone
+}
+
+// emptyBlock is the values block of a dependency the fleet ships no values
+// for. It exists so the generated schema knows the key.
+func emptyBlock(name string) namedNode {
+	key := newScalar(name)
+	key.HeadComment = fmt.Sprintf("Values forwarded to the %s chart. The fleet ships no defaults for it.", name)
+	block := newMapping()
+	block.Style = yaml.FlowStyle
+	// yaml.v3 renders the line comment of a `key: {}` pair from the value node.
+	block.LineComment = opaqueBlockAnnotation
+	return namedNode{key: key, value: block}
 }

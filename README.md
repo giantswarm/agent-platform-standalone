@@ -90,6 +90,12 @@ connectivity values must have a rule in `curate.yaml`; a fleet rename or a new
 Giant Swarm-only default fails the run instead of leaking into the defaults.
 Running the generator twice yields no diff.
 
+`values.schema.json` is generated from `values.yaml` with the `helm schema`
+plugin (losisin/helm-values-schema-json), the standard Giant Swarm pre-commit
+hook. The generator keeps the `# @schema` annotations for it: every component
+block carries `skipProperties: true; additionalProperties: true`, so the schema
+is strict for the umbrella-owned keys only.
+
 ```sh
 make curate          # regenerate
 make verify          # what CI runs: go test, curate --check, render every example, schema checks

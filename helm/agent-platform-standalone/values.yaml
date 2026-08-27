@@ -368,7 +368,7 @@ postgres:
     enabled: false
     name: sessions
     owner: sessions
-muster:
+muster:  # @schema skipProperties: true; additionalProperties: true
   image:
     registry: gsoci.azurecr.io
   # Pin muster's Service name as the single source of truth for it. The umbrella
@@ -496,7 +496,7 @@ muster:
 #   .ciliumNetworkPolicy  — wrapper's CNP (independent of umbrella networkPolicy.flavor)
 #   .vpa                  — wrapper's VerticalPodAutoscaler (off by default)
 # Single-pod Deployment + PVC; writable Service at muster-valkey.<ns>.svc:6379.
-valkey:
+valkey:  # @schema skipProperties: true; additionalProperties: true
   ciliumNetworkPolicy:
     enabled: true
   vpa:
@@ -596,7 +596,7 @@ valkey:
 # kagent is forwarded verbatim to the kagent component release (an upstream
 # chart with many more keys than mirrored here), so unknown keys must stay
 # allowed.
-kagent:
+kagent:  # @schema skipProperties: true; additionalProperties: true
   kagent:  # the kagent chart vendors upstream as a subchart of this name; Helm hands it only values under this key
     # Pin the release-independent name so the controller Service is always
     # `kagent-controller` regardless of the umbrella release name.
@@ -866,7 +866,7 @@ kagent:
     kmcp:
       enabled: false
       namespaceOverride: kagent
-agentgateway:
+agentgateway:  # @schema skipProperties: true; additionalProperties: true
   agentgateway:  # the agentgateway chart vendors upstream as a subchart of this name; Helm hands it only values under this key
     fullnameOverride: agentgateway-controller
     image:
@@ -902,7 +902,7 @@ agentgateway:
 # Values passed through to the agent-platform-mcps sub-chart. Only keys it
 # declares are allowed (muster, agentgateway, defaults, identityProviders,
 # mcpServers). The `mcps.enabled` toggle above is intentionally separate.
-agent-platform-mcps:
+agent-platform-mcps:  # @schema skipProperties: true; additionalProperties: true
   agentgateway:
     # enabled: true  — agentgateway is always active in this umbrella; it sits
     # in front of muster as the observability choke point for every MCP call
@@ -933,7 +933,7 @@ agent-platform-mcps:
 # umbrella already manages the agentgateway controller via the `agentgateway`
 # dependency above; set upstream.agentgatewayURL to the data-plane service
 # URL once the agentgateway deployment is known (typically post-install).
-klaus-gateway:
+klaus-gateway:  # @schema skipProperties: true; additionalProperties: true
   image:
     registry: gsoci.azurecr.io
   # Do not deploy a second agentgateway; reuse the umbrella's.
@@ -1062,8 +1062,14 @@ klaus-gateway:
 # route is ON by default, so EVERY installation MUST set route.parentRefs (the
 # platform's public Gateway — typically the same one as ingress.parentRefs) and
 # route.hostnames (e.g. [avatars.<domain>]); the chart hard-fails otherwise, by design.
-dicebear:
+dicebear:  # @schema skipProperties: true; additionalProperties: true
   route:
     enabled: true
     parentRefs: []  # REQUIRED per cluster: public Gateway parentRef(s)
     hostnames: []  # REQUIRED per cluster: e.g. [avatars.example.com]
+# Values forwarded to the agent-sandbox chart. The fleet ships no defaults for it.
+agent-sandbox: {}  # @schema skipProperties: true; additionalProperties: true
+# Values forwarded to the backstage chart. The fleet ships no defaults for it.
+backstage: {}  # @schema skipProperties: true; additionalProperties: true
+# Values forwarded to the cloudnative-pg chart. The fleet ships no defaults for it.
+cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true
