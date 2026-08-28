@@ -66,16 +66,21 @@ the six. This turns that into a loud failure naming the new key. The removed
       (list "agentgateway" "components.agentgateway.enabled")
       (list "valkey" "components.valkey.enabled")
       (list "kagent" "components.kagent.enabled")
-      (list "klausGateway" "components.klaus-gateway.enabled")
-      (list "agentSandbox" "components.agent-sandbox.enabled") -}}
+      (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
 {{- $found := list -}}
 {{- range $moved -}}
 {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
 {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
 {{- end -}}
 {{- end -}}
+{{- /* The klaus-gateway chart owns a top-level `enabled` default that Helm
+coalesces into .Values once the dependency is on, so probe only while the
+component is off, when a set key can only be the operator's. */ -}}
+{{- if and (not (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway"))) (hasKey (index $.Values "klaus-gateway" | default dict) "enabled") -}}
+{{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
+{{- end -}}
 {{- with $found -}}
-{{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s (see UPGRADE.md)" (join ", " .)) -}}
+{{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
 {{- end -}}
 {{- end -}}
 
@@ -182,6 +187,21 @@ agent-platform-mcps component. */ -}}
 {{- end -}}
 {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
 {{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+{{- end -}}
+{{- if eq $mode "muster-direct" -}}
+{{- $mcpsValues := index .Values "agent-platform-mcps" | default dict -}}
+{{- $mcpsOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "agent-platform-mcps") -}}
+{{- if and $mcpsOn (dig "agentgateway" "enabled" false $mcpsValues) (dig "mcpServers" (list) $mcpsValues) -}}
+{{- fail "muster-direct mode cannot serve agentgateway.dev resources rendered per MCP server; set agent-platform-mcps.agentgateway.enabled=false to reach MCP servers through muster" -}}
+{{- end -}}
+{{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") -}}
+{{- if and $kagentOn .Values.components.kagent.controllerRoute.enabled -}}
+{{- fail "components.kagent.controllerRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+{{- end -}}
+{{- $klausGatewayOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "klaus-gateway") -}}
+{{- if and $klausGatewayOn (dig "agentgatewayRoute" "enabled" false (index .Values "klaus-gateway" | default dict)) -}}
+{{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 

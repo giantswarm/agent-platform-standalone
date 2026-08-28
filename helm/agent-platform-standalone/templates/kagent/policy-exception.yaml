@@ -25,7 +25,7 @@
 # filter). The kagent controller pod itself uses app.kubernetes.io/name: kagent
 # and is unaffected.
 #
-# Namespace: scoped to the single namespace configured via kagent.namespaceOverride.
+# Namespace: scoped to the single namespace configured via kagent.kagent.namespaceOverride.
 # If agents are ever deployed to additional namespaces, add those namespaces here.
 #
 # PolicyExceptions must live in policy-exceptions, giantswarm, flux-giantswarm, or

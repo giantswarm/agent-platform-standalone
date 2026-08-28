@@ -3,7 +3,7 @@
 Components on: {{- range $name, $component := .Values.components }}{{- if $component.enabled }} {{ $name }}{{- end }}{{- end }}
 
 Gateway:        {{ .Values.gateway.name }} (class {{ .Values.gateway.gatewayClassName }})
-Listener port:  {{ (index .Values.gateway.listeners 0).port }}
+Listener port:  {{ with (.Values.gateway.listeners | default list | first) }}{{ .port }}{{ else }}none (gateway.listeners is empty){{ end }}
 Service type:   {{ .Values.gateway.parameters.serviceType }} (data-plane Service forced via AgentgatewayParameters overlay)
 
 Cluster prerequisites (the chart does not install them):

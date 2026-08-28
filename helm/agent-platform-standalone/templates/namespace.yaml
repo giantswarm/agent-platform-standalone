@@ -1,4 +1,5 @@
-{{- if and .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
+{{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
+{{- if and $kagentOn .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
 # Ensure the kagent namespace exists when it differs from the release namespace.
 # On clusters where the namespace is pre-created (e.g. graveler), Kubernetes
 # applies this as a no-op. On fresh installs the namespace is created here;

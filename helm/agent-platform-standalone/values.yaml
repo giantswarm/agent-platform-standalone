@@ -30,7 +30,7 @@ components:
       # Outer (public) Gateway that terminates TLS. The controller API is reached
       # at https://<hostname><pathPrefix> through this Gateway, which forwards to
       # the agentgateway Service (inner hop handles JWT validation + path rewrite).
-      parentRef:
+      parentRef:  # @schema additionalProperties: true
         name: giantswarm-default
         namespace: envoy-gateway-system
       # JWT validation on the inner kagent-controller HTTPRoute. Renders an
@@ -69,7 +69,7 @@ components:
       # oauth2-proxy.
       enabled: false
       hostname: ""  # Required: kagent.<cluster>.<base-domain>
-      parentRef:
+      parentRef:  # @schema additionalProperties: true
         name: giantswarm-default
         namespace: envoy-gateway-system
       backendTrafficPolicy:
@@ -128,7 +128,7 @@ components:
       enabled: true
       # Must match the agent-sandbox chart's namespace.name (upstream default).
       namespace: agent-sandbox-system
-      podSecurityContext:
+      podSecurityContext:  # @schema additionalProperties: true
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -182,7 +182,7 @@ ingress:
 gateway:
   name: agentgateway
   gatewayClassName: agentgateway
-  listeners:
+  listeners:  # @schema itemRef: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/gateway.networking.k8s.io/gateway_v1.json#/properties/spec/properties/listeners/items
     - name: http
       port: 8080
       protocol: HTTP
@@ -219,7 +219,7 @@ gateway:
     # Strategic-merge env appended to the data-plane container.
     # Defaults push OTel traces to the cluster-wide otlp-gateway in kube-system.
     # Override or extend for per-cluster backends.
-    dataPlaneEnv:
+    dataPlaneEnv:  # @schema itemRef: $k8s/envvar.json
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: http://otlp-gateway.kube-system.svc:4317
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -246,7 +246,7 @@ networkPolicy:
   # muster MCP-egress policy below. Muster's own ciliumNetworkPolicy is otherwise
   # independent — set muster.ciliumNetworkPolicy.enabled to false when running
   # the kubernetes flavor.
-  flavor: cilium
+  flavor: cilium  # @schema enum:[cilium,kubernetes]
   # Extra CIDR egress for in-cluster Gateway VIPs the entity selectors miss.
   # Example:
   #   additionalEgressCIDRs:
@@ -324,13 +324,13 @@ extraObjects: []
 # Platform Postgres — CloudNativePG Cluster for kagent (and future Klaus sessions).
 # The CNPG operator and its CRDs are a cluster-level prerequisite (like Gateway
 # API CRDs): they must be installed before enabling this. Flip `enabled: false`
-# to use kagent's bundled Postgres or an external DSN (set kagent.database.postgres
+# to use kagent's bundled Postgres or an external DSN (set kagent.kagent.database.postgres
 # accordingly). When `enabled: true`, set `postgres.namespace` to match
 # `kagent.namespaceOverride` so the generated DSN Secret is co-located with the
 # kagent controller that mounts it.
 postgres:
   enabled: false
-  # Must match kagent.namespaceOverride — the CNPG-generated Secret is created
+  # Must match kagent.kagent.namespaceOverride — the CNPG-generated Secret is created
   # in the Cluster's namespace and kagent mounts it by name.
   namespace: kagent
   clusterName: kagent-pg
@@ -687,7 +687,7 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
       seccompProfile:
         type: RuntimeDefault
     # Model provider — Anthropic by default.
-    # Set kagent.providers.anthropic.apiKey in the per-cluster secret values
+    # Set kagent.kagent.providers.anthropic.apiKey in the per-cluster secret values
     # (SOPS-encrypted). When apiKey is set alongside apiKeySecretRef, the chart
     # creates the Secret automatically — no manual pre-creation needed.
     providers:
@@ -763,7 +763,7 @@ kagent:  # @schema skipProperties: true; additionalProperties: true
           value: ""  # e.g. https://dex.<cluster>.<base-domain>
         - name: OIDC_REDIRECT_URL
           value: ""  # e.g. https://kagent.<cluster>.<base-domain>/oauth2/callback
-        # kagent.fullnameOverride=kagent, so the UI service is kagent-ui.
+        # kagent.kagent.fullnameOverride=kagent, so the UI service is kagent-ui.
         - name: UPSTREAM_URL
           value: http://kagent-ui:8080
       extraArgs:

@@ -88,6 +88,51 @@ func TestRenderTemplatesLeavesDynamicLookupsAlone(t *testing.T) {
 	require.Equal(t, source, string(templates["x.yaml"]))
 }
 
+// Prose (comments and fail messages) follows the full move list: lifted keys
+// and nested blocks move, while longer identifiers, paths under a key that did
+// not move, and domain names stay as written.
+func TestRenderTemplatesRewritesProsePaths(t *testing.T) {
+	config := parseConfig(t, fixtureConfig)
+	source := `{{- fail "Set kagent.controllerRoute.hostname; kagent.namespaceOverride must match" }}
+# muster.controllerRoute.hostname is nested under a carried key
+# myagentSandbox.foo is a longer identifier
+# kagent.dev is a domain, not a values path
+`
+	templates, err := renderFixtureTemplates(t, config, map[string]string{"x.yaml": source})
+	require.NoError(t, err)
+	text := string(templates["x.yaml"])
+	require.Contains(t, text, "Set components.kagent.controllerRoute.hostname", "a lifted key moves in prose")
+	require.Contains(t, text, "kagent.kagent.namespaceOverride must match", "a nested block moves in prose")
+	require.Contains(t, text, "muster.controllerRoute.hostname is nested", "a path under an unmoved key stays")
+	require.Contains(t, text, "myagentSandbox.foo is a longer identifier")
+	require.Contains(t, text, "kagent.dev is a domain")
+}
+
+func TestRenderTemplatesAppliesPatches(t *testing.T) {
+	patched := fixtureConfig + `  patch:
+    - file: netpol.yaml
+      find: |-
+        dns: {{ include "agent-platform-standalone.dnsEgress" . }}
+      replace: |-
+        dns: patched
+`
+	config := parseConfig(t, patched)
+	templates, err := renderFixtureTemplates(t, config, fixtureTemplates)
+	require.NoError(t, err)
+	require.Contains(t, string(templates["netpol.yaml"]), "dns: patched")
+
+	stale := fixtureConfig + `  patch:
+    - file: netpol.yaml
+      find: |-
+        upstream moved this text away
+      replace: |-
+        never applied
+`
+	config = parseConfig(t, stale)
+	_, err = renderFixtureTemplates(t, config, fixtureTemplates)
+	require.ErrorContains(t, err, "occurs 0 times in netpol.yaml")
+}
+
 func TestRenderTemplatesExplicitRewriteWins(t *testing.T) {
 	config := parseConfig(t, strings.Replace(fixtureConfig,
 		"    - from: .Values.muster.enabled\n      to: .Values.components.muster.enabled\n", "", 1))

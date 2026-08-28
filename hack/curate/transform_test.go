@@ -105,7 +105,7 @@ func TestTransformRejectsLegacyToggle(t *testing.T) {
 	})
 	t.Run("keepEnabled allows it", func(t *testing.T) {
 		in := fixtureInputs(t)
-		in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  muster:\n    action: component\n    keepEnabled: true\n", "  muster: {action: component}\n", 1))
+		in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  muster:\n    action: component\n    keepEnabled: true\n    allowShadow: true\n", "  muster: {action: component, allowShadow: true}\n", 1))
 		_, err := Transform(in)
 		require.ErrorContains(t, err, `fleet block "muster" carries a top-level `+"`enabled`")
 	})
@@ -166,6 +166,56 @@ func TestTransformOverlay(t *testing.T) {
 		require.Equal(t, "muster", asMap(t, values["muster"])["fullnameOverride"])
 		require.Len(t, asMap(t, values["ingress"])["parentRefs"], 1, "sequences are replaced")
 	})
+}
+
+// A key that appears in the source chart its rule does not read is discarded;
+// without an explicit allowShadow declaration that discard must fail the run,
+// so the two copies cannot drift apart unnoticed.
+func TestTransformRejectsUndeclaredShadow(t *testing.T) {
+	t.Run("wiring key in the fleet values", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, strings.Replace(fixtureConfig,
+			"  ingress: {action: wiring, allowShadow: true}\n", "  ingress: {action: wiring}\n", 1))
+		_, err := Transform(in)
+		require.ErrorContains(t, err, `fleet values carry "ingress"`)
+	})
+	t.Run("fleet-owned key in the connectivity values", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, strings.Replace(fixtureConfig,
+			"  global: {action: keep, allowShadow: true}\n", "  global: {action: keep}\n", 1))
+		_, err := Transform(in)
+		require.ErrorContains(t, err, `connectivity values carry "global"`)
+	})
+}
+
+// The overlay merges after the fleet-side toggle guard ran, so it must not
+// smuggle back a component-level `enabled` of its own.
+func TestTransformOverlayRejectsBlockToggle(t *testing.T) {
+	in := fixtureInputs(t)
+	in.Overlay = parseDocument(t, "kagent:\n  enabled: false\n")
+	_, err := Transform(in)
+	require.ErrorContains(t, err, "overlay block \"kagent\" carries a top-level `enabled`")
+
+	in = fixtureInputs(t)
+	in.Overlay = parseDocument(t, "muster:\n  enabled: false\n")
+	_, err = Transform(in)
+	require.NoError(t, err, "the muster chart owns its enabled key (keepEnabled)")
+}
+
+func TestTransformAnnotations(t *testing.T) {
+	in := fixtureInputs(t)
+	in.Config = parseConfig(t, fixtureConfig+"annotations:\n  ingress.parentRefs: \"item: object\"\n  muster.fullnameOverride: \"enum:[muster]\"\n")
+	result, err := Transform(in)
+	require.NoError(t, err)
+	out, err := encodeYAML(result.Document)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "parentRefs: []  # @schema item: object", "flow value carries the comment")
+	require.Contains(t, string(out), "fullnameOverride: muster  # @schema enum:[muster]", "scalar value carries the comment")
+
+	in = fixtureInputs(t)
+	in.Config = parseConfig(t, fixtureConfig+"annotations:\n  ingress.gone: \"item: object\"\n")
+	_, err = Transform(in)
+	require.ErrorContains(t, err, "annotations.ingress.gone")
 }
 
 func keysOf(mapping map[string]any) []string {

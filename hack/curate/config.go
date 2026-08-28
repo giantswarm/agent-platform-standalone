@@ -45,6 +45,12 @@ type KeyRule struct {
 	// for the one component whose chart owns a value of that name. A top-level
 	// `enabled` in any other component block fails the run.
 	KeepEnabled bool `yaml:"keepEnabled"`
+	// AllowShadow declares that the key also appears in the source chart the
+	// rule does not read (a wiring key in the fleet values, any other key in
+	// the connectivity values) and that this shadow copy is discarded
+	// deliberately. Without it a cross-source copy fails the run, so drift
+	// between the two copies never goes unnoticed.
+	AllowShadow bool `yaml:"allowShadow"`
 }
 
 type Dependency struct {
@@ -74,8 +80,19 @@ type PathRewrite struct {
 	To   string `yaml:"to"`
 }
 
+// TemplatePatch edits one generated template where the upstream copy is wrong
+// for the standalone layout. Find must occur exactly once in the file AFTER
+// all rewrites, so an upstream change that moves the text fails the run
+// instead of silently dropping the fix.
+type TemplatePatch struct {
+	File    string `yaml:"file"`
+	Find    string `yaml:"find"`
+	Replace string `yaml:"replace"`
+}
+
 type TemplatesConfig struct {
-	Rewrite []PathRewrite `yaml:"rewrite"`
+	Rewrite []PathRewrite   `yaml:"rewrite"`
+	Patch   []TemplatePatch `yaml:"patch"`
 	// Extra names files under the chart's templates directory that this
 	// generator does not produce and must not delete.
 	Extra []string `yaml:"extra"`
@@ -87,6 +104,12 @@ type Config struct {
 	Dependencies []Dependency       `yaml:"dependencies"`
 	Keys         map[string]KeyRule `yaml:"keys"`
 	Templates    TemplatesConfig    `yaml:"templates"`
+	// Annotations injects a `# @schema` line comment onto a key of the
+	// generated values.yaml, keyed by its dotted path in the GENERATED layout.
+	// The schema pre-commit hook turns them into schema constraints the
+	// curated defaults alone would get wrong (frozen array-item shapes,
+	// missing enums). A path the generated values do not carry fails the run.
+	Annotations map[string]string `yaml:"annotations"`
 }
 
 // ChartName is the umbrella chart's name, the prefix of every copied helper.
@@ -190,6 +213,19 @@ func (c *Config) Validate() error {
 	}
 	if dependenciesKeys != 1 {
 		return fmt.Errorf("exactly one key must have action %q", ActionDependencies)
+	}
+	for i, patch := range c.Templates.Patch {
+		if patch.File == "" || patch.Find == "" {
+			return fmt.Errorf("templates.patch[%d]: file and find are required", i)
+		}
+		if patch.Find == patch.Replace {
+			return fmt.Errorf("templates.patch[%d] (%s): find and replace are identical", i, patch.File)
+		}
+	}
+	for path, annotation := range c.Annotations {
+		if annotation == "" {
+			return fmt.Errorf("annotations.%s: the annotation must not be empty", path)
+		}
 	}
 	return nil
 }

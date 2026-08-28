@@ -49,11 +49,11 @@ func TestConfigValidate(t *testing.T) {
 			want:   "chart.dependencies is generated",
 		},
 		"unknown action": {
-			mutate: strings.Replace(fixtureConfig, "{action: keep}", "{action: forward}", 1),
+			mutate: strings.Replace(fixtureConfig, "{action: keep, allowShadow: true}", "{action: forward, allowShadow: true}", 1),
 			want:   `unknown action "forward"`,
 		},
 		"lift only with component or lift": {
-			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring}", "ingress: {action: wiring, lift: [x]}", 1),
+			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring, allowShadow: true}", "ingress: {action: wiring, allowShadow: true, lift: [x]}", 1),
 			want:   "lift is only valid",
 		},
 		"action lift needs a chart": {
@@ -65,12 +65,20 @@ func TestConfigValidate(t *testing.T) {
 			want:   `chart "ghost" is not a dependency`,
 		},
 		"keepEnabled only with component": {
-			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring}", "ingress: {action: wiring, keepEnabled: true}", 1),
+			mutate: strings.Replace(fixtureConfig, "ingress: {action: wiring, allowShadow: true}", "ingress: {action: wiring, allowShadow: true, keepEnabled: true}", 1),
 			want:   "keepEnabled is only valid with action component",
 		},
 		"exactly one dependencies key": {
-			mutate: strings.Replace(fixtureConfig, "components: {action: dependencies}", "components: {action: drop}", 1),
+			mutate: strings.Replace(fixtureConfig, "components: {action: dependencies, allowShadow: true}", "components: {action: drop, allowShadow: true}", 1),
 			want:   "exactly one key must have action",
+		},
+		"patch needs file and find": {
+			mutate: fixtureConfig + "  patch:\n    - file: netpol.yaml\n",
+			want:   "templates.patch[0]: file and find are required",
+		},
+		"annotation must not be empty": {
+			mutate: fixtureConfig + "annotations:\n  ingress.parentRefs: \"\"\n",
+			want:   "annotations.ingress.parentRefs",
 		},
 	}
 	for name, testCase := range cases {

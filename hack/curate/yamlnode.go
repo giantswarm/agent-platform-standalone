@@ -87,7 +87,7 @@ func mappingDelete(mapping *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
 	return nil, nil
 }
 
-// pathGet resolves a two-level dotted path such as "kagent.enabled".
+// pathGet resolves a dotted path such as "kagent.enabled" to its value node.
 func pathGet(mapping *yaml.Node, path string) (*yaml.Node, error) {
 	first, rest, found := strings.Cut(path, ".")
 	_, value := mappingGet(mapping, first)
@@ -101,6 +101,23 @@ func pathGet(mapping *yaml.Node, path string) (*yaml.Node, error) {
 		return nil, fmt.Errorf("path %q: %q is not a mapping", path, first)
 	}
 	return pathGet(value, rest)
+}
+
+// pathGetPair resolves a dotted path to the key and value nodes of its last
+// segment, the nodes a line comment attaches to.
+func pathGetPair(mapping *yaml.Node, path string) (*yaml.Node, *yaml.Node, error) {
+	first, rest, found := strings.Cut(path, ".")
+	key, value := mappingGet(mapping, first)
+	if key == nil {
+		return nil, nil, fmt.Errorf("path %q: key %q not found", path, first)
+	}
+	if !found {
+		return key, value, nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return nil, nil, fmt.Errorf("path %q: %q is not a mapping", path, first)
+	}
+	return pathGetPair(value, rest)
 }
 
 func scalarBool(node *yaml.Node, what string) (bool, error) {

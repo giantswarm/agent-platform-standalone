@@ -94,21 +94,24 @@ dependencies:
     repository: oci://example/extra
     enabled: false
 keys:
-  global: {action: keep}
+  global: {action: keep, allowShadow: true}
   gitops: {action: drop}
-  components: {action: dependencies}
-  ingress: {action: wiring}
+  components: {action: dependencies, allowShadow: true}
+  ingress: {action: wiring, allowShadow: true}
   muster:
     action: component
     keepEnabled: true
+    allowShadow: true
   kagent:
     action: component
     lift: [controllerRoute]
-  agent-platform-mcps: {action: component}
+    allowShadow: true
+  agent-platform-mcps: {action: component, allowShadow: true}
   agentSandbox:
     action: lift
     chart: agent-sandbox
     lift: [podSecurity]
+    allowShadow: true
 templates:
   rewrite:
     - from: .Values.muster.enabled

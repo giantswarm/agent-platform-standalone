@@ -97,36 +97,65 @@ dependencies:
 #                 listed in `lift` and names the dependency in `chart`; any
 #                 other sub-key fails the run
 #
+# `allowShadow` declares that the key also appears in the source chart the rule
+# does not read (a wiring key in the fleet values, any other key in the
+# connectivity values) and that this shadow copy is discarded deliberately.
+# Without it a cross-source copy fails the run, so the two copies cannot drift
+# apart unnoticed.
+#
 # The on/off default of every fleet component comes from the fleet's own
 # components.<name>.enabled. Nothing here restates it.
 keys:
-  global: {action: keep}
+  global: {action: keep, allowShadow: true}
   gitops: {action: drop}
-  components: {action: dependencies}
-  ingress: {action: wiring}
-  gateway: {action: wiring}
-  networkPolicy: {action: wiring}
-  kyvernoPolicies: {action: wiring}
-  extraObjects: {action: wiring}
-  postgres: {action: wiring}
+  components: {action: dependencies, allowShadow: true}
+  ingress: {action: wiring, allowShadow: true}
+  gateway: {action: wiring, allowShadow: true}
+  networkPolicy: {action: wiring, allowShadow: true}
+  kyvernoPolicies: {action: wiring, allowShadow: true}
+  extraObjects: {action: wiring, allowShadow: true}
+  postgres: {action: wiring, allowShadow: true}
   muster:
     action: component
     # The muster chart has an `enabled` value of its own, so this one block
     # keeps the key instead of failing on it.
     keepEnabled: true
-  valkey: {action: component}
+    allowShadow: true
+  valkey: {action: component, allowShadow: true}
   kagent:
     action: component
     # Read by the umbrella templates, not by the kagent chart.
     lift: [controllerRoute, uiRoute, modelConfigs, remoteMcpServers]
-  agentgateway: {action: component}
-  klausGateway: {action: component}
-  dicebear: {action: component}
-  agent-platform-mcps: {action: component}
+    allowShadow: true
+  agentgateway: {action: component, allowShadow: true}
+  klausGateway: {action: component, allowShadow: true}
+  dicebear: {action: component, allowShadow: true}
+  agent-platform-mcps: {action: component, allowShadow: true}
   agentSandbox:
     action: lift
     chart: agent-sandbox
     lift: [podSecurity]
+    allowShadow: true
+
+# `# @schema` line comments injected into the generated values.yaml, keyed by
+# the path in the GENERATED layout. The schema pre-commit hook turns them into
+# constraints the curated defaults alone would get wrong: an array default
+# freezes its item shape (no TLS listener, no valueFrom env var, no
+# sectionName parentRef, no extra securityContext field would validate), and a
+# free-string mode selector accepts a typo that silently disables every
+# template gated on it. A path the generated values do not carry fails the run.
+#
+# The itemRef entries point at the real API schemas (bundled into
+# values.schema.json at pre-commit time); together with the hook's
+# $ref/unevaluatedProperties fix they validate array items against the actual
+# Gateway API listener and core EnvVar shapes instead of the frozen defaults.
+annotations:
+  gateway.listeners: "itemRef: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/gateway.networking.k8s.io/gateway_v1.json#/properties/spec/properties/listeners/items"  # yamllint disable-line rule:line-length
+  gateway.parameters.dataPlaneEnv: "itemRef: $k8s/envvar.json"
+  components.kagent.controllerRoute.parentRef: "additionalProperties: true"
+  components.kagent.uiRoute.parentRef: "additionalProperties: true"
+  components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
+  networkPolicy.flavor: "enum:[cilium,kubernetes]"
 
 # The connectivity chart's templates are copied into this chart on every run.
 # Helper names take the chart-name prefix, and every values path the transform
@@ -139,6 +168,118 @@ templates:
   rewrite:
     - from: .Values.muster.enabled
       to: .Values.components.muster.enabled
+  # Exact-once text edits applied after the rewrites, where the upstream copy
+  # is wrong for the standalone layout. A stale find (upstream changed the
+  # text) fails the run; each entry names the upstream fix that retires it.
+  patch:
+    # The kagent UI Service is named from the kagent chart's fullnameOverride
+    # (pinned to `kagent` in values.yaml), not from the release name. Upstream
+    # bug in agent-platform-connectivity: the oauth2-proxy branch and
+    # controller-route.yaml already honor the override, this branch does not.
+    - file: kagent/ui-httproute.yaml
+      find: |-
+        - name: {{ printf "%s-ui" .Release.Name }}
+      replace: |-
+        - name: {{ printf "%s-ui" (.Values.kagent.kagent.fullnameOverride | default .Release.Name) }}
+    # The public `/` route targets the muster Service: without a component gate
+    # it renders with muster disabled and blackholes every hostname on the
+    # shared Gateway. Upstream never installs without muster; this chart does.
+    - file: ingress/muster-httproute.yaml
+      find: |-
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+      replace: |-
+        {{- if (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster")) }}
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+    - file: ingress/muster-httproute.yaml
+      find: |-
+        port: {{ include "agent-platform-standalone.musterServicePort" . }}
+      replace: |-
+        port: {{ include "agent-platform-standalone.musterServicePort" . }}
+        {{- end }}
+    # The kagent Namespace must not exist (and be Helm-owned, so deleted on
+    # uninstall) when the kagent component is off.
+    - file: namespace.yaml
+      find: |-
+        {{- if and .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
+      replace: |-
+        {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
+        {{- if and $kagentOn .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
+    # Two of the legacy-toggle hints probed keys the strict root schema rejects
+    # before templates run (dead rows), while the renamed opaque blocks accepted
+    # klaus-gateway.enabled / agent-sandbox.enabled silently — the exact trap
+    # the helper exists to catch. The klaus-gateway chart ships its own
+    # top-level `enabled` default, which Helm coalesces into .Values once the
+    # dependency is on, so that row probes only while the component is off,
+    # when a set key can only be the operator's. The referenced UPGRADE.md does
+    # not exist yet (issue #8).
+    - file: _helpers.tpl
+      find: |-
+        {{- $moved := list
+              (list "agentgateway" "components.agentgateway.enabled")
+              (list "valkey" "components.valkey.enabled")
+              (list "kagent" "components.kagent.enabled")
+              (list "klausGateway" "components.klaus-gateway.enabled")
+              (list "agentSandbox" "components.agent-sandbox.enabled") -}}
+        {{- $found := list -}}
+        {{- range $moved -}}
+        {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
+        {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
+        {{- end -}}
+        {{- end -}}
+        {{- with $found -}}
+        {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s (see UPGRADE.md)" (join ", " .)) -}}
+        {{- end -}}
+      replace: |-
+        {{- $moved := list
+              (list "agentgateway" "components.agentgateway.enabled")
+              (list "valkey" "components.valkey.enabled")
+              (list "kagent" "components.kagent.enabled")
+              (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
+        {{- $found := list -}}
+        {{- range $moved -}}
+        {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
+        {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
+        {{- end -}}
+        {{- end -}}
+        {{- /* The klaus-gateway chart owns a top-level `enabled` default that Helm
+        coalesces into .Values once the dependency is on, so probe only while the
+        component is off, when a set key can only be the operator's. */ -}}
+        {{- if and (not (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway"))) (hasKey (index $.Values "klaus-gateway" | default dict) "enabled") -}}
+        {{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
+        {{- end -}}
+        {{- with $found -}}
+        {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
+        {{- end -}}
+    # ingress.mode=muster-direct turns the agentgateway component (and with it
+    # the agentgateway.dev CRDs) off, so anything that renders agentgateway.dev
+    # resources or attaches to the chart-owned Gateway must fail loudly in that
+    # mode instead of shipping resources the API server rejects.
+    - file: _helpers.tpl
+      find: |-
+        {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
+        {{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+        {{- end -}}
+      replace: |-
+        {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
+        {{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+        {{- end -}}
+        {{- if eq $mode "muster-direct" -}}
+        {{- $mcpsValues := index .Values "agent-platform-mcps" | default dict -}}
+        {{- $mcpsOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "agent-platform-mcps") -}}
+        {{- if and $mcpsOn (dig "agentgateway" "enabled" false $mcpsValues) (dig "mcpServers" (list) $mcpsValues) -}}
+        {{- fail "muster-direct mode cannot serve agentgateway.dev resources rendered per MCP server; set agent-platform-mcps.agentgateway.enabled=false to reach MCP servers through muster" -}}
+        {{- end -}}
+        {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") -}}
+        {{- if and $kagentOn .Values.components.kagent.controllerRoute.enabled -}}
+        {{- fail "components.kagent.controllerRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+        {{- end -}}
+        {{- $klausGatewayOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "klaus-gateway") -}}
+        {{- if and $klausGatewayOn (dig "agentgatewayRoute" "enabled" false (index .Values "klaus-gateway" | default dict)) -}}
+        {{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+        {{- end -}}
+        {{- end -}}
   # Files under templates/ this generator does not produce. The install notes
   # are the umbrella's own: the fleet's version tells the reader to install the
   # meta-package.

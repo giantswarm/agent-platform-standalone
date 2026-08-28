@@ -37,7 +37,7 @@ spec:
         - name: {{ index .Values.kagent.kagent "oauth2-proxy" "fullnameOverride" | default (printf "%s-oauth2-proxy" .Release.Name) }}
           port: 4180
         {{- else }}
-        - name: {{ printf "%s-ui" .Release.Name }}
+        - name: {{ printf "%s-ui" (.Values.kagent.kagent.fullnameOverride | default .Release.Name) }}
           port: 8080
         {{- end }}
 {{- end }}

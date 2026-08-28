@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -71,6 +72,7 @@ func Transform(in Inputs) (*Result, error) {
 	var kept []namedNode
 	var moves []PathMove
 	blocks := map[string]namedNode{}
+	keepEnabledCharts := map[string]bool{}
 
 	for i := 0; i+1 < len(fleetRoot.Content); i += 2 {
 		keyNode, value := fleetRoot.Content[i], fleetRoot.Content[i+1]
@@ -82,7 +84,14 @@ func Transform(in Inputs) (*Result, error) {
 		switch rule.Action {
 		case ActionKeep:
 			kept = append(kept, namedNode{key: cleanKey(keyNode), value: value})
-		case ActionDependencies, ActionWiring:
+		case ActionDependencies:
+		case ActionWiring:
+			// The wiring copy comes from the connectivity values; a fleet copy
+			// is a shadow that would otherwise drift apart unnoticed.
+			if !rule.AllowShadow {
+				return nil, fmt.Errorf("fleet values carry %q, whose wiring block is copied from the connectivity chart; "+
+					"set allowShadow: true on keys.%s to discard the fleet copy deliberately (deny-unknown)", key, key)
+			}
 		case ActionDrop:
 			moves = append(moves, PathMove{From: []string{key}, Dropped: true})
 		case ActionComponent:
@@ -96,6 +105,9 @@ func Transform(in Inputs) (*Result, error) {
 			}
 			blocks[component.Chart] = block
 			moves = append(moves, componentMoves(key, component, rule)...)
+			if rule.KeepEnabled {
+				keepEnabledCharts[component.Chart] = true
+			}
 		case ActionLift:
 			if err := liftBlock(key, value, rule, entries[rule.Chart]); err != nil {
 				return nil, err
@@ -113,6 +125,13 @@ func Transform(in Inputs) (*Result, error) {
 		}
 		if rule.Action == ActionWiring {
 			wiring = append(wiring, namedNode{key: cleanKey(keyNode), value: value})
+			continue
+		}
+		// Every other rule reads the fleet values; a connectivity copy is a
+		// shadow that would otherwise be discarded silently, drift included.
+		if !rule.AllowShadow {
+			return nil, fmt.Errorf("connectivity values carry %q, whose rule (action %s) reads the fleet values; "+
+				"set allowShadow: true on keys.%s to discard the connectivity copy deliberately (deny-unknown)", keyNode.Value, rule.Action, keyNode.Value)
 		}
 	}
 	for key, rule := range config.Keys {
@@ -145,7 +164,10 @@ func Transform(in Inputs) (*Result, error) {
 		mappingSet(out, block.key, block.value)
 	}
 
-	if err := applyOverlay(config, out, in.Overlay); err != nil {
+	if err := applyOverlay(config, out, in.Overlay, keepEnabledCharts); err != nil {
+		return nil, err
+	}
+	if err := applyAnnotations(config, out); err != nil {
 		return nil, err
 	}
 
@@ -314,8 +336,10 @@ func buildComponents(config *Config, entries map[string]*componentEntry) *yaml.N
 }
 
 // applyOverlay merges overlay/vanilla.yaml on top. Only umbrella-owned keys
-// and dependency names are allowed at the top level.
-func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
+// and dependency names are allowed at the top level, and a component block
+// must not smuggle back the top-level `enabled` toggle the transform rejects
+// in the fleet values (the overlay merges after that guard ran).
+func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node, keepEnabledCharts map[string]bool) error {
 	if overlay == nil {
 		return nil
 	}
@@ -334,6 +358,16 @@ func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
 			return fmt.Errorf("overlay key %q is neither umbrella-owned nor a dependency name (deny-unknown)", key)
 		}
 	}
+	for _, dependency := range config.Dependencies {
+		_, block := mappingGet(overlayRoot, dependency.Name)
+		if block == nil || block.Kind != yaml.MappingNode || keepEnabledCharts[dependency.Name] {
+			continue
+		}
+		if _, enabled := mappingGet(block, "enabled"); enabled != nil {
+			return fmt.Errorf("overlay block %q carries a top-level `enabled`, which components.%s.enabled replaced; "+
+				"set components.%s.enabled in the overlay instead", dependency.Name, dependency.Name, dependency.Name)
+		}
+	}
 	if _, components := mappingGet(overlayRoot, "components"); components != nil {
 		if components.Kind != yaml.MappingNode {
 			return fmt.Errorf("overlay components must be a mapping")
@@ -345,6 +379,36 @@ func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node) error {
 		}
 	}
 	deepMerge(out, overlayRoot)
+	return nil
+}
+
+// applyAnnotations injects the configured `# @schema` line comments into the
+// generated values. A missing path or a key that already carries a different
+// line comment fails the run, so a fleet layout change never silently drops
+// or fights a schema constraint.
+func applyAnnotations(config *Config, out *yaml.Node) error {
+	paths := make([]string, 0, len(config.Annotations))
+	for path := range config.Annotations {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		key, value, err := pathGetPair(out, path)
+		if err != nil {
+			return fmt.Errorf("annotations.%s: %w", path, err)
+		}
+		// yaml.v3 renders a block value's line comment from the key node and a
+		// scalar or flow value's from the value node (see emptyBlock).
+		node := key
+		if value.Kind == yaml.ScalarNode || value.Style == yaml.FlowStyle {
+			node = value
+		}
+		annotation := "# @schema " + config.Annotations[path]
+		if node.LineComment != "" && node.LineComment != annotation {
+			return fmt.Errorf("annotations.%s: the key already carries the line comment %q", path, node.LineComment)
+		}
+		node.LineComment = annotation
+	}
 	return nil
 }
 

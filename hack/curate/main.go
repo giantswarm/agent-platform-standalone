@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -69,6 +70,7 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 		return err
 	}
 	values, components := result.Document, result.Components
+	rewriteValuesComments(values, result.Moves, result.ValueKeys)
 
 	templates, err := RenderTemplates(config, filepath.Join(connectivityDir, "templates"), result.Moves, result.ValueKeys)
 	if err != nil {
@@ -138,6 +140,10 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 		if err := os.WriteFile(path, content, 0o644); err != nil {
 			return err
 		}
+		// Drop the diff sidecar a failed --check left behind for this file.
+		if err := os.Remove(path + ".curate"); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	fmt.Fprintf(os.Stderr, "curate: wrote Chart.yaml, values.yaml and %d templates\n", len(templates))
 	if err := removeStaleTemplates(config, chartDir, templates); err != nil {
@@ -199,7 +205,8 @@ func templateFiles(chartDir string) ([]string, error) {
 			}
 			return err
 		}
-		if entry.IsDir() {
+		// A *.curate sidecar is verify()'s own diff artifact, never a template.
+		if entry.IsDir() || strings.HasSuffix(path, ".curate") {
 			return nil
 		}
 		relative, err := filepath.Rel(root, path)

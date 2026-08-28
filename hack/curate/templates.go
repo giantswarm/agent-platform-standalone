@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // PathMove records where a fleet values path went in the umbrella layout. The
@@ -51,14 +53,10 @@ func RenderTemplates(config *Config, sourceDir string, moves []PathMove, valueKe
 	for _, name := range config.Templates.Extra {
 		delete(sources, name)
 	}
-	explicit, err := explicitMoves(config)
+	ordered, err := orderedMoves(config, moves)
 	if err != nil {
 		return nil, err
 	}
-	// An explicit rule wins over a derived one, and a longer path wins over a
-	// shorter one, so a lifted key is resolved before its component block.
-	ordered := append(explicit, moves...)
-	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i].From) > len(ordered[j].From) })
 
 	renames := helperRenames(config.ChartName(), sources)
 	out := make(TemplateSet, len(sources))
@@ -71,7 +69,42 @@ func RenderTemplates(config *Config, sourceDir string, moves []PathMove, valueKe
 		text = rewriteProsePaths(text, ordered, valueKeys)
 		out[name] = []byte(text)
 	}
+	if err := applyPatches(config, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// orderedMoves is the move list the rewrites resolve against: an explicit rule
+// wins over a derived one, and a longer path wins over a shorter one, so a
+// lifted key is resolved before its component block.
+func orderedMoves(config *Config, moves []PathMove) ([]PathMove, error) {
+	explicit, err := explicitMoves(config)
+	if err != nil {
+		return nil, err
+	}
+	ordered := append(explicit, slices.Clone(moves)...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i].From) > len(ordered[j].From) })
+	return ordered, nil
+}
+
+// applyPatches edits the generated templates where the upstream copy is wrong
+// for the standalone layout. Find must occur exactly once, so an upstream
+// change that moves the text fails the run instead of dropping the fix.
+func applyPatches(config *Config, out TemplateSet) error {
+	for _, patch := range config.Templates.Patch {
+		content, ok := out[patch.File]
+		if !ok {
+			return fmt.Errorf("templates.patch: %q is not a generated template", patch.File)
+		}
+		text := string(content)
+		if count := strings.Count(text, patch.Find); count != 1 {
+			return fmt.Errorf("templates.patch: the find text occurs %d times in %s, expected exactly once; "+
+				"update the patch to the current upstream template", count, patch.File)
+		}
+		out[patch.File] = []byte(strings.Replace(text, patch.Find, patch.Replace, 1))
+	}
+	return nil
 }
 
 // readTemplateFiles reads the source chart's templates directory.
@@ -189,23 +222,81 @@ func rewriteValuePaths(text, name string, moves []PathMove, valueKeys []string) 
 	return result, nil
 }
 
-// rewriteProsePaths moves a path named in a comment or a message string, for a
-// block whose own key is gone from the umbrella values. Such a mention can only
-// be wrong here, and these strings are what a failed render tells the operator.
-// A path whose top-level key the umbrella still carries is left as the source
-// chart wrote it: the same text can name a real key there.
+// prosePathRe matches a dotted path named in prose (comments, fail messages,
+// values comments): the strings a failed render shows the operator. The
+// optional backticks are captured so a quoted literal identifier (a helper
+// name, for one) can be recognized and left alone.
+var prosePathRe = regexp.MustCompile("`?[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+`?")
+
+// proseTLDs guards single-tail tokens that are domains, not values paths
+// (kagent.dev, agentgateway.dev), from the nesting moves.
+var proseTLDs = map[string]bool{"ai": true, "cloud": true, "com": true, "dev": true, "io": true, "net": true, "org": true, "sh": true}
+
+// rewriteProsePaths moves every values path named in prose through the same
+// move list the code rewrite uses, so fail messages and comments keep naming
+// keys this chart actually reads. Tokens are matched whole: a longer
+// identifier that merely ends in a moved key, a path nested under a key that
+// did not move, and a domain name are left as written.
 func rewriteProsePaths(text string, moves []PathMove, valueKeys []string) string {
+	text = prosePathRe.ReplaceAllStringFunc(text, func(token string) string {
+		if strings.Contains(token, "`") {
+			return token // a backtick-quoted literal identifier, e.g. a helper name
+		}
+		segments := strings.Split(token, ".")
+		for _, move := range moves {
+			if move.Dropped || !isPrefix(move.From, segments) {
+				continue
+			}
+			rest := segments[len(move.From):]
+			if slices.Equal(move.From, move.To) {
+				return token
+			}
+			if len(rest) == 1 && proseTLDs[rest[0]] {
+				return token
+			}
+			return strings.Join(append(slices.Clone(move.To), rest...), ".")
+		}
+		return token
+	})
+	// A bare mention (followed by a space or a closing dot, not quoted, not
+	// part of a longer identifier) of a block whose key is gone from the
+	// umbrella values can only be wrong here; one whose key survives can name
+	// a real key there.
 	for _, move := range moves {
 		if move.Dropped || len(move.From) != 1 || slices.Contains(valueKeys, move.From[0]) {
 			continue
 		}
-		from := move.From[0]
-		to := strings.Join(move.To, ".")
+		from, to := move.From[0], strings.Join(move.To, ".")
 		for _, suffix := range []string{".", " "} {
-			text = strings.ReplaceAll(text, from+suffix, to+suffix)
+			re := regexp.MustCompile(`[.\w-]?` + regexp.QuoteMeta(from+suffix))
+			text = re.ReplaceAllStringFunc(text, func(match string) string {
+				if match != from+suffix {
+					return match // part of a longer identifier or a dotted path
+				}
+				return to + suffix
+			})
 		}
 	}
 	return text
+}
+
+// rewriteValuesComments applies the prose rewrite to every comment of the
+// generated values document, so a copied comment (the postgres wiring notes,
+// for one) names the keys of this chart's layout. The explicit template
+// rewrites are template-domain and do not apply here.
+func rewriteValuesComments(document *yaml.Node, moves []PathMove, valueKeys []string) {
+	ordered := slices.Clone(moves)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i].From) > len(ordered[j].From) })
+	var walk func(node *yaml.Node)
+	walk = func(node *yaml.Node) {
+		node.HeadComment = rewriteProsePaths(node.HeadComment, ordered, valueKeys)
+		node.LineComment = rewriteProsePaths(node.LineComment, ordered, valueKeys)
+		node.FootComment = rewriteProsePaths(node.FootComment, ordered, valueKeys)
+		for _, child := range node.Content {
+			walk(child)
+		}
+	}
+	walk(document)
 }
 
 func isPrefix(prefix, segments []string) bool {

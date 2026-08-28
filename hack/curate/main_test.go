@@ -14,11 +14,11 @@ import (
 type fakeHelm struct {
 	values    map[string]string
 	templates map[string]map[string]string
-	versions map[string]string
-	lock     string
-	resolves int
-	updates  int
-	builds   int
+	versions  map[string]string
+	lock      string
+	resolves  int
+	updates   int
+	builds    int
 }
 
 func (h *fakeHelm) Pull(_, chart, _, destDir string) error {
@@ -201,6 +201,27 @@ func TestRunRemovesTemplateTheSourceChartDropped(t *testing.T) {
 
 	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
 	require.NoFileExists(t, filepath.Join(chartDir, "templates", "netpol.yaml"))
+}
+
+// A leftover *.curate sidecar from a failed check must not mask the real diff
+// on the next run, and a write run cleans the sidecars up.
+func TestRunCheckIgnoresCurateSidecars(t *testing.T) {
+	configPath, overlayPath, chartDir := setupRepo(t)
+	helm := newFakeHelm()
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+
+	path := filepath.Join(chartDir, "templates", "netpol.yaml")
+	edited, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(edited, []byte("handEdited: true\n")...), 0o644))
+
+	require.ErrorContains(t, run(configPath, overlayPath, chartDir, true, helm), "netpol.yaml differs from the generator output")
+	require.FileExists(t, path+".curate")
+	require.ErrorContains(t, run(configPath, overlayPath, chartDir, true, helm), "netpol.yaml differs from the generator output",
+		"the second check reports the diff, not the sidecar")
+
+	require.NoError(t, run(configPath, overlayPath, chartDir, false, helm))
+	require.NoFileExists(t, path+".curate", "a write run drops the sidecar")
 }
 
 // The umbrella's own file survives every run.
