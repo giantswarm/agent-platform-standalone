@@ -476,7 +476,9 @@ def login_and_get_token(edge: Edge) -> str:
         .rstrip(b"=")
         .decode()
     )
-    state = secrets.token_urlsafe(16)
+    # muster rejects authorization requests whose state is shorter than 24
+    # characters; token_urlsafe(24) yields 32.
+    state = secrets.token_urlsafe(24)
 
     session = requests.Session()
     session.verify = edge.ca_path
