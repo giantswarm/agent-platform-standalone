@@ -233,18 +233,21 @@ templates:
     # Two of the legacy-toggle hints probed keys the strict root schema rejects
     # before templates run (dead rows), while the renamed opaque blocks accepted
     # klaus-gateway.enabled / agent-sandbox.enabled silently — the exact trap
-    # the helper exists to catch. The probe must also be coalescing-safe: the
-    # klaus-gateway chart ships its own top-level `enabled: true` default (its
-    # values say the chart ignores it), which Helm coalesces into .Values once
-    # the dependency is on, so hasKey cannot tell an operator-set value from
-    # the chart default there. A legacy key is therefore reported when it is
-    # provably the operator's: always while the component is off (Helm never
-    # coalesces a disabled dependency's block), and while it is on when the
-    # value is an explicit false (the only coalesced default is true) — the
+    # the helper exists to catch. The probe must also be coalescing-safe, and
+    # there are TWO coalescing sources: plain `helm install` merges the
+    # klaus-gateway chart's own top-level `enabled: true` default (its values
+    # say the chart ignores it) into .Values while the dependency is on, and
+    # chart-operator (the chart installed as a Giant Swarm App — the ATS kind
+    # smoke, where this bit) passes chartutil-coalesced values, which include
+    # the defaults of DISABLED dependencies, back as overrides — so the key is
+    # present in App installs even while the component is off. A legacy
+    # klaus-gateway.enabled is therefore provably the operator's only when its
+    # value is an explicit false (the only injected default is true) — the
     # case where the operator believes the component is off while it deploys
-    # anyway. The referenced UPGRADE.md does not exist yet (issue #8). Shrinks
-    # to the two key renames once the fleet pin moves past the same value
-    # probe upstream (agent-platform#249).
+    # anyway; a leftover `true` is silently ignored. Deviates from the
+    # while-off leg upstreamed in agent-platform#249, which chart-operator
+    # installs trip with the component off. The referenced UPGRADE.md does not
+    # exist yet (issue #8).
     - file: _helpers.tpl
       find: |-
         {{- $moved := list
@@ -267,17 +270,22 @@ templates:
               (list "agentgateway" "components.agentgateway.enabled")
               (list "valkey" "components.valkey.enabled")
               (list "kagent" "components.kagent.enabled")
-              (list "klaus-gateway" "components.klaus-gateway.enabled")
               (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
         {{- $found := list -}}
         {{- range $moved -}}
-        {{- $block := index $.Values (first .) | default dict -}}
-        {{- if hasKey $block "enabled" -}}
-        {{- $on := include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" (index (splitList "." (last .)) 1)) -}}
-        {{- if or (not $on) (not (index $block "enabled")) -}}
+        {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
         {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
         {{- end -}}
         {{- end -}}
+        {{- /* klaus-gateway is the one dependency whose chart owns a top-level
+        `enabled` default. It reaches .Values through Helm's coalescing while
+        the dependency is on, and through chart-operator's coalesced override
+        values even while it is off, so key presence never proves an operator
+        set the legacy toggle — an explicit false does (the only injected
+        default is true). */ -}}
+        {{- $klausGateway := index $.Values "klaus-gateway" | default dict -}}
+        {{- if and (hasKey $klausGateway "enabled") (not (index $klausGateway "enabled")) -}}
+        {{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
         {{- end -}}
         {{- with $found -}}
         {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}

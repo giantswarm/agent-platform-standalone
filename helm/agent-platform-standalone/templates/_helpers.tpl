@@ -66,17 +66,22 @@ the six. This turns that into a loud failure naming the new key. The removed
       (list "agentgateway" "components.agentgateway.enabled")
       (list "valkey" "components.valkey.enabled")
       (list "kagent" "components.kagent.enabled")
-      (list "klaus-gateway" "components.klaus-gateway.enabled")
       (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
 {{- $found := list -}}
 {{- range $moved -}}
-{{- $block := index $.Values (first .) | default dict -}}
-{{- if hasKey $block "enabled" -}}
-{{- $on := include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" (index (splitList "." (last .)) 1)) -}}
-{{- if or (not $on) (not (index $block "enabled")) -}}
+{{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
 {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
 {{- end -}}
 {{- end -}}
+{{- /* klaus-gateway is the one dependency whose chart owns a top-level
+`enabled` default. It reaches .Values through Helm's coalescing while
+the dependency is on, and through chart-operator's coalesced override
+values even while it is off, so key presence never proves an operator
+set the legacy toggle — an explicit false does (the only injected
+default is true). */ -}}
+{{- $klausGateway := index $.Values "klaus-gateway" | default dict -}}
+{{- if and (hasKey $klausGateway "enabled") (not (index $klausGateway "enabled")) -}}
+{{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
 {{- end -}}
 {{- with $found -}}
 {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}

@@ -1,15 +1,32 @@
-# app-test-suite config, consumed by the generated `run-tests-with-ats` CircleCI
-# job (execute-chart-tests).
+# app-test-suite config, consumed by the generated `run-tests-with-ats`
+# CircleCI job (execute-chart-tests).
 #
-# The cluster test steps are skipped in this slice. The umbrella installs
-# muster, kagent and agentgateway with their CRDs, but the render also needs
-# the Gateway API CRDs and a lab Dex on the cluster, and the kind conftest that
-# installs those prerequisites is a later slice. Until then the build-chart job
-# (app-build-suite lint, template validation, schema) and the `verify` job in
-# .circleci/custom.yml gate the PR.
-app-tests-app-config-file: helm/agent-platform-standalone/ci/ci-values.yaml
+# The smoke installs the chart itself (tests/ats/test_smoke.py): the chart
+# needs cluster prerequisites first (Gateway API CRDs, prerequisites/
+# lab-dex.yaml), so ATS's own pre-test deploy is skipped and the test deploys
+# the candidate from the in-cluster chartmuseum with
+# examples/kind-lab-dex.yaml after preparing the cluster — the same order the
+# README quick start documents.
+#
+# The upgrade scenario is ATS-driven: install the latest published chart from
+# the catalog (no values — up to 0.1.1 the chart was an empty skeleton, and
+# the current values would fail its schema), run the pre-upgrade stage (which
+# applies the prerequisites), run tests/ats/upgrade-hook.sh (the documented
+# CRD re-apply one-liner — `helm upgrade` never touches crds/), upgrade the
+# App CR to the candidate with the kind lab values, and re-run the readiness
+# and auth assertions.
+#
+# The functional step stays skipped: smoke covers install + auth, upgrade
+# covers the released-to-candidate path, and there is no third scenario yet.
+app-tests-app-config-file: examples/kind-lab-dex.yaml
 app-tests-deploy-namespace: agent-platform
+app-tests-skip-app-deploy: true
 
 smoke-tests-cluster-type: kind
+upgrade-tests-cluster-type: kind
 
-skip-steps: [smoke,functional,upgrade]
+upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
+upgrade-tests-app-version: latest
+upgrade-tests-upgrade-hook: tests/ats/upgrade-hook.sh
+
+skip-steps: [functional]
