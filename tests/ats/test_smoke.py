@@ -34,6 +34,7 @@ import re
 import secrets
 import socket
 import subprocess  # nosec: kubectl port-forward has no API equivalent
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -77,6 +78,25 @@ HEALTH_TIMEOUT = 600
 # ---------------------------------------------------------------------------
 # Cluster preparation and chart install
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module", autouse=True)
+def log_heartbeat() -> Any:
+    """One log line a minute, so CircleCI's no-output timeout (10m) never
+    fires during the long, otherwise-silent install waits (pytest live
+    logging forwards records from any thread)."""
+    stop = threading.Event()
+
+    def beat() -> None:
+        minutes = 0
+        while not stop.wait(60):
+            minutes += 1
+            logger.info("heartbeat: %d min elapsed, still waiting/working", minutes)
+
+    thread = threading.Thread(target=beat, name="log-heartbeat", daemon=True)
+    thread.start()
+    yield
+    stop.set()
 
 
 @pytest.fixture(scope="module")
@@ -167,6 +187,7 @@ def wait_for_all_deployments_ready(
     deadline = time.monotonic() + timeout
     names: Set[str] = set()
     not_ready: Set[str] = set()
+    polls = 0
     while time.monotonic() < deadline:
         deps = _deployments(kube_client, NAMESPACE) + _deployments(
             kube_client, KAGENT_NAMESPACE
@@ -175,6 +196,13 @@ def wait_for_all_deployments_ready(
         not_ready = {
             f"{d.namespace}/{d.name}" for d in deps if not _deployment_ready(d)
         }
+        polls += 1
+        if polls % 6 == 0:
+            logger.info(
+                "waiting for Deployments: missing=%s notReady=%s",
+                sorted(required - names),
+                sorted(not_ready),
+            )
         if required <= names and not not_ready:
             # kagent (its own namespace) and Backstage names derive from the
             # release; assert their presence loosely.
