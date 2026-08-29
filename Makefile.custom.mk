@@ -95,3 +95,12 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 	@out=$$($(VANILLA) --set components.kagent.uiRoute.hostname=ui.example.com --set kagent.kagent.oauth2-proxy.enabled=true 2>&1); \
 	printf '%s' "$$out" | grep -q 'redirect-url still derives from global.domain' || { \
 		echo "FAIL: overridden kagent UI hostname with the derived redirect-url accepted"; exit 1; }
+	@echo "--> guards: a leftover klaus-gateway.enabled fails the legacy-toggle probe in both component states"
+	@out=$$($(VANILLA) --set components.klaus-gateway.enabled=true --set klaus-gateway.enabled=false 2>&1) && { \
+		echo "FAIL: klaus-gateway.enabled=false accepted while components.klaus-gateway.enabled=true"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'move klaus-gateway.enabled -> components.klaus-gateway.enabled' || { \
+		echo "FAIL: render failed for another reason than the legacy-toggle guard"; exit 1; }
+	@out=$$($(VANILLA) --set klaus-gateway.enabled=true 2>&1) && { \
+		echo "FAIL: legacy klaus-gateway.enabled accepted while the component is off"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'move klaus-gateway.enabled -> components.klaus-gateway.enabled' || { \
+		echo "FAIL: render failed for another reason than the legacy-toggle guard"; exit 1; }

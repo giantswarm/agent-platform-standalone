@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The legacy-toggle guard also fires for `klaus-gateway.enabled: false` while `components.klaus-gateway.enabled` is true. The klaus-gateway chart's own coalesced `enabled: true` default made the `hasKey` probe blind once the dependency was on, so an operator who set both got a green install with the old key silently ignored. An explicit `false` under an enabled component can only be operator-set and now fails loudly; `verify-decisions` covers both component states.
 - The kagent UI route's direct backendRef honors `kagent.kagent.fullnameOverride` instead of targeting a Service named after the release.
 - The public muster `/` route and the kagent Namespace render only when their components are enabled.
 - Validation messages, `required` errors and values comments name the keys of this chart's layout (`components.kagent.*`, `kagent.kagent.*`) instead of the fleet paths nothing here reads; the legacy-toggle hints probe the renamed `klaus-gateway`/`agent-sandbox` keys and no longer point at a nonexistent UPGRADE.md.
