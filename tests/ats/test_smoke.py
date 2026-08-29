@@ -374,6 +374,18 @@ def wait_for_muster_healthy(edge: Edge, timeout: int = HEALTH_TIMEOUT) -> None:
     raise AssertionError(f"muster never became healthy; last answer: {last}")
 
 
+def _dump_auth_logs(kube_cluster: Cluster) -> None:
+    """muster and lab-dex logs, for diagnosing a failed login flow."""
+    for target in ("deployment/muster", "deployment/lab-dex"):
+        try:
+            out = kube_cluster.kubectl(
+                f"-n {NAMESPACE} logs {target} --tail=120", output_format=""
+            )
+            logger.error("logs of %s (tail):\n%s", target, out)
+        except Exception as exc:  # diagnostics must never mask the assertion
+            logger.error("fetching logs of %s failed: %s", target, exc)
+
+
 def heal_backstage_startup_race(kube_cluster: Cluster) -> None:
     """Restart Backstage if it lost the boot race against the edge Gateway.
 
@@ -510,6 +522,9 @@ def login_and_get_token(edge: Edge) -> str:
 
     query = parse_qs(urlsplit(url).query)
     assert query.get("state") == [state], f"state mismatch in {url}"
+    # An error outcome redirects here too, with error/error_description
+    # instead of a code — surface the whole redirect for diagnosis.
+    assert "code" in query, f"authorization did not yield a code: {url}"
     code = query["code"][0]
 
     r = edge.request(
@@ -592,10 +607,14 @@ def test_unauthenticated_mcp_gets_401_with_discovery_chain(
 @pytest.mark.smoke
 @pytest.mark.flaky(reruns=2, reruns_delay=30)
 def test_static_user_login_reaches_mcp(
-    app_deployment: ConfiguredApp, edge: Edge
+    kube_cluster: Cluster, app_deployment: ConfiguredApp, edge: Edge
 ) -> None:
     wait_for_muster_healthy(edge)
-    assert_login_reaches_mcp(edge)
+    try:
+        assert_login_reaches_mcp(edge)
+    except BaseException:
+        _dump_auth_logs(kube_cluster)
+        raise
 
 
 @pytest.mark.smoke
@@ -672,4 +691,8 @@ def test_upgrade(
     heal_backstage_startup_race(kube_cluster)
     wait_for_all_deployments_ready(kube_cluster)
     assert_unauthenticated_mcp_401(edge_fixture)
-    assert_login_reaches_mcp(edge_fixture)
+    try:
+        assert_login_reaches_mcp(edge_fixture)
+    except BaseException:
+        _dump_auth_logs(kube_cluster)
+        raise
