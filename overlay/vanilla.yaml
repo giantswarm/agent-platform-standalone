@@ -1,7 +1,88 @@
-# Vanilla overrides, merged last by hack/curate.sh on top of the transformed
-# fleet defaults. Only umbrella-owned keys (global, components, the wiring
-# blocks) and dependency names are allowed at the top level.
-#
-# Empty on purpose in this slice: the vanilla defaults (network policies off,
-# ServiceMonitors off, OTLP unset, policyEngine none) arrive with the
-# `components.*` / `global.*` contract in a later slice.
+# The fleet defaults a vanilla cluster turns off, merged last by
+# hack/curate.sh (after overlay/contract.yaml). examples/giantswarm.yaml is
+# generated from this file: every leaf here that overrides a fleet value comes
+# back there with that value. A leaf under an umbrella-owned key must override
+# a path the fleet-derived values carry (the generator fails otherwise);
+# leaves inside dependency blocks may also flip component-chart defaults the
+# generator cannot see. Only umbrella-owned keys and dependency names are
+# allowed at the top level.
+
+global:
+  # No Cilium on a vanilla cluster: policies off, and the portable flavor when
+  # an operator turns them on.
+  networkPolicy:
+    enabled: false
+    flavor: kubernetes
+  observability:
+    metrics:
+      # No monitoring.coreos.com CRDs on a vanilla cluster.
+      serviceMonitor:
+        enabled: false
+
+components:
+  # The dicebear route needs Envoy Gateway's HTTPRouteFilter; off until the
+  # avatar route renders on agentgateway too.
+  dicebear:
+    enabled: false
+  # The agent-sandbox pod-security policy is a Kyverno mutate policy; without
+  # Kyverno the controller runs with the upstream chart's own security context.
+  agent-sandbox:
+    podSecurity:
+      enabled: false
+
+# No Kyverno on a vanilla cluster.
+kyvernoPolicies:
+  enabled: false
+
+muster:
+  networkPolicy:
+    enabled: false
+  muster:
+    observability:
+      metrics:
+        prometheus:
+          serviceMonitor:
+            enabled: false
+          prometheusRule:
+            enabled: false
+
+valkey:
+  ciliumNetworkPolicy:
+    enabled: false
+  valkey:
+    metrics:
+      # The valkey chart's own default is on.
+      podMonitor:
+        enabled: false
+
+kagent:
+  kagent:
+    controller:
+      # The fleet list minus the Giant Swarm OTLP tenant header; the metrics
+      # env stays so the controller serves /metrics for any scraper.
+      env:
+        - name: METRICS_BIND_ADDRESS
+          value: ":8080"
+        - name: METRICS_SECURE
+          value: "false"
+    serviceMonitor:
+      enabled: false
+    otel:
+      tracing:
+        enabled: false
+        exporter:
+          otlp:
+            endpoint: ""
+      logging:
+        enabled: false
+        exporter:
+          otlp:
+            endpoint: ""
+    oauth2-proxy:
+      metrics:
+        serviceMonitor:
+          enabled: false
+
+dicebear:
+  route:
+    enabled: false

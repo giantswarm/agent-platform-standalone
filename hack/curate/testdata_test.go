@@ -46,6 +46,9 @@ kagent:
     enabled: false
   controller:
     image: kagent-controller
+    env:
+      - name: OTEL_EXPORTER_OTLP_HEADERS
+        value: X-Scope-OrgID=giantswarm
 agent-platform-mcps:
   mcpServers: []
 agentSandbox:
@@ -61,6 +64,15 @@ components:
 ingress:
   parentRefs: []
   fromConnectivity: true
+  httpRoute:
+    labels: {}
+# netpol comment survives the move
+networkPolicy:
+  enabled: true
+  flavor: cilium
+postgres:
+  enabled: false
+  clusterName: kagent-pg
 muster:
   fullnameOverride: muster
 kagent: {}
@@ -68,6 +80,38 @@ agent-platform-mcps: {}
 agentSandbox:
   podSecurity:
     enabled: true
+`
+
+const fixtureContract = `global:
+  domain: ""
+gatewayApi:
+  gateway:
+    create: false
+ingress:
+  httpRoute:
+    labels: {}  # @schema type: object; additionalProperties: true
+backstage:
+  ingress:
+    enabled: false
+`
+
+const fixtureOverlay = `global:
+  networkPolicy:
+    enabled: false
+    flavor: kubernetes
+muster:
+  replicaCount: 1
+kagent:
+  kagent:
+    controller:
+      env: []
+`
+
+const fixtureGiantswarmInputs = `global:
+  domain: example.gigantic.io
+gatewayApi:
+  gateway:
+    create: true
 `
 
 const fixtureConfig = `fleet:
@@ -98,6 +142,9 @@ keys:
   gitops: {action: drop}
   components: {action: dependencies, allowShadow: true}
   ingress: {action: wiring, allowShadow: true}
+  networkPolicy: {action: wiring, moveTo: global.networkPolicy}
+  postgres: {action: wiring}
+  gatewayApi: {action: umbrella}
   muster:
     action: component
     keepEnabled: true
@@ -138,6 +185,7 @@ ns: {{ .Values.kagent.namespaceOverride }}
 route: {{ .Values.kagent.controllerRoute.enabled }}
 sandbox: {{ .Values.agentSandbox.podSecurity.enabled }}
 mcps: {{ (index .Values "agent-platform-mcps").mcpServers }}
+flavor: {{ .Values.networkPolicy.flavor }}
 dns: {{ include "agent-platform.dnsEgress" . }}
 {{- end }}
 `,
@@ -162,10 +210,12 @@ func parseDocument(t *testing.T, raw string) *yaml.Node {
 func fixtureInputs(t *testing.T) Inputs {
 	t.Helper()
 	return Inputs{
-		Config:       parseConfig(t, fixtureConfig),
-		Fleet:        parseDocument(t, fixtureFleet),
-		Connectivity: parseDocument(t, fixtureConnectivity),
-		Overlay:      parseDocument(t, ""),
+		Config:           parseConfig(t, fixtureConfig),
+		Fleet:            parseDocument(t, fixtureFleet),
+		Connectivity:     parseDocument(t, fixtureConnectivity),
+		Contract:         parseDocument(t, fixtureContract),
+		Overlay:          parseDocument(t, fixtureOverlay),
+		GiantswarmInputs: parseDocument(t, fixtureGiantswarmInputs),
 	}
 }
 

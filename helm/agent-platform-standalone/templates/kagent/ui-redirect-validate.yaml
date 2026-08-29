@@ -1,0 +1,13 @@
+{{- /* Umbrella-owned guard (templates.extra, not generated). The curated
+oauth2-proxy redirect-url derives from global.domain (see values.yaml), and
+the oauth2-proxy subchart cannot see components.kagent.uiRoute.hostname: an
+overridden UI hostname with the derived callback renders green and breaks
+login at runtime. Fail the render instead. */ -}}
+{{- if (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent")) }}
+{{- $uiHostname := .Values.components.kagent.uiRoute.hostname }}
+{{- $proxy := index .Values.kagent.kagent "oauth2-proxy" | default dict }}
+{{- $redirect := dig "extraArgs" "redirect-url" "" $proxy | toString }}
+{{- if and $uiHostname (dig "enabled" false $proxy) (contains ".Values.global.domain" $redirect) }}
+{{- fail (printf "components.kagent.uiRoute.hostname is %q but kagent.kagent.oauth2-proxy.extraArgs.redirect-url still derives from global.domain; set redirect-url: https://%s/oauth2/callback" $uiHostname $uiHostname) }}
+{{- end }}
+{{- end }}

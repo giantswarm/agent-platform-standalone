@@ -1,20 +1,25 @@
 # Input of hack/curate.sh, the generator that produces
-# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock} and the
-# chart's templates.
+# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock}, the
+# chart's templates and examples/giantswarm.yaml.
 #
 # The fleet meta-package (giantswarm/agent-platform) is the source of truth for
 # component defaults until step 2 of the plan. The generator reads its values
 # and the frozen agent-platform-connectivity values at the pinned version, and
 # transforms them with the rules below. Every top-level key of both charts must
 # have a rule (deny-unknown): a fleet rename or a new Giant Swarm-only default
-# fails the run instead of leaking into the vanilla defaults.
+# fails the run instead of leaking into the vanilla defaults. On top of the
+# transformed values the generator merges overlay/contract.yaml (the umbrella's
+# input contract, kept by every install) and overlay/vanilla.yaml (the fleet
+# defaults a vanilla cluster turns off); examples/giantswarm.yaml is generated
+# by reverting every vanilla leaf to its fleet value and merging
+# overlay/giantswarm.yaml on top.
 
 fleet:
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
   # Exact pin, bumped by the weekly curation job.
-  version: 3.0.4
+  version: 3.1.0
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -87,7 +92,12 @@ dependencies:
 #   drop          fleet-only mechanics, not part of the umbrella
 #   dependencies  the fleet `components` map: source of the dependency list
 #   wiring        umbrella-owned block, copied from the connectivity values
-#                 (its templates read it and live in this chart)
+#                 (its templates read it and live in this chart); `moveTo`
+#                 relocates it under a dotted path, e.g. global.networkPolicy,
+#                 and the template rewrite follows the move
+#   umbrella      umbrella-only key neither source chart knows; an overlay
+#                 must define it, a fleet or connectivity block under the
+#                 same key fails the run
 #   component     a component's values: renamed to the chart name, `lift` keys
 #                 moved to components.<chart>.*, nested under the fleet
 #                 valuesKey. `keepEnabled` forwards an `enabled` key the
@@ -111,7 +121,11 @@ keys:
   components: {action: dependencies, allowShadow: true}
   ingress: {action: wiring, allowShadow: true}
   gateway: {action: wiring, allowShadow: true}
-  networkPolicy: {action: wiring, allowShadow: true}
+  gatewayApi: {action: wiring, allowShadow: true}
+  # Under global so a component chart can read the same flavor split later;
+  # Helm forwards only global.* to subcharts. Downstream-only: upstream keeps
+  # .Values.networkPolicy, the template rewrite follows the move.
+  networkPolicy: {action: wiring, moveTo: global.networkPolicy, allowShadow: true}
   kyvernoPolicies: {action: wiring, allowShadow: true}
   extraObjects: {action: wiring, allowShadow: true}
   postgres: {action: wiring, allowShadow: true}
@@ -155,7 +169,17 @@ annotations:
   components.kagent.controllerRoute.parentRef: "additionalProperties: true"
   components.kagent.uiRoute.parentRef: "additionalProperties: true"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
-  networkPolicy.flavor: "enum:[cilium,kubernetes]"
+  global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
+  # Operator-set label/annotation maps: the schema generator would close the
+  # curated empty defaults, rejecting every key an operator adds.
+  ingress.httpRoute.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.labels: "type: object; additionalProperties: true"
+  ingress.httpRoute.muster.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.muster.labels: "type: object; additionalProperties: true"
+  ingress.httpRoute.mcp.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.mcp.labels: "type: object; additionalProperties: true"
+  ingress.backendTrafficPolicy.annotations: "type: object; additionalProperties: true"
+  ingress.backendTrafficPolicy.labels: "type: object; additionalProperties: true"
 
 # The connectivity chart's templates are copied into this chart on every run.
 # Helper names take the chart-name prefix, and every values path the transform
@@ -252,6 +276,15 @@ templates:
         {{- with $found -}}
         {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
         {{- end -}}
+    # The copied helper doc states the upstream default (enabled: true), which
+    # overlay/vanilla.yaml flips; the byte-checked artifact must not document a
+    # wrong default. Retires when upstream drops the default from the prose.
+    - file: _helpers.tpl
+      find: |-
+        (global.observability.metrics.serviceMonitor.enabled, default true). The
+      replace: |-
+        (global.observability.metrics.serviceMonitor.enabled; the vanilla default
+        of this chart is false). The
     # ingress.mode=muster-direct turns the agentgateway component (and with it
     # the agentgateway.dev CRDs) off, so anything that renders agentgateway.dev
     # resources or attaches to the chart-owned Gateway must fail loudly in that
@@ -282,6 +315,14 @@ templates:
         {{- end -}}
   # Files under templates/ this generator does not produce. The install notes
   # are the umbrella's own: the fleet's version tells the reader to install the
-  # meta-package.
+  # meta-package. The Backstage app-config and route are umbrella-only: the
+  # fleet's Backstage is configured by the Giant Swarm management cluster, not
+  # by the connectivity chart. They call the generated (already renamed)
+  # helpers directly.
   extra:
     - NOTES.txt
+    - backstage/app-config.yaml
+    - backstage/httproute.yaml
+    # Guards the curated oauth2-proxy redirect-url (a values-level default the
+    # connectivity chart does not know) against a diverging UI hostname.
+    - kagent/ui-redirect-validate.yaml

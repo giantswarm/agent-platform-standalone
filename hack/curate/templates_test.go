@@ -18,12 +18,9 @@ func renderFixtureTemplates(t *testing.T, config *Config, sources map[string]str
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	}
-	result, err := Transform(Inputs{
-		Config:       config,
-		Fleet:        parseDocument(t, fixtureFleet),
-		Connectivity: parseDocument(t, fixtureConnectivity),
-		Overlay:      parseDocument(t, ""),
-	})
+	in := fixtureInputs(t)
+	in.Config = config
+	result, err := Transform(in)
 	require.NoError(t, err)
 	return RenderTemplates(config, dir, result.Moves, result.ValueKeys)
 }
@@ -47,12 +44,14 @@ func TestRenderTemplates(t *testing.T) {
 		".Values.components.kagent.controllerRoute.enabled",
 		`(index .Values.components "agent-sandbox").podSecurity.enabled`,
 		`(index .Values "agent-platform-mcps").mcpServers`,
+		".Values.global.networkPolicy.flavor",
 		"components.agent-sandbox.podSecurity.namespace must match",
 	} {
 		require.Contains(t, netpol, want)
 	}
 	require.NotContains(t, netpol, ".Values.agentSandbox")
 	require.NotContains(t, netpol, ".Values.kagent.namespaceOverride")
+	require.NotContains(t, netpol, ".Values.networkPolicy", "a moveTo rule relocates the wiring block in the templates too")
 }
 
 func TestRenderTemplatesIsDeterministic(t *testing.T) {
@@ -97,6 +96,7 @@ func TestRenderTemplatesRewritesProsePaths(t *testing.T) {
 # muster.controllerRoute.hostname is nested under a carried key
 # myagentSandbox.foo is a longer identifier
 # kagent.dev is a domain, not a values path
+# networkPolicy.flavor governs the policy flavor
 `
 	templates, err := renderFixtureTemplates(t, config, map[string]string{"x.yaml": source})
 	require.NoError(t, err)
@@ -106,6 +106,7 @@ func TestRenderTemplatesRewritesProsePaths(t *testing.T) {
 	require.Contains(t, text, "muster.controllerRoute.hostname is nested", "a path under an unmoved key stays")
 	require.Contains(t, text, "myagentSandbox.foo is a longer identifier")
 	require.Contains(t, text, "kagent.dev is a domain")
+	require.Contains(t, text, "global.networkPolicy.flavor governs", "a moved wiring block moves in prose")
 }
 
 func TestRenderTemplatesAppliesPatches(t *testing.T) {

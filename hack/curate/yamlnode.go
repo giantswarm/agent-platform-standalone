@@ -141,17 +141,89 @@ func scalarString(node *yaml.Node, what string) (string, error) {
 	return node.Value, nil
 }
 
+// cloneNode deep-copies a node tree, comments included.
+func cloneNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	clone := *node
+	clone.Alias = cloneNode(node.Alias)
+	clone.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		clone.Content[i] = cloneNode(child)
+	}
+	return &clone
+}
+
 // deepMerge merges overlay into base. Mappings merge recursively, any other
-// node from the overlay replaces the base node.
+// node from the overlay replaces the base node. When either side of a mapping
+// merge is empty the overlay's comments (schema annotations, a block's
+// documentation) move onto the base node; a rich comment on a non-empty base
+// block is never overwritten. Filling an empty flow-style mapping (`key: {}`)
+// switches it to block style, moving its line comment to the key node, where
+// yaml.v3 renders a block value's comment from.
 func deepMerge(base *yaml.Node, overlay *yaml.Node) {
 	for i := 0; i+1 < len(overlay.Content); i += 2 {
 		key, value := overlay.Content[i], overlay.Content[i+1]
-		_, existing := mappingGet(base, key.Value)
+		existingKey, existing := mappingGet(base, key.Value)
 		if existing != nil && existing.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
+			if len(value.Content) == 0 || len(existing.Content) == 0 {
+				copyComments(existingKey, key)
+				copyComments(existing, value)
+			}
+			if len(existing.Content) == 0 && len(value.Content) > 0 && existing.Style == yaml.FlowStyle {
+				existing.Style = 0
+				if existing.LineComment != "" && existingKey.LineComment == "" {
+					existingKey.LineComment = existing.LineComment
+					existing.LineComment = ""
+				}
+			}
 			deepMerge(existing, value)
 			continue
 		}
 		mappingSet(base, key, value)
+	}
+}
+
+// pathSet stores node under the dotted path in root. Intermediate mappings
+// are created; the last segment becomes the key name, the original key node
+// keeps its comments. A destination that already exists fails: silently
+// replacing it would hide a source chart later shipping the same key
+// (deny-unknown).
+func pathSet(root *yaml.Node, path string, key *yaml.Node, value *yaml.Node) error {
+	segments := strings.Split(path, ".")
+	current := root
+	for _, segment := range segments[:len(segments)-1] {
+		_, next := mappingGet(current, segment)
+		if next == nil {
+			next = newMapping()
+			mappingSet(current, newScalar(segment), next)
+		}
+		if next.Kind != yaml.MappingNode {
+			return fmt.Errorf("%q is not a mapping", segment)
+		}
+		current = next
+	}
+	last := segments[len(segments)-1]
+	if _, existing := mappingGet(current, last); existing != nil {
+		return fmt.Errorf("%q already exists at the destination; the relocation would replace it", path)
+	}
+	renamed := *key
+	renamed.Value = last
+	mappingSet(current, &renamed, value)
+	return nil
+}
+
+// copyComments overwrites the comments of dst with the non-empty ones of src.
+func copyComments(dst, src *yaml.Node) {
+	if src.HeadComment != "" {
+		dst.HeadComment = src.HeadComment
+	}
+	if src.LineComment != "" {
+		dst.LineComment = src.LineComment
+	}
+	if src.FootComment != "" {
+		dst.FootComment = src.FootComment
 	}
 }
 

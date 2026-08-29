@@ -162,9 +162,11 @@ inconsistent. Rendered exactly once via templates/validate.yaml.
 {{- fail "ingress.mode=agentgateway-direct requires a DCR-capable IdP (RFC 7591/8707), e.g. Zitadel; not yet supported" -}}
 {{- end -}}
 {{- $isAgentgateway := or (eq $mode "agentgateway-muster") (eq $mode "agentgateway-direct") -}}
-{{- if not .Values.ingress.parentRefs -}}
-{{- fail "ingress.parentRefs is required in all modes — the umbrella-owned muster `/` route (and the agentgateway `/mcp` route in agentgateway-* modes) attaches to it; an empty parentRefs renders a route bound to no Gateway, leaving muster unreachable while install reports success" -}}
-{{- end -}}
+{{- /* The muster `/` route needs a Gateway in every mode; the helper fails the
+render when neither ingress.parentRefs, the chart-owned edge nor
+global.gatewayApi.parentRefs names one — an empty result would render a route
+bound to no Gateway, leaving muster unreachable while install reports success. */ -}}
+{{- $_ := include "agent-platform-standalone.parentRefs" (dict "ctx" . "override" .Values.ingress.parentRefs "key" "ingress.parentRefs") -}}
 {{- /* viaMuster only matters when the mcps sub-chart is installed; with no MCP
 servers there is nothing to route, so the consistency check is scoped to the
 agent-platform-mcps component. */ -}}
@@ -201,6 +203,152 @@ agent-platform-mcps component. */ -}}
 {{- $klausGatewayOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "klaus-gateway") -}}
 {{- if and $klausGatewayOn (dig "agentgatewayRoute" "enabled" false (index .Values "klaus-gateway" | default dict)) -}}
 {{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+global.domain, or a render failure naming the override key the caller could set
+instead. Usage: include "agent-platform-standalone.domain" (dict "ctx" . "for" "ingress.hostnames")
+*/}}
+{{- define "agent-platform-standalone.domain" -}}
+{{- required (printf "global.domain is empty and %s is not set: set global.domain (hostnames derive from it) or %s" .for .for) .ctx.Values.global.domain -}}
+{{- end -}}
+
+{{/*
+A public hostname: the per-component override when set, else <prefix>.<global.domain>.
+Usage: include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "kagent" "override" $h "key" "components.kagent.uiRoute.hostname")
+*/}}
+{{- define "agent-platform-standalone.hostname" -}}
+{{- if .override -}}
+{{- .override -}}
+{{- else -}}
+{{- printf "%s.%s" .prefix (include "agent-platform-standalone.domain" (dict "ctx" .ctx "for" .key)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Truthy when the chart-owned agentgateway Gateway is also the public edge
+(gatewayApi.gateway.create). Every public route then attaches to its HTTPS
+listener, and the layer-1 routes that forward a front Gateway to the
+agentgateway Service are not rendered: the data plane would proxy to itself.
+*/}}
+{{- define "agent-platform-standalone.edgeIsDataPlane" -}}
+{{- if .Values.gatewayApi.gateway.create -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+The parentRefs of a public route, as a YAML list: the per-route override when
+set, else the chart-owned edge Gateway, else global.gatewayApi.parentRefs.
+The edge ref pins the route to the HTTPS listener via sectionName so the
+plaintext :8080 listener never serves public hostnames through the edge's
+LoadBalancer Service.
+Usage: include "agent-platform-standalone.parentRefs" (dict "ctx" . "override" $list "key" "ingress.parentRefs")
+*/}}
+{{- define "agent-platform-standalone.parentRefs" -}}
+{{- if .override -}}
+{{- toYaml .override -}}
+{{- else if (include "agent-platform-standalone.edgeIsDataPlane" .ctx) -}}
+- name: {{ .ctx.Values.gateway.name }}
+  namespace: {{ .ctx.Release.Namespace }}
+  group: gateway.networking.k8s.io
+  kind: Gateway
+  sectionName: https
+{{- else if .ctx.Values.global.gatewayApi.parentRefs -}}
+{{- toYaml .ctx.Values.global.gatewayApi.parentRefs -}}
+{{- else -}}
+{{- fail (printf "no public Gateway for %s: set global.gatewayApi.parentRefs (the cluster's Gateway), or gatewayApi.gateway.create: true (the chart creates the edge), or %s" .key .key) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+HTTPRoute rule timeouts shared by the umbrella-owned routes (ingress.httpRoute.timeouts).
+Emits nothing when unset. Usage:
+  {{- with (include "agent-platform-standalone.routeTimeouts" .) }}
+  {{- . | nindent 6 }}
+  {{- end }}
+*/}}
+{{- define "agent-platform-standalone.routeTimeouts" -}}
+{{- with .Values.ingress.httpRoute.timeouts }}
+timeouts:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Truthy when the umbrella renders its ServiceMonitor / PodMonitor objects
+(global.observability.metrics.serviceMonitor.enabled; the vanilla default
+of this chart is false). The
+per-component keys underneath (kagent.kagent.serviceMonitor.*) keep working.
+*/}}
+{{- define "agent-platform-standalone.serviceMonitor" -}}
+{{- if .Values.global.observability.metrics.serviceMonitor.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+OTEL exporter env for the agentgateway data-plane container, from
+global.observability.traces.otlp. Emits nothing when the endpoint is empty.
+Rendered as YAML list items.
+*/}}
+{{- define "agent-platform-standalone.otlpEnv" -}}
+{{- with .Values.global.observability.traces.otlp }}
+{{- if .endpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .endpoint | quote }}
+{{- with .protocol }}
+- name: OTEL_EXPORTER_OTLP_PROTOCOL
+  value: {{ . | quote }}
+{{- end }}
+{{- if .headers }}
+{{- $pairs := list }}
+{{- range $key, $value := .headers }}
+{{- $pairs = append $pairs (printf "%s=%s" $key $value) }}
+{{- end }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: {{ join "," $pairs | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+global.identity.issuerUrl, or a render failure. Usage:
+  include "agent-platform-standalone.issuerUrl" (dict "ctx" . "for" "the kagent JWT policy")
+*/}}
+{{- define "agent-platform-standalone.issuerUrl" -}}
+{{- required (printf "global.identity.issuerUrl is empty but %s needs the login issuer" .for) .ctx.Values.global.identity.issuerUrl -}}
+{{- end -}}
+
+{{/*
+Guards on the global.* contract. Rendered once via templates/validate.yaml.
+*/}}
+{{- define "agent-platform-standalone.validateGlobal" -}}
+{{- if .Values.gatewayApi.gateway.create -}}
+{{- if not (include "agent-platform-standalone.ingress.agentgateway" .) -}}
+{{- fail "gatewayApi.gateway.create is true but ingress.mode is muster-direct: the chart-owned edge is the agentgateway data-plane Gateway, so set ingress.mode: agentgateway-muster and components.agentgateway.enabled: true" -}}
+{{- end -}}
+{{- if not .Values.gatewayApi.gateway.tls.secretName -}}
+{{- fail "gatewayApi.gateway.create is true but gatewayApi.gateway.tls.secretName is empty: the HTTPS listener for *.<global.domain> needs the wildcard certificate Secret" -}}
+{{- end -}}
+{{- $_ := include "agent-platform-standalone.domain" (dict "ctx" . "for" "gatewayApi.gateway.create") -}}
+{{- end -}}
+{{- /* The muster chart reads its own OIDC keys; a value that disagrees with
+global.identity would give two components two different logins. Checked only
+where both sides are set, so installs that ignore global.identity are
+untouched. */ -}}
+{{- if .Values.components.muster.enabled -}}
+{{- $server := dig "muster" "oauth" "server" dict (.Values.muster | default dict) -}}
+{{- if and ($server.enabled | default false) .Values.global.identity.issuerUrl -}}
+{{- $dex := $server.dex | default dict -}}
+{{- if and $dex.issuerUrl (ne $dex.issuerUrl .Values.global.identity.issuerUrl) -}}
+{{- fail (printf "muster.muster.oauth.server.dex.issuerUrl (%s) differs from global.identity.issuerUrl (%s); the platform has one login provider" $dex.issuerUrl .Values.global.identity.issuerUrl) -}}
+{{- end -}}
+{{- if and $dex.clientId .Values.global.identity.clientId (ne $dex.clientId .Values.global.identity.clientId) -}}
+{{- fail (printf "muster.muster.oauth.server.dex.clientId (%s) differs from global.identity.clientId (%s)" $dex.clientId .Values.global.identity.clientId) -}}
+{{- end -}}
+{{- if and $server.existingSecret .Values.global.identity.existingSecret (ne $server.existingSecret .Values.global.identity.existingSecret) -}}
+{{- fail (printf "muster.muster.oauth.server.existingSecret (%s) differs from global.identity.existingSecret (%s)" $server.existingSecret .Values.global.identity.existingSecret) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -1,4 +1,4 @@
-{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "kubernetes") }}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "kubernetes") }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -17,10 +17,21 @@ spec:
       ports:
         - port: {{ (index .Values.gateway.listeners 0).port }}
           protocol: TCP
+    {{- if (include "agent-platform-standalone.edgeIsDataPlane" .) }}
+    # The data plane is the public edge: the HTTPS listener takes traffic from
+    # outside the cluster. World traffic is admitted on 443 only — the
+    # plaintext listener above stays cluster-internal.
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+    {{- end }}
   egress:
     - to:
         - ipBlock:
-            cidr: {{ .Values.networkPolicy.kubernetes.apiServerCIDR | quote }}
+            cidr: {{ .Values.global.networkPolicy.kubernetes.apiServerCIDR | quote }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -42,7 +53,7 @@ spec:
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
-            except: {{ toYaml .Values.networkPolicy.kubernetes.worldExcludedCIDRs | nindent 14 }}
+            except: {{ toYaml .Values.global.networkPolicy.kubernetes.worldExcludedCIDRs | nindent 14 }}
       ports:
         - port: 80
           protocol: TCP
@@ -82,7 +93,7 @@ spec:
           protocol: TCP
     {{- end }}
     {{- end }}
-    {{- with .Values.networkPolicy.additionalEgressCIDRs }}
+    {{- with .Values.global.networkPolicy.additionalEgressCIDRs }}
     - to:
         {{- range . }}
         - ipBlock:

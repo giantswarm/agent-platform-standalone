@@ -1,18 +1,38 @@
-# kind quick start: agentgateway as the edge Gateway, a lab Dex as the IdP.
+# kind quick start: the chart's agentgateway Gateway is the public edge, a lab
+# Dex is the identity provider.
 #
+#   kubectl apply -f prerequisites/lab-dex.yaml          # a later slice
 #   helm dependency build helm/agent-platform-standalone
 #   helm install agent-platform helm/agent-platform-standalone -n agent-platform \
 #     --create-namespace -f examples/kind-lab-dex.yaml
 #
-# LAB ONLY. The lab Dex (static password users, no upstream connector) and the
-# self-signed wildcard certificate come from prerequisites/lab-dex.yaml, which a
-# later slice adds together with the `global.*` input contract. Until then the
-# values below use the component charts' own keys (nested under the wrapper
-# chart's subchart key for kagent and agentgateway).
+# LAB ONLY. The lab Dex (static password users, no upstream connector), the
+# self-signed wildcard certificate and the Secrets below come from
+# prerequisites/lab-dex.yaml. Never a production path.
 #
-# Prerequisites on the cluster: Gateway API CRDs, a Secret `agent-platform-idp`
-# in the release namespace with the Dex client secret, and DNS for
-# *.127.0.0.1.nip.io (the nip.io wildcard resolves to localhost).
+# Prerequisites on the cluster: Gateway API CRDs; in the release namespace the
+# Secret `agent-platform-idp` (dex-client-secret, registration-token,
+# oauth-encryption-key, valkey-password, backstage-session-secret), the
+# wildcard certificate Secret `agent-platform-tls` and the lab CA Secret
+# `agent-platform-idp-ca` (key ca.crt); DNS for *.127.0.0.1.nip.io (the nip.io
+# wildcard resolves to localhost).
+
+global:
+  domain: 127.0.0.1.nip.io
+  identity:
+    issuerUrl: https://dex.127.0.0.1.nip.io
+    clientId: agent-platform
+    existingSecret: agent-platform-idp
+    ca:
+      secretName: agent-platform-idp-ca
+
+# The chart-owned agentgateway Gateway is the public edge: it terminates TLS
+# for *.127.0.0.1.nip.io and every public route attaches to its HTTPS listener.
+gatewayApi:
+  gateway:
+    create: true
+    tls:
+      secretName: agent-platform-tls
 
 components:
   muster:
@@ -23,16 +43,9 @@ components:
     enabled: true
     controllerRoute:
       enabled: true
-      hostname: agentgateway.127.0.0.1.nip.io
-      # The data-plane Gateway rendered by this chart is the edge on kind.
-      parentRef:
-        name: agentgateway
-        namespace: agent-platform
   agentgateway:
     enabled: true
   agent-platform-mcps:
-    enabled: true
-  dicebear:
     enabled: true
   backstage:
     enabled: true
@@ -43,31 +56,13 @@ components:
   cloudnative-pg:
     enabled: false
 
-# client -> agentgateway /mcp -> muster. The agentgateway data-plane Gateway
-# (gateway.name, rendered by this chart) is also the public edge: the muster
-# and avatar routes attach to it.
+# client -> agentgateway /mcp -> muster
 ingress:
   mode: agentgateway-muster
-  parentRefs:
-    - name: agentgateway
-      namespace: agent-platform
-  hostnames:
-    - muster.127.0.0.1.nip.io
 
-gateway:
-  parameters:
-    # No OTLP gateway on kind: an empty list renders no OTEL env.
-    dataPlaneEnv: []
-
-# kind has no Cilium and no Kyverno.
-networkPolicy:
-  enabled: false
-kyvernoPolicies:
-  enabled: false
-
+# The muster chart reads its own OIDC keys; they must match global.identity
+# (the render fails otherwise).
 muster:
-  networkPolicy:
-    enabled: false
   muster:
     oauth:
       server:
@@ -75,44 +70,20 @@ muster:
         dex:
           issuerUrl: https://dex.127.0.0.1.nip.io
           clientId: agent-platform
+          # The lab Dex resolves to a private address.
+          allowPrivateIPOIDC: true
         existingSecret: agent-platform-idp
-    observability:
-      metrics:
-        prometheus:
-          serviceMonitor:
-            enabled: false
-          prometheusRule:
-            enabled: false
+    # The lab CA, for OIDC discovery and JWKS against the lab Dex.
+    extraCaFile:
+      secret:
+        name: agent-platform-idp-ca
+        key: ca.crt
 
 valkey:
-  ciliumNetworkPolicy:
-    enabled: false
   valkey:
     auth:
       # The same Secret muster reads `valkey-password` from.
       usersExistingSecret: agent-platform-idp
-
-kagent:
-  kagent:
-    serviceMonitor:
-      enabled: false
-    otel:
-      tracing:
-        enabled: false
-      logging:
-        enabled: false
-    oauth2-proxy:
-      metrics:
-        serviceMonitor:
-          enabled: false
-
-dicebear:
-  route:
-    parentRefs:
-      - name: agentgateway
-        namespace: agent-platform
-    hostnames:
-      - avatars.127.0.0.1.nip.io
 
 agent-platform-mcps:
   agentgateway:
