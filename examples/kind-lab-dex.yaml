@@ -95,8 +95,13 @@ muster:
 valkey:
   valkey:
     auth:
-      # The same Secret muster reads `valkey-password` from.
+      # The same Secret muster reads `valkey-password` from. The ACL init
+      # reads each user's password from the key named by passwordKey (its
+      # default is the username, and the Secret carries no `default` key).
       usersExistingSecret: agent-platform-idp
+      aclUsers:
+        default:
+          passwordKey: valkey-password
 
 agent-platform-mcps:
   agentgateway:
