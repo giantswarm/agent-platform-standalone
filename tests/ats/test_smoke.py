@@ -168,8 +168,27 @@ def _deployment_ready(dep: Any) -> bool:
     )
 
 
+def _dump_debug(kube_cluster: Cluster, not_ready: Set[str]) -> None:
+    """Best-effort state dump when the readiness wait times out, so the CI
+    log explains itself (ATS's own diagnostics run after teardown started)."""
+    commands = [
+        f"-n {NAMESPACE} get pods -o wide",
+        f"-n {KAGENT_NAMESPACE} get pods -o wide",
+        f"-n {NAMESPACE} get events --sort-by=.lastTimestamp",
+    ]
+    commands += [
+        f"-n {n.split('/', 1)[0]} describe deployment {n.split('/', 1)[1]}"
+        for n in sorted(not_ready)
+    ]
+    for cmd in commands:
+        try:
+            logger.error("$ kubectl %s\n%s", cmd, kube_cluster.kubectl(cmd, output_format=""))
+        except Exception as exc:  # diagnostics must never mask the assertion
+            logger.error("kubectl %s failed: %s", cmd, exc)
+
+
 def wait_for_all_deployments_ready(
-    kube_client: pykube.HTTPClient, timeout: int = DEPLOY_TIMEOUT
+    kube_cluster: Cluster, timeout: int = DEPLOY_TIMEOUT
 ) -> Set[str]:
     """Every Deployment in the platform namespaces is Ready; returns their names.
 
@@ -184,6 +203,7 @@ def wait_for_all_deployments_ready(
         f"{NAMESPACE}/agentgateway",
         f"{NAMESPACE}/lab-dex",
     }
+    kube_client = kube_cluster.kube_client
     deadline = time.monotonic() + timeout
     names: Set[str] = set()
     not_ready: Set[str] = set()
@@ -214,6 +234,7 @@ def wait_for_all_deployments_ready(
             )
             return names
         time.sleep(10)
+    _dump_debug(kube_cluster, not_ready or (required - names))
     raise AssertionError(
         f"Deployments not Ready after {timeout}s: "
         f"missing={sorted(required - names)} notReady={sorted(not_ready)} "
@@ -263,13 +284,15 @@ class Edge:
                 f"{self.port}:443",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
+                stderr = (self._proc.stderr.read() if self._proc.stderr else "")[:500]
                 raise AssertionError(
-                    f"kubectl port-forward exited with {self._proc.returncode}"
+                    f"kubectl port-forward exited with {self._proc.returncode}: {stderr}"
                 )
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=2):
@@ -509,7 +532,7 @@ def test_api_working(kube_cluster: Cluster) -> None:
 
 @pytest.mark.smoke
 def test_deployments_ready(kube_cluster: Cluster, app_deployment: ConfiguredApp) -> None:
-    names = wait_for_all_deployments_ready(kube_cluster.kube_client)
+    names = wait_for_all_deployments_ready(kube_cluster)
     logger.info("Ready deployments: %s", sorted(names))
 
 
@@ -600,7 +623,7 @@ def test_upgrade(
 
     assert stage == "post_upgrade", f"unexpected upgrade stage {stage!r}"
     request.getfixturevalue("prerequisites")
-    wait_for_all_deployments_ready(kube_cluster.kube_client)
+    wait_for_all_deployments_ready(kube_cluster)
     edge_fixture: Edge = request.getfixturevalue("edge")
     wait_for_muster_healthy(edge_fixture)
     assert_unauthenticated_mcp_401(edge_fixture)

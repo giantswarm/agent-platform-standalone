@@ -65,9 +65,35 @@ components:
 ingress:
   mode: agentgateway-muster
 
+# Sized for a small lab VM (the CI smoke runs the whole platform on two
+# cores): modest CPU requests so everything schedules next to the system
+# pods and the 100m the agentgateway control plane requests for its
+# data-plane pod. Limits keep the chart defaults; drop these overrides on a
+# bigger machine.
+kagent:
+  kagent:
+    controller:
+      resources:
+        requests:
+          cpu: 50m
+    ui:
+      resources:
+        requests:
+          cpu: 50m
+    database:
+      postgres:
+        bundled:
+          resources:
+            requests:
+              cpu: 50m
+
 # The muster chart reads its own OIDC keys; they must match global.identity
 # (the render fails otherwise).
 muster:
+  # Lab sizing, see the comment on `gateway:` above.
+  resources:
+    requests:
+      cpu: 50m
   muster:
     oauth:
       server:
