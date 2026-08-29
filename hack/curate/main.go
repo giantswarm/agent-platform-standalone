@@ -1,6 +1,7 @@
 // Command curate generates the agent-platform-standalone umbrella chart from
 // the fleet meta-package: Chart.yaml (exact pins), values.yaml (transformed
-// component blocks) and Chart.lock.
+// component blocks), Chart.lock, the chart's templates and the generated
+// examples.
 package main
 
 import (
@@ -18,26 +19,48 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type options struct {
+	configPath           string
+	contractPath         string
+	overlayPath          string
+	giantswarmInputsPath string
+	chartDir             string
+	examplesDir          string
+	check                bool
+}
+
 func main() {
-	configPath := flag.String("config", "curate.yaml", "generator input")
-	overlayPath := flag.String("overlay", "overlay/vanilla.yaml", "vanilla overlay applied last")
-	chartDir := flag.String("chart-dir", "helm/agent-platform-standalone", "chart directory to generate into")
-	check := flag.Bool("check", false, "verify the committed files match the generator output and Chart.lock is in sync; write nothing")
+	var opts options
+	flag.StringVar(&opts.configPath, "config", "curate.yaml", "generator input")
+	flag.StringVar(&opts.contractPath, "contract", "overlay/contract.yaml", "umbrella contract overlay, applied first and never reverted")
+	flag.StringVar(&opts.overlayPath, "overlay", "overlay/vanilla.yaml", "vanilla overlay applied last; examples/giantswarm.yaml reverts it")
+	flag.StringVar(&opts.giantswarmInputsPath, "giantswarm-inputs", "overlay/giantswarm.yaml", "per-installation inputs merged into the generated examples/giantswarm.yaml")
+	flag.StringVar(&opts.chartDir, "chart-dir", "helm/agent-platform-standalone", "chart directory to generate into")
+	flag.StringVar(&opts.examplesDir, "examples-dir", "examples", "directory of the generated examples")
+	flag.BoolVar(&opts.check, "check", false, "verify the committed files match the generator output and Chart.lock is in sync; write nothing")
 	helmBin := flag.String("helm", "helm", "helm binary")
 	flag.Parse()
 
-	if err := run(*configPath, *overlayPath, *chartDir, *check, execHelm{bin: *helmBin}); err != nil {
+	if err := run(opts, execHelm{bin: *helmBin}); err != nil {
 		fmt.Fprintln(os.Stderr, "curate:", err)
 		os.Exit(1)
 	}
 }
 
-func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error {
-	config, err := LoadConfig(configPath)
+func run(opts options, helm Helm) error {
+	config, err := LoadConfig(opts.configPath)
 	if err != nil {
 		return err
 	}
-	overlay, err := loadOverlay(overlayPath)
+	contract, err := loadOverlay(opts.contractPath)
+	if err != nil {
+		return err
+	}
+	overlay, err := loadOverlay(opts.overlayPath)
+	if err != nil {
+		return err
+	}
+	giantswarmInputs, err := loadOverlay(opts.giantswarmInputsPath)
 	if err != nil {
 		return err
 	}
@@ -65,12 +88,18 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 		return err
 	}
 
-	result, err := Transform(Inputs{Config: config, Fleet: fleet, Connectivity: connectivity, Overlay: overlay})
+	result, err := Transform(Inputs{Config: config, Fleet: fleet, Connectivity: connectivity, Contract: contract, Overlay: overlay, GiantswarmInputs: giantswarmInputs})
 	if err != nil {
 		return err
 	}
 	values, components := result.Document, result.Components
 	rewriteValuesComments(values, result.Moves, result.ValueKeys)
+
+	example, err := GiantswarmExample(config, result.BeforeOverlay, overlay, giantswarmInputs)
+	if err != nil {
+		return err
+	}
+	rewriteValuesComments(example, result.Moves, result.ValueKeys)
 
 	templates, err := RenderTemplates(config, filepath.Join(connectivityDir, "templates"), result.Moves, result.ValueKeys)
 	if err != nil {
@@ -80,15 +109,15 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 	// Check mode validates the committed pins and never asks the registry for
 	// newer versions: a component release must not fail an unrelated PR.
 	var pinned map[string]string
-	if check {
-		if pinned, err = pinnedVersions(filepath.Join(chartDir, "Chart.yaml")); err != nil {
+	if opts.check {
+		if pinned, err = pinnedVersions(filepath.Join(opts.chartDir, "Chart.yaml")); err != nil {
 			return err
 		}
 	}
 	resolved := map[string]string{}
 	for _, dependency := range config.Dependencies {
 		var version string
-		if check {
+		if opts.check {
 			var ok bool
 			if version, ok = pinned[dependency.Name]; !ok {
 				return fmt.Errorf("Chart.yaml has no pin for dependency %q; run hack/curate.sh", dependency.Name)
@@ -119,19 +148,24 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 	if err != nil {
 		return err
 	}
+	exampleBytes, err := encodeYAML(example)
+	if err != nil {
+		return err
+	}
 
 	outputs := map[string][]byte{
-		filepath.Join(chartDir, "Chart.yaml"):  chartBytes,
-		filepath.Join(chartDir, "values.yaml"): valuesBytes,
+		filepath.Join(opts.chartDir, "Chart.yaml"):         chartBytes,
+		filepath.Join(opts.chartDir, "values.yaml"):        valuesBytes,
+		filepath.Join(opts.examplesDir, "giantswarm.yaml"): exampleBytes,
 	}
 	for name, content := range templates {
-		outputs[filepath.Join(chartDir, "templates", name)] = content
+		outputs[filepath.Join(opts.chartDir, "templates", name)] = content
 	}
-	if check {
-		if err := checkNoStaleTemplates(config, chartDir, templates); err != nil {
+	if opts.check {
+		if err := checkNoStaleTemplates(config, opts.chartDir, templates); err != nil {
 			return err
 		}
-		return verify(outputs, chartDir, helm)
+		return verify(outputs, opts.chartDir, helm)
 	}
 	for path, content := range outputs {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -145,11 +179,11 @@ func run(configPath, overlayPath, chartDir string, check bool, helm Helm) error 
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "curate: wrote Chart.yaml, values.yaml and %d templates\n", len(templates))
-	if err := removeStaleTemplates(config, chartDir, templates); err != nil {
+	fmt.Fprintf(os.Stderr, "curate: wrote Chart.yaml, values.yaml, examples/giantswarm.yaml and %d templates\n", len(templates))
+	if err := removeStaleTemplates(config, opts.chartDir, templates); err != nil {
 		return err
 	}
-	return refreshLock(chartDir, helm)
+	return refreshLock(opts.chartDir, helm)
 }
 
 // pinnedVersions reads the dependency pins of the committed Chart.yaml.
@@ -271,6 +305,10 @@ func verify(outputs map[string][]byte, chartDir string, helm Helm) error {
 	var problems []string
 	for path, want := range outputs {
 		have, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			problems = append(problems, fmt.Sprintf("%s is missing; run hack/curate.sh", path))
+			continue
+		}
 		if err != nil {
 			return err
 		}

@@ -1263,8 +1263,32 @@
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
+                        "disabledExtensions": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
                         "enabled": {
                             "type": "boolean"
+                        },
+                        "extraScopes": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "hostname": {
+                            "type": "string"
+                        },
+                        "parentRefs": {
+                            "type": "array"
+                        },
+                        "skillsRepositories": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
                         }
                     }
                 },
@@ -1545,17 +1569,7 @@
                         "dataPlaneEnv": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/$defs/envvar.json",
-                                "type": "object",
-                                "properties": {
-                                    "name": {
-                                        "type": "string"
-                                    },
-                                    "value": {
-                                        "type": "string"
-                                    }
-                                },
-                                "unevaluatedProperties": false
+                                "$ref": "#/$defs/envvar.json"
                             }
                         },
                         "dataPlaneResources": {
@@ -1619,6 +1633,33 @@
                 }
             }
         },
+        "gatewayApi": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "gateway": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "create": {
+                            "type": "boolean"
+                        },
+                        "serviceType": {
+                            "type": "string"
+                        },
+                        "tls": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "secretName": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "gcpProject": {
             "type": "string"
         },
@@ -1626,8 +1667,140 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
+                "domain": {
+                    "type": "string"
+                },
+                "gatewayApi": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "parentRefs": {
+                            "type": "array"
+                        }
+                    }
+                },
+                "identity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "ca": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "key": {
+                                    "type": "string"
+                                },
+                                "secretName": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "clientId": {
+                            "type": "string"
+                        },
+                        "existingSecret": {
+                            "type": "string"
+                        },
+                        "issuerUrl": {
+                            "type": "string"
+                        }
+                    }
+                },
                 "imagePullSecrets": {
                     "type": "array"
+                },
+                "networkPolicy": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "additionalEgressCIDRs": {
+                            "type": "array"
+                        },
+                        "additionalEgressFQDNs": {
+                            "type": "array"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "flavor": {
+                            "type": "string",
+                            "enum": [
+                                "cilium",
+                                "kubernetes"
+                            ]
+                        },
+                        "kubernetes": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "apiServerCIDR": {
+                                    "type": "string"
+                                },
+                                "worldExcludedCIDRs": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "musterInClusterMcpPorts": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "observability": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "metrics": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "serviceMonitor": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "interval": {
+                                            "type": "string"
+                                        },
+                                        "labels": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "traces": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "otlp": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "endpoint": {
+                                            "type": "string"
+                                        },
+                                        "headers": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        },
+                                        "protocol": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
                 "registry": {
                     "type": "string"
@@ -1644,14 +1817,14 @@
                     "properties": {
                         "annotations": {
                             "type": "object",
-                            "additionalProperties": false
+                            "additionalProperties": true
                         },
                         "enabled": {
                             "type": "boolean"
                         },
                         "labels": {
                             "type": "object",
-                            "additionalProperties": false
+                            "additionalProperties": true
                         },
                         "timeout": {
                             "type": "string"
@@ -1667,11 +1840,11 @@
                     "properties": {
                         "annotations": {
                             "type": "object",
-                            "additionalProperties": false
+                            "additionalProperties": true
                         },
                         "labels": {
                             "type": "object",
-                            "additionalProperties": false
+                            "additionalProperties": true
                         },
                         "mcp": {
                             "type": "object",
@@ -1679,11 +1852,11 @@
                             "properties": {
                                 "annotations": {
                                     "type": "object",
-                                    "additionalProperties": false
+                                    "additionalProperties": true
                                 },
                                 "labels": {
                                     "type": "object",
-                                    "additionalProperties": false
+                                    "additionalProperties": true
                                 }
                             }
                         },
@@ -1693,11 +1866,20 @@
                             "properties": {
                                 "annotations": {
                                     "type": "object",
-                                    "additionalProperties": false
+                                    "additionalProperties": true
                                 },
                                 "labels": {
                                     "type": "object",
-                                    "additionalProperties": false
+                                    "additionalProperties": true
+                                }
+                            }
+                        },
+                        "timeouts": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                                "request": {
+                                    "type": "string"
                                 }
                             }
                         }
@@ -1756,49 +1938,6 @@
         "muster": {
             "type": "object",
             "additionalProperties": true
-        },
-        "networkPolicy": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "additionalEgressCIDRs": {
-                    "type": "array"
-                },
-                "additionalEgressFQDNs": {
-                    "type": "array"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "flavor": {
-                    "type": "string",
-                    "enum": [
-                        "cilium",
-                        "kubernetes"
-                    ]
-                },
-                "kubernetes": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "apiServerCIDR": {
-                            "type": "string"
-                        },
-                        "worldExcludedCIDRs": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
-                "musterInClusterMcpPorts": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                }
-            }
         },
         "postgres": {
             "type": "object",

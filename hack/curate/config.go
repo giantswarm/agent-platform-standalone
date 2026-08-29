@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,12 +33,19 @@ const (
 	// ActionLift handles a fleet block that carries no component values at all:
 	// every sub-key is umbrella wiring and must be listed in Lift.
 	ActionLift Action = "lift"
+	// ActionUmbrella declares a top-level key the umbrella owns and neither
+	// source chart knows. An overlay must define it; a fleet or connectivity
+	// block under the same key fails the run.
+	ActionUmbrella Action = "umbrella"
 )
 
 type KeyRule struct {
 	Action Action `yaml:"action"`
 	// Lift lists sub-keys moved out of the block into components.<chart>.
 	Lift []string `yaml:"lift"`
+	// MoveTo relocates a wiring block under a dotted path of the output, for
+	// example global.networkPolicy. The template rewrite follows the move.
+	MoveTo string `yaml:"moveTo"`
 	// Chart names the dependency a lift block belongs to. Only action lift has
 	// no fleet component to derive it from.
 	Chart string `yaml:"chart"`
@@ -193,7 +201,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("keys.%s: keepEnabled is only valid with action component", key)
 		}
 		switch rule.Action {
-		case ActionKeep, ActionDrop, ActionWiring:
+		case ActionKeep, ActionDrop, ActionWiring, ActionUmbrella:
 			if len(rule.Lift) > 0 {
 				return fmt.Errorf("keys.%s: lift is only valid with action component or lift", key)
 			}
@@ -214,6 +222,30 @@ func (c *Config) Validate() error {
 	if dependenciesKeys != 1 {
 		return fmt.Errorf("exactly one key must have action %q", ActionDependencies)
 	}
+	// The moveTo guard reads other keys' actions, so it runs after every
+	// action validated.
+	for _, key := range c.SortedKeys() {
+		rule := c.Keys[key]
+		if rule.MoveTo == "" {
+			continue
+		}
+		if rule.Action != ActionWiring {
+			return fmt.Errorf("keys.%s: moveTo is only valid with action wiring", key)
+		}
+		if !strings.Contains(rule.MoveTo, ".") {
+			return fmt.Errorf("keys.%s: moveTo %q must be a dotted path below a top-level key", key, rule.MoveTo)
+		}
+		// A dependency block is placed after the relocation and would replace
+		// it wholesale; any other non-umbrella-owned first segment would
+		// resurrect a key the transform dropped or never carries.
+		first := strings.SplitN(rule.MoveTo, ".", 2)[0]
+		if _, isDependency := c.Dependency(first); isDependency {
+			return fmt.Errorf("keys.%s: moveTo %q starts at dependency %q, whose block would replace the relocated values", key, rule.MoveTo, first)
+		}
+		if !c.UmbrellaOwned(first) {
+			return fmt.Errorf("keys.%s: moveTo %q must start at an umbrella-owned top-level key (components, or a key with action keep, wiring or umbrella)", key, rule.MoveTo)
+		}
+	}
 	for i, patch := range c.Templates.Patch {
 		if patch.File == "" || patch.Find == "" {
 			return fmt.Errorf("templates.patch[%d]: file and find are required", i)
@@ -228,6 +260,18 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// UmbrellaOwned reports whether key is a top-level key the umbrella owns: the
+// components map, or a key whose rule keeps, copies (wiring) or declares
+// (umbrella) it. The overlay guards and the moveTo validation share this
+// predicate so they cannot drift apart.
+func (c *Config) UmbrellaOwned(key string) bool {
+	if key == "components" {
+		return true
+	}
+	rule := c.Keys[key]
+	return rule.Action == ActionKeep || rule.Action == ActionWiring || rule.Action == ActionUmbrella
 }
 
 // Dependency returns the configured dependency named name.

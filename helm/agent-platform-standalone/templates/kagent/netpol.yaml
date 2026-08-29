@@ -1,9 +1,9 @@
-{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.global.networkPolicy.enabled }}
 {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
 {{- $controllerPort := "8083" }}
 {{- $clusterName := .Values.postgres.clusterName }}
 
-{{- if eq .Values.networkPolicy.flavor "cilium" }}
+{{- if eq .Values.global.networkPolicy.flavor "cilium" }}
 ---
 # Egress from agentgateway data-plane to the kagent controller (cross-namespace).
 apiVersion: cilium.io/v2
@@ -120,6 +120,7 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+{{- if .Values.postgres.enabled }}
 ---
 # CNPG cluster policies: inter-instance egress for streaming replication,
 # and ingress from the kagent controller.
@@ -164,6 +165,7 @@ spec:
         - ports:
             - port: "5432"
               protocol: TCP
+{{- end }}
 
 {{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.muster.enabled }}
 ---
@@ -311,7 +313,7 @@ spec:
             - port: "8080"
               protocol: TCP
 {{- end }}
-{{- else if eq .Values.networkPolicy.flavor "kubernetes" }}
+{{- else if eq .Values.global.networkPolicy.flavor "kubernetes" }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

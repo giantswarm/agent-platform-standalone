@@ -22,11 +22,11 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.23 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.3 |
-| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.199.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.200.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.37 |
-| oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.30.17 |
-| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.6.2 |
+| oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.30.20 |
+| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
 ## Values
@@ -35,6 +35,30 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 |-----|------|---------|-------------|
 | global.registry | string | `"gsoci.azurecr.io"` |  |
 | global.imagePullSecrets | list | `[]` |  |
+| global.domain | string | `""` |  |
+| global.identity.issuerUrl | string | `""` |  |
+| global.identity.clientId | string | `"agent-platform"` |  |
+| global.identity.existingSecret | string | `"agent-platform-idp"` |  |
+| global.identity.ca.secretName | string | `""` |  |
+| global.identity.ca.key | string | `"ca.crt"` |  |
+| global.gatewayApi.parentRefs | list | `[]` |  |
+| global.observability.metrics.serviceMonitor.enabled | bool | `false` |  |
+| global.observability.metrics.serviceMonitor.interval | string | `""` |  |
+| global.observability.metrics.serviceMonitor.labels | object | `{}` |  |
+| global.observability.traces.otlp.endpoint | string | `""` |  |
+| global.observability.traces.otlp.protocol | string | `""` |  |
+| global.observability.traces.otlp.headers | object | `{}` |  |
+| global.networkPolicy.enabled | bool | `false` |  |
+| global.networkPolicy.flavor | string | `"kubernetes"` |  |
+| global.networkPolicy.additionalEgressCIDRs | list | `[]` |  |
+| global.networkPolicy.additionalEgressFQDNs | list | `[]` |  |
+| global.networkPolicy.musterInClusterMcpPorts[0] | int | `8080` |  |
+| global.networkPolicy.musterInClusterMcpPorts[1] | int | `8443` |  |
+| global.networkPolicy.kubernetes.apiServerCIDR | string | `"0.0.0.0/0"` |  |
+| global.networkPolicy.kubernetes.worldExcludedCIDRs[0] | string | `"10.0.0.0/8"` |  |
+| global.networkPolicy.kubernetes.worldExcludedCIDRs[1] | string | `"172.16.0.0/12"` |  |
+| global.networkPolicy.kubernetes.worldExcludedCIDRs[2] | string | `"192.168.0.0/16"` |  |
+| global.networkPolicy.kubernetes.worldExcludedCIDRs[3] | string | `"169.254.0.0/16"` |  |
 | components.muster.enabled | bool | `true` |  |
 | components.valkey.enabled | bool | `true` |  |
 | components.kagent.enabled | bool | `false` |  |
@@ -62,9 +86,9 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.agentgateway.enabled | bool | `false` |  |
 | components.agent-platform-mcps.enabled | bool | `false` |  |
 | components.klaus-gateway.enabled | bool | `false` |  |
-| components.dicebear.enabled | bool | `true` |  |
+| components.dicebear.enabled | bool | `false` |  |
 | components.agent-sandbox.enabled | bool | `false` |  |
-| components.agent-sandbox.podSecurity.enabled | bool | `true` |  |
+| components.agent-sandbox.podSecurity.enabled | bool | `false` |  |
 | components.agent-sandbox.podSecurity.namespace | string | `"agent-sandbox-system"` |  |
 | components.agent-sandbox.podSecurity.podSecurityContext.runAsNonRoot | bool | `true` |  |
 | components.agent-sandbox.podSecurity.podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
@@ -73,6 +97,23 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.agent-sandbox.podSecurity.containerSecurityContext.runAsNonRoot | bool | `true` |  |
 | components.agent-sandbox.podSecurity.containerSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
 | components.backstage.enabled | bool | `false` |  |
+| components.backstage.hostname | string | `""` |  |
+| components.backstage.parentRefs | list | `[]` |  |
+| components.backstage.extraScopes[0] | string | `"federated:id"` |  |
+| components.backstage.extraScopes[1] | string | `"audience:server:client_id:dex-k8s-authenticator"` |  |
+| components.backstage.disabledExtensions[0] | string | `"page:gs/clusters"` |  |
+| components.backstage.disabledExtensions[1] | string | `"nav-item:gs/clusters"` |  |
+| components.backstage.disabledExtensions[2] | string | `"page:gs/deployments"` |  |
+| components.backstage.disabledExtensions[3] | string | `"nav-item:gs/deployments"` |  |
+| components.backstage.disabledExtensions[4] | string | `"page:gs/installations"` |  |
+| components.backstage.disabledExtensions[5] | string | `"nav-item:gs/installations"` |  |
+| components.backstage.disabledExtensions[6] | string | `"page:flux"` |  |
+| components.backstage.disabledExtensions[7] | string | `"nav-item:flux"` |  |
+| components.backstage.disabledExtensions[8] | string | `"page:ai-chat"` |  |
+| components.backstage.disabledExtensions[9] | string | `"api:ai-chat/service"` |  |
+| components.backstage.disabledExtensions[10] | string | `"api:ai-chat/drawer"` |  |
+| components.backstage.disabledExtensions[11] | string | `"app-root-element:ai-chat/drawer"` |  |
+| components.backstage.skillsRepositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
 | components.cloudnative-pg.enabled | bool | `false` |  |
 | ingress.mode | string | `"muster-direct"` |  |
 | ingress.parentRefs | list | `[]` |  |
@@ -83,6 +124,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | ingress.httpRoute.muster.labels | object | `{}` |  |
 | ingress.httpRoute.mcp.annotations | object | `{}` |  |
 | ingress.httpRoute.mcp.labels | object | `{}` |  |
+| ingress.httpRoute.timeouts.request | string | `"0s"` |  |
 | ingress.backendTrafficPolicy.enabled | bool | `false` |  |
 | ingress.backendTrafficPolicy.timeout | string | `"0s"` |  |
 | ingress.backendTrafficPolicy.annotations | object | `{}` |  |
@@ -107,26 +149,15 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | gateway.parameters.containerSecurityContext.runAsNonRoot | bool | `true` |  |
 | gateway.parameters.containerSecurityContext.capabilities.drop[0] | string | `"ALL"` |  |
 | gateway.parameters.containerSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
-| gateway.parameters.dataPlaneEnv[0].name | string | `"OTEL_EXPORTER_OTLP_ENDPOINT"` |  |
-| gateway.parameters.dataPlaneEnv[0].value | string | `"http://otlp-gateway.kube-system.svc:4317"` |  |
-| gateway.parameters.dataPlaneEnv[1].name | string | `"OTEL_EXPORTER_OTLP_PROTOCOL"` |  |
-| gateway.parameters.dataPlaneEnv[1].value | string | `"grpc"` |  |
+| gateway.parameters.dataPlaneEnv | list | `[]` |  |
 | gateway.parameters.dataPlaneVolumes | list | `[]` |  |
 | gateway.parameters.dataPlaneVolumeMounts | list | `[]` |  |
 | gateway.parameters.dataPlaneResources.requests.ephemeral-storage | string | `"50Mi"` |  |
 | gateway.parameters.dataPlaneResources.limits.ephemeral-storage | string | `"512Mi"` |  |
-| networkPolicy.enabled | bool | `true` |  |
-| networkPolicy.flavor | string | `"cilium"` |  |
-| networkPolicy.additionalEgressCIDRs | list | `[]` |  |
-| networkPolicy.additionalEgressFQDNs | list | `[]` |  |
-| networkPolicy.musterInClusterMcpPorts[0] | int | `8080` |  |
-| networkPolicy.musterInClusterMcpPorts[1] | int | `8443` |  |
-| networkPolicy.kubernetes.apiServerCIDR | string | `"0.0.0.0/0"` |  |
-| networkPolicy.kubernetes.worldExcludedCIDRs[0] | string | `"10.0.0.0/8"` |  |
-| networkPolicy.kubernetes.worldExcludedCIDRs[1] | string | `"172.16.0.0/12"` |  |
-| networkPolicy.kubernetes.worldExcludedCIDRs[2] | string | `"192.168.0.0/16"` |  |
-| networkPolicy.kubernetes.worldExcludedCIDRs[3] | string | `"169.254.0.0/16"` |  |
-| kyvernoPolicies.enabled | bool | `true` |  |
+| gatewayApi.gateway.create | bool | `false` |  |
+| gatewayApi.gateway.tls.secretName | string | `""` |  |
+| gatewayApi.gateway.serviceType | string | `"LoadBalancer"` |  |
+| kyvernoPolicies.enabled | bool | `false` |  |
 | kyvernoPolicies.policyExceptionNamespace | string | `"policy-exceptions"` |  |
 | kyvernoPolicies.seccompPolicyName | string | `"restrict-seccomp-strict"` |  |
 | kyvernoPolicies.seccompRuleNames[0] | string | `"check-seccomp-strict"` |  |
@@ -166,7 +197,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | muster.rbac.workflowEditor.subjects[1].apiGroup | string | `"rbac.authorization.k8s.io"` |  |
 | muster.rbac.workflowEditor.subjects[1].kind | string | `"Group"` |  |
 | muster.rbac.workflowEditor.subjects[1].name | string | `"giantswarm-github:giantswarm:giantswarm-admins"` |  |
-| muster.networkPolicy.enabled | bool | `true` |  |
+| muster.networkPolicy.enabled | bool | `false` |  |
 | muster.networkPolicy.flavor | string | `"cilium"` |  |
 | muster.networkPolicy.cilium.allowClusterIngress | bool | `true` |  |
 | muster.podAnnotations."application.giantswarm.io/team" | string | `"bumblebee"` |  |
@@ -179,12 +210,12 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | muster.muster.oauth.server.storage.type | string | `"valkey"` |  |
 | muster.muster.oauth.server.storage.valkey.url | string | `"muster-valkey:6379"` |  |
 | muster.muster.oauth.server.storage.valkey.secretKeyPassword | string | `"valkey-password"` |  |
-| muster.muster.observability.metrics.prometheus.serviceMonitor.enabled | bool | `true` |  |
+| muster.muster.observability.metrics.prometheus.serviceMonitor.enabled | bool | `false` |  |
 | muster.muster.observability.metrics.prometheus.serviceMonitor.interval | string | `"60s"` |  |
 | muster.muster.observability.metrics.prometheus.serviceMonitor.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
-| muster.muster.observability.metrics.prometheus.prometheusRule.enabled | bool | `true` |  |
+| muster.muster.observability.metrics.prometheus.prometheusRule.enabled | bool | `false` |  |
 | muster.muster.observability.metrics.prometheus.prometheusRule.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
-| valkey.ciliumNetworkPolicy.enabled | bool | `true` |  |
+| valkey.ciliumNetworkPolicy.enabled | bool | `false` |  |
 | valkey.vpa.enabled | bool | `false` |  |
 | valkey.valkey.fullnameOverride | string | `"muster-valkey"` |  |
 | valkey.valkey.replicaCount | int | `1` |  |
@@ -215,6 +246,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | valkey.valkey.metrics.exporter.securityContext.runAsNonRoot | bool | `true` |  |
 | valkey.valkey.metrics.exporter.securityContext.runAsUser | int | `1000` |  |
 | valkey.valkey.metrics.exporter.securityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
+| valkey.valkey.metrics.podMonitor.enabled | bool | `false` |  |
 | kagent.kagent.fullnameOverride | string | `"kagent"` |  |
 | kagent.kagent.registry | string | `"gsoci.azurecr.io/giantswarm"` |  |
 | kagent.kagent.controller.image.repository | string | `"kagent-controller"` |  |
@@ -226,8 +258,6 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kagent.kagent.controller.env[0].value | string | `":8080"` |  |
 | kagent.kagent.controller.env[1].name | string | `"METRICS_SECURE"` |  |
 | kagent.kagent.controller.env[1].value | string | `"false"` |  |
-| kagent.kagent.controller.env[2].name | string | `"OTEL_EXPORTER_OTLP_HEADERS"` |  |
-| kagent.kagent.controller.env[2].value | string | `"X-Scope-OrgID=giantswarm"` |  |
 | kagent.kagent.ui.image.repository | string | `"kagent-ui"` |  |
 | kagent.kagent.namespaceOverride | string | `"kagent"` |  |
 | kagent.kagent.podSecurityContext.runAsNonRoot | bool | `true` |  |
@@ -241,15 +271,15 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kagent.kagent.providers.anthropic.apiKeySecretRef | string | `"kagent-anthropic"` |  |
 | kagent.kagent.providers.anthropic.apiKeySecretKey | string | `"ANTHROPIC_API_KEY"` |  |
 | kagent.kagent.providers.anthropic.apiKey | string | `""` |  |
-| kagent.kagent.serviceMonitor.enabled | bool | `true` |  |
+| kagent.kagent.serviceMonitor.enabled | bool | `false` |  |
 | kagent.kagent.serviceMonitor.interval | string | `"60s"` |  |
 | kagent.kagent.serviceMonitor.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
-| kagent.kagent.otel.tracing.enabled | bool | `true` |  |
-| kagent.kagent.otel.tracing.exporter.otlp.endpoint | string | `"http://otlp-gateway.kube-system.svc:4317"` |  |
+| kagent.kagent.otel.tracing.enabled | bool | `false` |  |
+| kagent.kagent.otel.tracing.exporter.otlp.endpoint | string | `""` |  |
 | kagent.kagent.otel.tracing.exporter.otlp.protocol | string | `"grpc"` |  |
 | kagent.kagent.otel.tracing.exporter.otlp.insecure | bool | `true` |  |
-| kagent.kagent.otel.logging.enabled | bool | `true` |  |
-| kagent.kagent.otel.logging.exporter.otlp.endpoint | string | `"http://otlp-gateway.kube-system.svc:4317"` |  |
+| kagent.kagent.otel.logging.enabled | bool | `false` |  |
+| kagent.kagent.otel.logging.exporter.otlp.endpoint | string | `""` |  |
 | kagent.kagent.otel.logging.exporter.otlp.insecure | bool | `true` |  |
 | kagent.kagent.oauth2-proxy.enabled | bool | `false` |  |
 | kagent.kagent.oauth2-proxy.fullnameOverride | string | `"kagent-oauth2-proxy"` |  |
@@ -265,15 +295,11 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kagent.kagent.oauth2-proxy.config.clientID | string | `""` |  |
 | kagent.kagent.oauth2-proxy.config.clientSecret | string | `""` |  |
 | kagent.kagent.oauth2-proxy.config.cookieSecret | string | `""` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[0].name | string | `"OIDC_ISSUER_URL"` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[0].value | string | `""` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[1].name | string | `"OIDC_REDIRECT_URL"` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[1].value | string | `""` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[2].name | string | `"UPSTREAM_URL"` |  |
-| kagent.kagent.oauth2-proxy.extraEnv[2].value | string | `"http://kagent-ui:8080"` |  |
+| kagent.kagent.oauth2-proxy.extraEnv[0].name | string | `"UPSTREAM_URL"` |  |
+| kagent.kagent.oauth2-proxy.extraEnv[0].value | string | `"http://kagent-ui:8080"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.provider | string | `"oidc"` |  |
-| kagent.kagent.oauth2-proxy.extraArgs.oidc-issuer-url | string | `"$(OIDC_ISSUER_URL)"` |  |
-| kagent.kagent.oauth2-proxy.extraArgs.redirect-url | string | `"$(OIDC_REDIRECT_URL)"` |  |
+| kagent.kagent.oauth2-proxy.extraArgs.oidc-issuer-url | string | `"{{ .Values.global.identity.issuerUrl }}"` |  |
+| kagent.kagent.oauth2-proxy.extraArgs.redirect-url | string | `"https://kagent.{{ .Values.global.domain }}/oauth2/callback"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.upstream | string | `"$(UPSTREAM_URL)"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.email-domain | string | `"*"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.pass-authorization-header | bool | `true` |  |
@@ -288,10 +314,11 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kagent.kagent.oauth2-proxy.extraArgs.skip-auth-route | string | `"^/(health|login)$"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.skip-auth-regex | string | `"^/(login|_next/static|_next/image|login-bg\\.(jpg|png|webp)|logo-.*\\.png|favicon\\.ico).*$"` |  |
 | kagent.kagent.oauth2-proxy.extraArgs.custom-templates-dir | string | `"/templates"` |  |
+| kagent.kagent.oauth2-proxy.extraArgs.client-id | string | `"{{ .Values.global.identity.clientId }}"` |  |
 | kagent.kagent.oauth2-proxy.service.type | string | `"ClusterIP"` |  |
 | kagent.kagent.oauth2-proxy.service.portNumber | int | `4180` |  |
 | kagent.kagent.oauth2-proxy.metrics.enabled | bool | `true` |  |
-| kagent.kagent.oauth2-proxy.metrics.serviceMonitor.enabled | bool | `true` |  |
+| kagent.kagent.oauth2-proxy.metrics.serviceMonitor.enabled | bool | `false` |  |
 | kagent.kagent.oauth2-proxy.metrics.serviceMonitor.interval | string | `"60s"` |  |
 | kagent.kagent.oauth2-proxy.metrics.serviceMonitor.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
 | kagent.kagent.grafana-mcp.enabled | bool | `false` |  |
@@ -376,9 +403,25 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | klaus-gateway.a2a.saToken.audience | string | `"kagent"` |  |
 | klaus-gateway.agentgatewayRoute.enabled | bool | `false` |  |
 | klaus-gateway.agentgatewayRoute.hostname | string | `""` |  |
-| dicebear.route.enabled | bool | `true` |  |
+| dicebear.route.enabled | bool | `false` |  |
 | dicebear.route.parentRefs | list | `[]` |  |
 | dicebear.route.hostnames | list | `[]` |  |
 | agent-sandbox | object | `{}` |  |
-| backstage | object | `{}` |  |
+| backstage.ingress.enabled | bool | `false` |  |
+| backstage.backstage.extraAppConfig[0].filename | string | `"app-config.agent-platform.yaml"` |  |
+| backstage.backstage.extraAppConfig[0].configMapRef | string | `"agent-platform-backstage-app-config"` |  |
+| backstage.backstage.extraEnvVars[0].name | string | `"AUTH_SESSION_SECRET"` |  |
+| backstage.backstage.extraEnvVars[0].valueFrom.secretKeyRef.name | string | `"{{ .Values.global.identity.existingSecret }}"` |  |
+| backstage.backstage.extraEnvVars[0].valueFrom.secretKeyRef.key | string | `"backstage-session-secret"` |  |
+| backstage.backstage.extraEnvVars[1].name | string | `"AGENT_PLATFORM_OIDC_CLIENT_SECRET"` |  |
+| backstage.backstage.extraEnvVars[1].valueFrom.secretKeyRef.name | string | `"{{ .Values.global.identity.existingSecret }}"` |  |
+| backstage.backstage.extraEnvVars[1].valueFrom.secretKeyRef.key | string | `"dex-client-secret"` |  |
+| backstage.backstage.extraEnvVars[2].name | string | `"NODE_EXTRA_CA_CERTS"` |  |
+| backstage.backstage.extraEnvVars[2].value | string | `"{{ if .Values.global.identity.ca.secretName }}/etc/agent-platform/idp-ca/{{ .Values.global.identity.ca.key }}{{ end }}"` |  |
+| backstage.backstage.extraVolumes[0].name | string | `"idp-ca"` |  |
+| backstage.backstage.extraVolumes[0].secret.secretName | string | `"{{ .Values.global.identity.ca.secretName | default \"agent-platform-idp-ca\" }}"` |  |
+| backstage.backstage.extraVolumes[0].secret.optional | bool | `true` |  |
+| backstage.backstage.extraVolumeMounts[0].name | string | `"idp-ca"` |  |
+| backstage.backstage.extraVolumeMounts[0].mountPath | string | `"/etc/agent-platform/idp-ca"` |  |
+| backstage.backstage.extraVolumeMounts[0].readOnly | bool | `true` |  |
 | cloudnative-pg | object | `{}` |  |

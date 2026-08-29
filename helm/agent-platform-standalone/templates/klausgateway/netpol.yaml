@@ -1,6 +1,6 @@
-{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").a2a.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").a2a.enabled .Values.global.networkPolicy.enabled }}
 {{- $agentgatewayPort := "8080" }}
-{{- if eq .Values.networkPolicy.flavor "cilium" }}
+{{- if eq .Values.global.networkPolicy.flavor "cilium" }}
 ---
 # Allow klausgateway to reach the agentgateway data-plane for A2A egress.
 # Traffic flows: klausgateway → agentgateway:8080 → kagent-controller:8083.
@@ -24,7 +24,7 @@ spec:
         - ports:
             - port: {{ $agentgatewayPort | quote }}
               protocol: TCP
-{{- else if eq .Values.networkPolicy.flavor "kubernetes" }}
+{{- else if eq .Values.global.networkPolicy.flavor "kubernetes" }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -48,8 +48,8 @@ spec:
           protocol: TCP
 {{- end }}
 {{- end }}
-{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").obo.enabled .Values.networkPolicy.enabled }}
-{{- if eq .Values.networkPolicy.flavor "cilium" }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").obo.enabled .Values.global.networkPolicy.enabled }}
+{{- if eq .Values.global.networkPolicy.flavor "cilium" }}
 ---
 # Allow klausgateway Slack-OBO egress: DNS + the muster authorization server on
 # :443. The gateway is a muster OAuth client; it runs RFC 8414 discovery and the
@@ -81,7 +81,7 @@ spec:
               protocol: TCP
             - port: "10443"
               protocol: TCP
-{{- else if eq .Values.networkPolicy.flavor "kubernetes" }}
+{{- else if eq .Values.global.networkPolicy.flavor "kubernetes" }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -99,7 +99,7 @@ spec:
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
-            except: {{ toYaml .Values.networkPolicy.kubernetes.worldExcludedCIDRs | nindent 14 }}
+            except: {{ toYaml .Values.global.networkPolicy.kubernetes.worldExcludedCIDRs | nindent 14 }}
       ports:
         - port: 443
           protocol: TCP
@@ -110,10 +110,10 @@ spec:
           protocol: TCP
 {{- end }}
 {{- end }}
-{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").agentgatewayRoute.enabled .Values.networkPolicy.enabled }}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway")) (index .Values "klaus-gateway").agentgatewayRoute.enabled .Values.global.networkPolicy.enabled }}
 {{- $klausgatewayPort := "8080" }}
 {{- $fullname := (index .Values "klaus-gateway").fullnameOverride | default "klaus-gateway" }}
-{{- if eq .Values.networkPolicy.flavor "cilium" }}
+{{- if eq .Values.global.networkPolicy.flavor "cilium" }}
 ---
 # Egress from the agentgateway data-plane to klaus-gateway. The channel paths
 # (/v1, /web, /cli/v1, and /channels/slack when slack.enabled) are served on the
@@ -144,7 +144,7 @@ spec:
         - ports:
             - port: {{ $klausgatewayPort | quote }}
               protocol: TCP
-{{- else if eq .Values.networkPolicy.flavor "kubernetes" }}
+{{- else if eq .Values.global.networkPolicy.flavor "kubernetes" }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

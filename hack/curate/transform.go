@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,7 +14,18 @@ type Inputs struct {
 	Config       *Config
 	Fleet        *yaml.Node
 	Connectivity *yaml.Node
-	Overlay      *yaml.Node
+	// Contract is overlay/contract.yaml: the umbrella's input contract (new
+	// global.* keys, umbrella-only keys, wiring the umbrella templates need
+	// inside component blocks). Always applied; the generated Giant Swarm
+	// example never reverts it.
+	Contract *yaml.Node
+	// Overlay is overlay/vanilla.yaml: the fleet defaults a vanilla cluster
+	// turns off. The generated Giant Swarm example reverts every leaf of it.
+	Overlay *yaml.Node
+	// GiantswarmInputs is overlay/giantswarm.yaml. It never merges into the
+	// values document (GiantswarmExample consumes it), but it obeys the same
+	// key rules, so a typo fails here instead of leaking into the example.
+	GiantswarmInputs *yaml.Node
 }
 
 type namedNode struct {
@@ -37,6 +49,10 @@ type Result struct {
 	// rewrite. ValueKeys are the top-level keys the generated values carry.
 	Moves     []PathMove
 	ValueKeys []string
+	// BeforeOverlay is the values mapping after the contract but before the
+	// vanilla overlay merged: the fleet defaults in the umbrella layout, the
+	// input of the generated Giant Swarm example.
+	BeforeOverlay *yaml.Node
 }
 
 // Transform derives the umbrella values document from the fleet and
@@ -85,6 +101,8 @@ func Transform(in Inputs) (*Result, error) {
 		case ActionKeep:
 			kept = append(kept, namedNode{key: cleanKey(keyNode), value: value})
 		case ActionDependencies:
+		case ActionUmbrella:
+			return nil, fmt.Errorf("fleet key %q is declared umbrella-only in curate.yaml but the fleet values define it", key)
 		case ActionWiring:
 			// The wiring copy comes from the connectivity values; a fleet copy
 			// is a shadow that would otherwise drift apart unnoticed.
@@ -123,9 +141,15 @@ func Transform(in Inputs) (*Result, error) {
 		if !ok {
 			return nil, fmt.Errorf("connectivity key %q has no entry in the curate.yaml keys map (deny-unknown)", keyNode.Value)
 		}
-		if rule.Action == ActionWiring {
+		switch rule.Action {
+		case ActionWiring:
 			wiring = append(wiring, namedNode{key: cleanKey(keyNode), value: value})
+			if rule.MoveTo != "" {
+				moves = append(moves, PathMove{From: []string{keyNode.Value}, To: strings.Split(rule.MoveTo, ".")})
+			}
 			continue
+		case ActionUmbrella:
+			return nil, fmt.Errorf("connectivity key %q is declared umbrella-only in curate.yaml but the connectivity values define it", keyNode.Value)
 		}
 		// Every other rule reads the fleet values; a connectivity copy is a
 		// shadow that would otherwise be discarded silently, drift included.
@@ -154,7 +178,22 @@ func Transform(in Inputs) (*Result, error) {
 		"the component chart."
 	mappingSet(out, componentsKey, buildComponents(config, entries))
 	for _, node := range wiring {
-		mappingSet(out, node.key, node.value)
+		if config.Keys[node.key.Value].MoveTo == "" {
+			mappingSet(out, node.key, node.value)
+		}
+	}
+	// The relocations run after the kept and wiring keys are placed, so a
+	// moveTo path below one of them always finds its parent; the config
+	// validation pins the first segment to an umbrella-owned key, so the
+	// dependency blocks placed next can never replace a relocated value.
+	for _, node := range wiring {
+		moveTo := config.Keys[node.key.Value].MoveTo
+		if moveTo == "" {
+			continue
+		}
+		if err := pathSet(out, moveTo, node.key, node.value); err != nil {
+			return nil, fmt.Errorf("keys.%s: moveTo: %w", node.key.Value, err)
+		}
 	}
 	for _, dependency := range config.Dependencies {
 		block, ok := blocks[dependency.Name]
@@ -164,7 +203,20 @@ func Transform(in Inputs) (*Result, error) {
 		mappingSet(out, block.key, block.value)
 	}
 
-	if err := applyOverlay(config, out, in.Overlay, keepEnabledCharts); err != nil {
+	if err := mergeOverlay(config, out, in.Contract, "contract", keepEnabledCharts); err != nil {
+		return nil, err
+	}
+	beforeOverlay := cloneNode(out)
+	if err := checkVanillaPaths(config, out, in.Overlay); err != nil {
+		return nil, err
+	}
+	if err := mergeOverlay(config, out, in.Overlay, "overlay", keepEnabledCharts); err != nil {
+		return nil, err
+	}
+	if err := validateOverlay(config, in.GiantswarmInputs, "giantswarm inputs", keepEnabledCharts); err != nil {
+		return nil, err
+	}
+	if err := finishOverlays(config, out); err != nil {
 		return nil, err
 	}
 	if err := applyAnnotations(config, out); err != nil {
@@ -176,7 +228,7 @@ func Transform(in Inputs) (*Result, error) {
 		"Do not edit. Change curate.yaml (dependencies, key rules) or overlay/vanilla.yaml\n"+
 		"(vanilla overrides) and run hack/curate.sh again.",
 		config.Fleet.Chart, config.Fleet.Version, config.Fleet.ConnectivityChart, config.Fleet.Version)
-	return &Result{Document: document, Components: components, Moves: moves, ValueKeys: mappingKeys(out)}, nil
+	return &Result{Document: document, Components: components, Moves: moves, ValueKeys: mappingKeys(out), BeforeOverlay: beforeOverlay}, nil
 }
 
 // componentMoves records where a component block's values went: each lifted key
@@ -335,27 +387,32 @@ func buildComponents(config *Config, entries map[string]*componentEntry) *yaml.N
 	return components
 }
 
-// applyOverlay merges overlay/vanilla.yaml on top. Only umbrella-owned keys
-// and dependency names are allowed at the top level, and a component block
-// must not smuggle back the top-level `enabled` toggle the transform rejects
-// in the fleet values (the overlay merges after that guard ran).
-func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node, keepEnabledCharts map[string]bool) error {
+// mergeOverlay merges one overlay document on top of out.
+func mergeOverlay(config *Config, out *yaml.Node, overlay *yaml.Node, what string, keepEnabledCharts map[string]bool) error {
 	if overlay == nil {
 		return nil
 	}
-	allowed := map[string]bool{"components": true}
-	for key, rule := range config.Keys {
-		if rule.Action == ActionKeep || rule.Action == ActionWiring {
-			allowed[key] = true
-		}
+	if err := validateOverlay(config, overlay, what, keepEnabledCharts); err != nil {
+		return err
 	}
-	for _, dependency := range config.Dependencies {
-		allowed[dependency.Name] = true
+	// The overlay documents are read again by the Giant Swarm example
+	// generator, so the merge must not alias their nodes into the output.
+	deepMerge(out, cloneNode(rootMapping(overlay)))
+	return nil
+}
+
+// validateOverlay allows only umbrella-owned keys and dependency names at an
+// overlay's top level, and rejects a component block that smuggles back the
+// top-level `enabled` toggle the transform rejects in the fleet values (the
+// overlays merge after that guard ran).
+func validateOverlay(config *Config, overlay *yaml.Node, what string, keepEnabledCharts map[string]bool) error {
+	if overlay == nil {
+		return nil
 	}
 	overlayRoot := rootMapping(overlay)
 	for _, key := range mappingKeys(overlayRoot) {
-		if !allowed[key] {
-			return fmt.Errorf("overlay key %q is neither umbrella-owned nor a dependency name (deny-unknown)", key)
+		if _, isDependency := config.Dependency(key); !isDependency && !config.UmbrellaOwned(key) {
+			return fmt.Errorf("%s key %q is neither umbrella-owned nor a dependency name (deny-unknown)", what, key)
 		}
 	}
 	for _, dependency := range config.Dependencies {
@@ -364,22 +421,124 @@ func applyOverlay(config *Config, out *yaml.Node, overlay *yaml.Node, keepEnable
 			continue
 		}
 		if _, enabled := mappingGet(block, "enabled"); enabled != nil {
-			return fmt.Errorf("overlay block %q carries a top-level `enabled`, which components.%s.enabled replaced; "+
-				"set components.%s.enabled in the overlay instead", dependency.Name, dependency.Name, dependency.Name)
+			return fmt.Errorf("%s block %q carries a top-level `enabled`, which components.%s.enabled replaced; "+
+				"set components.%s.enabled in the %s instead", what, dependency.Name, dependency.Name, dependency.Name, what)
 		}
 	}
 	if _, components := mappingGet(overlayRoot, "components"); components != nil {
 		if components.Kind != yaml.MappingNode {
-			return fmt.Errorf("overlay components must be a mapping")
+			return fmt.Errorf("%s components must be a mapping", what)
 		}
 		for _, name := range mappingKeys(components) {
 			if _, ok := config.Dependency(name); !ok {
-				return fmt.Errorf("overlay components.%s is not a dependency", name)
+				return fmt.Errorf("%s components.%s is not a dependency", what, name)
 			}
 		}
 	}
-	deepMerge(out, overlayRoot)
 	return nil
+}
+
+// checkVanillaPaths fails when a vanilla-overlay leaf under an umbrella-owned
+// top-level key names a path the fleet-derived values (contract included) do
+// not carry: the vanilla overlay only flips existing defaults, so a fleet
+// rename would otherwise orphan the override and silently turn the default
+// back on. Dependency blocks are exempt — they are forwarded opaquely to
+// component charts whose defaults this generator cannot see. A key or
+// components entry validateOverlay rejects is skipped here, keeping its
+// sharper message.
+func checkVanillaPaths(config *Config, out *yaml.Node, overlay *yaml.Node) error {
+	if overlay == nil {
+		return nil
+	}
+	overlayRoot := rootMapping(overlay)
+	for i := 0; i+1 < len(overlayRoot.Content); i += 2 {
+		key, value := overlayRoot.Content[i], overlayRoot.Content[i+1]
+		if !config.UmbrellaOwned(key.Value) {
+			continue
+		}
+		if key.Value == "components" && value.Kind == yaml.MappingNode {
+			_, existing := mappingGet(out, "components")
+			for j := 0; j+1 < len(value.Content); j += 2 {
+				name, block := value.Content[j], value.Content[j+1]
+				if _, isDependency := config.Dependency(name.Value); !isDependency {
+					continue
+				}
+				_, existingEntry := mappingGet(existing, name.Value)
+				if err := checkOverlayLeaves("components."+name.Value, block, existingEntry); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		_, existing := mappingGet(out, key.Value)
+		if err := checkOverlayLeaves(key.Value, value, existing); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkOverlayLeaves(path string, value, existing *yaml.Node) error {
+	if existing == nil {
+		return fmt.Errorf("overlay path %q does not exist in the fleet-derived values; "+
+			"the vanilla overlay only flips existing defaults, new inputs belong in overlay/contract.yaml", path)
+	}
+	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
+		return nil
+	}
+	if existing.Kind != yaml.MappingNode {
+		return fmt.Errorf("overlay path %q is a mapping but the fleet-derived value is not", path)
+	}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key, child := value.Content[i], value.Content[i+1]
+		_, next := mappingGet(existing, key.Value)
+		if err := checkOverlayLeaves(path+"."+key.Value, child, next); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// finishOverlays runs after the overlays merged: every umbrella-only key
+// (action umbrella) must have been defined by one of them — the source charts
+// are forbidden from defining it, so presence in the output is presence in an
+// overlay — and the output keeps the order kept keys, components, wiring,
+// umbrella keys, dependency blocks.
+func finishOverlays(config *Config, out *yaml.Node) error {
+	var umbrellaKeys []string
+	for _, key := range config.SortedKeys() {
+		if config.Keys[key].Action != ActionUmbrella {
+			continue
+		}
+		if _, value := mappingGet(out, key); value == nil {
+			return fmt.Errorf("keys.%s: action umbrella, but neither overlay defines it", key)
+		}
+		umbrellaKeys = append(umbrellaKeys, key)
+	}
+	reorderTopLevel(config, out, umbrellaKeys)
+	return nil
+}
+
+// reorderTopLevel puts the umbrella-only keys right after the wiring blocks,
+// where deepMerge appended them after the dependency blocks.
+func reorderTopLevel(config *Config, out *yaml.Node, umbrellaKeys []string) {
+	dependencyNames := map[string]bool{}
+	for _, dependency := range config.Dependencies {
+		dependencyNames[dependency.Name] = true
+	}
+	var head, umbrella, tail []*yaml.Node
+	for i := 0; i+1 < len(out.Content); i += 2 {
+		pair := out.Content[i : i+2]
+		switch key := out.Content[i].Value; {
+		case slices.Contains(umbrellaKeys, key):
+			umbrella = append(umbrella, pair...)
+		case dependencyNames[key]:
+			tail = append(tail, pair...)
+		default:
+			head = append(head, pair...)
+		}
+	}
+	out.Content = slices.Concat(head, umbrella, tail)
 }
 
 // applyAnnotations injects the configured `# @schema` line comments into the

@@ -1,4 +1,4 @@
-{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.networkPolicy.enabled (eq .Values.networkPolicy.flavor "kubernetes") }}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "kubernetes") }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -35,7 +35,7 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: {{ .Values.networkPolicy.kubernetes.apiServerCIDR | quote }}
+            cidr: {{ .Values.global.networkPolicy.kubernetes.apiServerCIDR | quote }}
     {{- with .Values.gateway.jwksEgress }}
     {{- if .enabled }}
     # The controller fetches remote JWKS centrally (and distributes the keys to
