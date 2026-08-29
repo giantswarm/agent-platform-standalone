@@ -9,7 +9,6 @@
                     "required": [
                         "key"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -28,7 +27,6 @@
                 "io.k8s.api.core.v1.EnvVarSource": {
                     "type": "object",
                     "description": "EnvVarSource represents a source for the value of an EnvVar.",
-                    "additionalProperties": false,
                     "properties": {
                         "configMapKeyRef": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ConfigMapKeySelector",
@@ -54,7 +52,6 @@
                     "required": [
                         "fieldPath"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "apiVersion": {
                             "type": "string",
@@ -72,7 +69,6 @@
                     "required": [
                         "resource"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "containerName": {
                             "type": "string",
@@ -94,7 +90,6 @@
                     "required": [
                         "key"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -129,7 +124,6 @@
             "required": [
                 "name"
             ],
-            "additionalProperties": false,
             "properties": {
                 "name": {
                     "type": [
@@ -157,7 +151,6 @@
             "required": [
                 "spec"
             ],
-            "additionalProperties": false,
             "properties": {
                 "apiVersion": {
                     "type": "string",
