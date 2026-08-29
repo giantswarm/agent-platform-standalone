@@ -95,3 +95,19 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 	@out=$$($(VANILLA) --set components.kagent.uiRoute.hostname=ui.example.com --set kagent.kagent.oauth2-proxy.enabled=true 2>&1); \
 	printf '%s' "$$out" | grep -q 'redirect-url still derives from global.domain' || { \
 		echo "FAIL: overridden kagent UI hostname with the derived redirect-url accepted"; exit 1; }
+	@echo "--> guards: an explicit legacy klaus-gateway.enabled=false fails; a true is indistinguishable from the coalesced default and passes"
+	@out=$$($(VANILLA) --set components.klaus-gateway.enabled=true --set klaus-gateway.enabled=false 2>&1) && { \
+		echo "FAIL: klaus-gateway.enabled=false accepted while components.klaus-gateway.enabled=true"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'move klaus-gateway.enabled -> components.klaus-gateway.enabled' || { \
+		echo "FAIL: render failed for another reason than the legacy-toggle guard"; exit 1; }
+	@out=$$($(VANILLA) --set klaus-gateway.enabled=false 2>&1) && { \
+		echo "FAIL: klaus-gateway.enabled=false accepted while the component is off"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'move klaus-gateway.enabled -> components.klaus-gateway.enabled' || { \
+		echo "FAIL: render failed for another reason than the legacy-toggle guard"; exit 1; }
+	@# klaus-gateway.enabled=true must NOT fail: the klaus-gateway chart's own
+	@# `enabled: true` default reaches .Values through Helm's coalescing while
+	@# the dependency is on, and through chart-operator's coalesced override
+	@# values even while it is off (the chart installed as a Giant Swarm App —
+	@# the ATS kind smoke), so the guard cannot tell it from an operator's.
+	@$(VANILLA) --set klaus-gateway.enabled=true >/dev/null || { \
+		echo "FAIL: klaus-gateway.enabled=true rejected; chart-operator installs carry that key for the disabled component"; exit 1; }

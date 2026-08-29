@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make verify-decisions`: render assertions for the vanilla defaults, the derived hostnames, the Giant Swarm example, the network-policy flavors, the edge Gateway and the guards.
 - A render-time guard fails the install when `components.kagent.uiRoute.hostname` is overridden while the oauth2-proxy `redirect-url` still derives from `global.domain` — the callback would land on a hostname the route no longer serves.
 - The CloudNativePG `Cluster` carries `helm.sh/resource-policy: keep` (upstream, curated); its PodMonitor follows `global.observability.metrics.serviceMonitor`.
+- `prerequisites/lab-dex.yaml`: a lab-only OIDC provider for kind quick starts and CI — Dex with static password users, the `agent-platform` client plus the `dex-k8s-authenticator` trusted-peers client, the `agent-platform-idp` credentials Secret, an in-cluster Job minting the self-signed wildcard certificate and CA, an HTTPRoute publishing Dex on the chart-owned edge Gateway, and a CoreDNS rewrite of `*.127.0.0.1.nip.io` to the edge Gateway Service. The README's "Lab quick start (kind)" documents the apply/install order.
+- The ATS kind smoke and upgrade tests run on every PR (`.ats/main.yaml`, `tests/ats/test_smoke.py`): prerequisites, candidate install with `examples/kind-lab-dex.yaml`, every Deployment Ready, unauthenticated `/mcp` answering 401 with the `WWW-Authenticate` discovery chain, a lab Dex static-user login (dynamic client registration, authorization code + PKCE, the Dex form) reaching `/mcp` with 200, a kagent `Agent` Ready against a fake model provider, and an upgrade from the last published chart including the documented CRD re-apply one-liner (`tests/ats/upgrade-hook.sh`).
 
 ### Changed
 
@@ -36,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The legacy-toggle guard probes `klaus-gateway.enabled` by value, not presence: it fires on an explicit `false` in either component state and ignores `true`. The klaus-gateway chart's own `enabled: true` default reaches `.Values` through Helm's coalescing while the dependency is on, and through chart-operator's coalesced override values even while it is off (the chart installed as a Giant Swarm App — caught by the ATS kind smoke, where the presence probe failed every install), so only an explicit `false` is provably the operator's; `verify-decisions` covers all three cases.
+- Backstage runs with its base configuration again: the backstage chart passes `extraAppConfig` as `--config` flags and any explicit `--config` replaces Backstage's default config set, so the backend ran on the umbrella's overlay alone and the app plugin failed startup on schema keys only the image's base config carries. `overlay/contract.yaml` restates the image's own base flags ahead of the overlay.
+- `examples/kind-lab-dex.yaml` names the valkey password key for the default ACL user (the chart's fallback key does not exist in `agent-platform-idp`), trusts the `dex-k8s-authenticator` audience on tokens Backstage forwards to muster, and sizes the fat components for a two-core lab VM.
 - The kagent UI route's direct backendRef honors `kagent.kagent.fullnameOverride` instead of targeting a Service named after the release.
 - The public muster `/` route and the kagent Namespace render only when their components are enabled.
 - Validation messages, `required` errors and values comments name the keys of this chart's layout (`components.kagent.*`, `kagent.kagent.*`) instead of the fleet paths nothing here reads; the legacy-toggle hints probe the renamed `klaus-gateway`/`agent-sandbox` keys and no longer point at a nonexistent UPGRADE.md.

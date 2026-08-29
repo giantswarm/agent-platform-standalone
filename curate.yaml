@@ -233,16 +233,20 @@ templates:
     # Two of the legacy-toggle hints probed keys the strict root schema rejects
     # before templates run (dead rows), while the renamed opaque blocks accepted
     # klaus-gateway.enabled / agent-sandbox.enabled silently — the exact trap
-    # the helper exists to catch. The klaus-gateway chart ships its own
-    # top-level `enabled` default, so its row cannot be probed at all: plain
-    # `helm install` coalesces that default into .Values once the dependency is
-    # on, and chart-operator (the chart installed as a Giant Swarm App — the
-    # ATS smoke, a fleet cluster) passes chartutil-coalesced values, which
-    # include the defaults of DISABLED dependencies, back as overrides — so the
-    # key is present in every App install even with the component off and a
-    # while-off probe fails those installs (caught by the kind smoke). A set
-    # legacy klaus-gateway.enabled is silently ignored; the hint row is the
-    # price of the subchart owning that key. The referenced UPGRADE.md does not
+    # the helper exists to catch. The probe must also be coalescing-safe, and
+    # there are TWO coalescing sources: plain `helm install` merges the
+    # klaus-gateway chart's own top-level `enabled: true` default (its values
+    # say the chart ignores it) into .Values while the dependency is on, and
+    # chart-operator (the chart installed as a Giant Swarm App — the ATS kind
+    # smoke, where this bit) passes chartutil-coalesced values, which include
+    # the defaults of DISABLED dependencies, back as overrides — so the key is
+    # present in App installs even while the component is off. A legacy
+    # klaus-gateway.enabled is therefore provably the operator's only when its
+    # value is an explicit false (the only injected default is true) — the
+    # case where the operator believes the component is off while it deploys
+    # anyway; a leftover `true` is silently ignored. Deviates from the
+    # while-off leg upstreamed in agent-platform#249, which chart-operator
+    # installs trip with the component off. The referenced UPGRADE.md does not
     # exist yet (issue #8).
     - file: _helpers.tpl
       find: |-
@@ -273,11 +277,16 @@ templates:
         {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
         {{- end -}}
         {{- end -}}
-        {{- /* No klaus-gateway row: that chart owns a top-level `enabled`
-        default, which reaches .Values through Helm's coalescing when the
-        dependency is on and through chart-operator's coalesced override
-        values even when it is off, so presence never proves an operator set
-        the legacy key. */ -}}
+        {{- /* klaus-gateway is the one dependency whose chart owns a top-level
+        `enabled` default. It reaches .Values through Helm's coalescing while
+        the dependency is on, and through chart-operator's coalesced override
+        values even while it is off, so key presence never proves an operator
+        set the legacy toggle — an explicit false does (the only injected
+        default is true). */ -}}
+        {{- $klausGateway := index $.Values "klaus-gateway" | default dict -}}
+        {{- if and (hasKey $klausGateway "enabled") (not (index $klausGateway "enabled")) -}}
+        {{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
+        {{- end -}}
         {{- with $found -}}
         {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
         {{- end -}}

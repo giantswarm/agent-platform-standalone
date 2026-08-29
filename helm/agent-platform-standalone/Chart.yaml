@@ -61,7 +61,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: backstage
-    version: "0.200.0"  # range 0.x
+    version: "0.200.1"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg
