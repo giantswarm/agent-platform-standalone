@@ -66,18 +66,17 @@ the six. This turns that into a loud failure naming the new key. The removed
       (list "agentgateway" "components.agentgateway.enabled")
       (list "valkey" "components.valkey.enabled")
       (list "kagent" "components.kagent.enabled")
+      (list "klaus-gateway" "components.klaus-gateway.enabled")
       (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
 {{- $found := list -}}
 {{- range $moved -}}
-{{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
+{{- $block := index $.Values (first .) | default dict -}}
+{{- if hasKey $block "enabled" -}}
+{{- $on := include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" (index (splitList "." (last .)) 1)) -}}
+{{- if or (not $on) (not (index $block "enabled")) -}}
 {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
 {{- end -}}
 {{- end -}}
-{{- /* The klaus-gateway chart owns a top-level `enabled` default that Helm
-coalesces into .Values once the dependency is on, so probe only while the
-component is off, when a set key can only be the operator's. */ -}}
-{{- if and (not (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "klaus-gateway"))) (hasKey (index $.Values "klaus-gateway" | default dict) "enabled") -}}
-{{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
 {{- end -}}
 {{- with $found -}}
 {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
