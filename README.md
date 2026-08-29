@@ -120,11 +120,70 @@ helm install agent-platform helm/agent-platform-standalone \
 ```
 
 `examples/kind-lab-dex.yaml` is a kind quick start: the chart's agentgateway
-Gateway is the public edge and a lab Dex is the identity provider. It is
-lab-only. The prerequisites manifest (lab Dex, wildcard certificate, the
-identity Secret) is not part of this release yet; the example lists the Secrets
-it expects. `examples/giantswarm.yaml` (generated) is what a Giant Swarm
-installation sets on top of the vanilla defaults.
+Gateway is the public edge and a lab Dex is the identity provider (see the
+walkthrough below). `examples/giantswarm.yaml` (generated) is what a Giant
+Swarm installation sets on top of the vanilla defaults.
+
+### Lab quick start (kind)
+
+> **LAB ONLY — never a production path.** `prerequisites/lab-dex.yaml`
+> deploys Dex with static password users and fixed, world-readable secrets,
+> mints a self-signed wildcard certificate, and replaces the kind cluster's
+> CoreDNS Corefile. Use it on a throwaway kind cluster and nowhere else.
+
+The prerequisites manifest provides everything `examples/kind-lab-dex.yaml`
+expects: the lab Dex (static user `admin@example.com` / `password`), the
+`agent-platform-idp` credentials Secret, the wildcard certificate Secret
+`agent-platform-tls` and the lab CA (`agent-platform-idp-ca`, as Secret and
+ConfigMap) for muster (`extraCaFile`), Backstage (`NODE_EXTRA_CA_CERTS`) and
+the kagent oauth2-proxy (`--provider-ca-file`), plus a CoreDNS rewrite so
+`*.127.0.0.1.nip.io` resolves to the edge Gateway inside pods. The exact
+order:
+
+```sh
+kind create cluster
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+kubectl apply -f prerequisites/lab-dex.yaml
+kubectl -n agent-platform wait --for=condition=complete job/lab-dex-cert-gen
+kubectl -n kube-system rollout restart deployment coredns   # pick the rewrite up immediately
+helm dependency build helm/agent-platform-standalone
+helm install agent-platform helm/agent-platform-standalone \
+  --namespace agent-platform --create-namespace \
+  -f examples/kind-lab-dex.yaml
+```
+
+muster restarts until the edge Gateway and the lab Dex answer its OIDC
+discovery — that settles itself. To use the platform from the host, forward
+the edge (port 443 needs root; outside the cluster the public nip.io wildcard
+already resolves `*.127.0.0.1.nip.io` to localhost):
+
+```sh
+sudo kubectl -n agent-platform port-forward service/agentgateway 443:443
+```
+
+then log in at `https://backstage.127.0.0.1.nip.io` or point an MCP client at
+`https://muster.127.0.0.1.nip.io/mcp` (`admin@example.com` / `password`). The
+certificate is signed by the lab CA; export it with
+
+```sh
+kubectl -n agent-platform get secret agent-platform-idp-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > lab-ca.crt
+```
+
+and trust it in the browser or pass it to the client, or click through the
+browser warning — it is a lab.
+
+### Upgrades
+
+`helm upgrade` never touches the `crds/` directories of the chart or its
+dependencies, so apply the candidate's CRDs first — one line, prints the
+dependency CRDs too (including those of disabled dependencies, harmless):
+
+```sh
+helm show crds helm/agent-platform-standalone | kubectl apply --server-side -f -
+```
+
+The CI upgrade test runs exactly this step between the last published chart
+and the release candidate (`tests/ats/upgrade-hook.sh`).
 
 ## The chart is generated
 
@@ -195,7 +254,18 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   validates the committed pins and never asks the registry for newer versions,
   so a component release does not fail an unrelated PR. CI runs
   `helm dependency build`, never `update`; a `Chart.yaml` that no longer matches
-  `Chart.lock` fails the build.
+  `Chart.lock` fails the build. `verify-render` renders every `examples/*.yaml`.
+- `execute-chart-tests` (generated, app-test-suite on kind): the install and
+  auth smoke plus the upgrade test (`tests/ats/test_smoke.py`, configured by
+  `.ats/main.yaml`). The smoke applies the Gateway API CRDs and
+  `prerequisites/lab-dex.yaml`, installs the candidate with
+  `examples/kind-lab-dex.yaml`, and asserts: every Deployment Ready, an
+  unauthenticated `/mcp` answering 401 with the `WWW-Authenticate` discovery
+  chain, a lab Dex static-user login reaching `/mcp` with 200, and a kagent
+  `Agent` reaching Ready against a fake model provider. The upgrade scenario
+  installs the last published chart, applies the candidate's CRDs (the
+  documented one-liner, `tests/ats/upgrade-hook.sh`), upgrades, and re-runs
+  the readiness and auth assertions.
 - Renovate does not touch chart dependencies. The generator owns the BOM.
 
 The templates and component values are regenerated from the fleet charts on
