@@ -327,16 +327,22 @@ def edge(kube_cluster: Cluster, tmp_path_factory: pytest.TempPathFactory) -> Any
     both the smoke (chart installed by app_deployment) and the post-upgrade
     stage (chart installed by ATS).
     """
-    deadline = time.monotonic() + 300
+    deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
-        svc = pykube.Service.objects(
+        # Ready endpoints, not just the Service: a port-forward against a
+        # Service without ready pods exits immediately.
+        ep = pykube.Endpoint.objects(
             kube_cluster.kube_client, namespace=NAMESPACE
         ).get_or_none(name="agentgateway")
-        if svc is not None:
+        if ep is not None and any(
+            s.get("addresses") for s in ep.obj.get("subsets") or []
+        ):
             break
         time.sleep(5)
     else:
-        raise AssertionError("edge Gateway Service 'agentgateway' never appeared")
+        raise AssertionError(
+            "the edge Gateway Service 'agentgateway' never got ready endpoints"
+        )
 
     ca_secret = pykube.Secret.objects(
         kube_cluster.kube_client, namespace=NAMESPACE
@@ -366,6 +372,33 @@ def wait_for_muster_healthy(edge: Edge, timeout: int = HEALTH_TIMEOUT) -> None:
             last = str(exc)
         time.sleep(10)
     raise AssertionError(f"muster never became healthy; last answer: {last}")
+
+
+def heal_backstage_startup_race(kube_cluster: Cluster) -> None:
+    """Restart Backstage if it lost the boot race against the edge Gateway.
+
+    Backstage's GS auth module probes the Dex issuer at startup with a bounded
+    retry budget (5 attempts, ~15s) and is designed to crash the pod when the
+    issuer stays unreachable — but the failed backend keeps serving liveness
+    200 / readiness 503 without exiting, so the pod never restarts (upstream
+    giantswarm/backstage issue). On a fresh install Backstage can boot before
+    the chart's edge Gateway (which fronts the lab Dex) is up. Callers invoke
+    this once the edge is provably healthy; the restart is skipped when
+    Backstage made it on its own.
+    """
+    backstage = [
+        d
+        for d in _deployments(kube_cluster.kube_client, NAMESPACE)
+        if "backstage" in d.name
+    ]
+    for dep in backstage:
+        if _deployment_ready(dep):
+            continue
+        logger.info("restarting %s: it likely lost the startup race", dep.name)
+        kube_cluster.kubectl(
+            f"-n {NAMESPACE} rollout restart deployment {dep.name}",
+            output_format="",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +438,10 @@ def login_and_get_token(edge: Edge) -> str:
     authorization code + PKCE dance, and the Dex password form — the same
     path a browser login takes, minus the browser.
     """
-    # RFC 7591 dynamic client registration.
+    # RFC 7591 dynamic client registration. The registration token authorizes
+    # confidential clients only (public clients additionally need
+    # allowPublicClientRegistration or a trusted allowlist), so register with
+    # a client secret.
     r = edge.request(
         "POST",
         edge.url("muster", "/oauth/register"),
@@ -413,13 +449,14 @@ def login_and_get_token(edge: Edge) -> str:
         json={
             "client_name": "ats-smoke",
             "redirect_uris": [CALLBACK],
-            "token_endpoint_auth_method": "none",
+            "token_endpoint_auth_method": "client_secret_basic",
             "grant_types": ["authorization_code"],
             "response_types": ["code"],
         },
     )
     assert r.status_code in (200, 201), f"DCR failed: {r.status_code} {r.text[:300]}"
     client_id = r.json()["client_id"]
+    client_secret = r.json()["client_secret"]
 
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
     challenge = (
@@ -478,6 +515,7 @@ def login_and_get_token(edge: Edge) -> str:
     r = edge.request(
         "POST",
         edge.url("muster", "/oauth/token"),
+        auth=(client_id, client_secret),
         data={
             "grant_type": "authorization_code",
             "code": code,
@@ -531,7 +569,13 @@ def test_api_working(kube_cluster: Cluster) -> None:
 
 
 @pytest.mark.smoke
-def test_deployments_ready(kube_cluster: Cluster, app_deployment: ConfiguredApp) -> None:
+def test_deployments_ready(
+    kube_cluster: Cluster, app_deployment: ConfiguredApp, edge: Edge
+) -> None:
+    # Prove the auth chain (edge listener, CoreDNS rewrite, lab Dex, muster's
+    # OIDC discovery) before judging Backstage: its startup depends on it.
+    wait_for_muster_healthy(edge)
+    heal_backstage_startup_race(kube_cluster)
     names = wait_for_all_deployments_ready(kube_cluster)
     logger.info("Ready deployments: %s", sorted(names))
 
@@ -623,8 +667,9 @@ def test_upgrade(
 
     assert stage == "post_upgrade", f"unexpected upgrade stage {stage!r}"
     request.getfixturevalue("prerequisites")
-    wait_for_all_deployments_ready(kube_cluster)
     edge_fixture: Edge = request.getfixturevalue("edge")
     wait_for_muster_healthy(edge_fixture)
+    heal_backstage_startup_race(kube_cluster)
+    wait_for_all_deployments_ready(kube_cluster)
     assert_unauthenticated_mcp_401(edge_fixture)
     assert_login_reaches_mcp(edge_fixture)

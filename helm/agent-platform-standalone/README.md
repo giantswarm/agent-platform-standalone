@@ -408,6 +408,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | dicebear.route.hostnames | list | `[]` |  |
 | agent-sandbox | object | `{}` |  |
 | backstage.ingress.enabled | bool | `false` |  |
+| backstage.backstage.args | list | `["--config","app-config.yaml","--config","app-config.production.yaml"]` | config flags — without these two the backend runs on the overlay alone and the app plugin fails startup on schema keys only the base config carries (e.g. `grafana`). Same flags as the image's own CMD. |
 | backstage.backstage.extraAppConfig[0].filename | string | `"app-config.agent-platform.yaml"` |  |
 | backstage.backstage.extraAppConfig[0].configMapRef | string | `"agent-platform-backstage-app-config"` |  |
 | backstage.backstage.extraEnvVars[0].name | string | `"AUTH_SESSION_SECRET"` |  |

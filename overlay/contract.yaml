@@ -94,6 +94,16 @@ backstage:
   ingress:
     enabled: false
   backstage:
+    # The image's base configuration, restated: any explicit --config replaces
+    # Backstage's default config set, and the chart passes extraAppConfig as
+    # --config flags — without these two the backend runs on the overlay
+    # alone and the app plugin fails startup on schema keys only the base
+    # config carries (e.g. `grafana`). Same flags as the image's own CMD.
+    args:
+      - --config
+      - app-config.yaml
+      - --config
+      - app-config.production.yaml
     extraAppConfig:
       - filename: app-config.agent-platform.yaml
         configMapRef: agent-platform-backstage-app-config
