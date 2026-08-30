@@ -45,15 +45,6 @@ func (h *fakeHelm) Pull(_, chart, _, destDir string) error {
 	return nil
 }
 
-func (h *fakeHelm) ResolveVersion(_, chart, _ string) (string, error) {
-	h.resolves++
-	version, ok := h.versions[chart]
-	if !ok {
-		return "", fmt.Errorf("no version fixture for %q", chart)
-	}
-	return version, nil
-}
-
 func (h *fakeHelm) DependencyUpdate(chartDir string) error {
 	h.updates++
 	return os.WriteFile(filepath.Join(chartDir, "Chart.lock"), fmt.Appendf(nil, h.lock, h.updates), 0o644)
@@ -73,9 +64,6 @@ func newFakeHelm() *fakeHelm {
 		templates: map[string]map[string]string{
 			// Copied: a test that drops a template must not mutate the fixture.
 			"agent-platform-connectivity": maps.Clone(fixtureTemplates),
-		},
-		versions: map[string]string{
-			"muster": "5.5.3", "kagent": "0.1.37", "agent-platform-mcps": "0.6.7", "agent-sandbox": "0.2.23", "backstage": "0.195.2",
 		},
 		lock: "dependencies:\n- name: muster\n  repository: oci://example/charts\n  version: 5.5.3\ndigest: sha256:abc\ngenerated: \"2026-08-27T00:00:0%dZ\"\n",
 	}
@@ -120,15 +108,30 @@ func TestRunIsIdempotentAndCheckPasses(t *testing.T) {
 	require.Equal(t, first, second, "a second run changes nothing, including the Chart.lock timestamp")
 	require.Equal(t, 2, helm.updates)
 
-	helm.versions["muster"] = "5.9.9"
-	resolvesBefore := helm.resolves
+	// The pins come from curate.yaml alone (there is no registry lookup to
+	// begin with), so check mode cannot be failed by an upstream release.
 	require.NoError(t, run(checkMode(opts), helm))
 	require.Equal(t, 1, helm.builds, "check mode runs helm dependency build, never update")
 	require.Equal(t, 2, helm.updates)
-	require.Equal(t, resolvesBefore, helm.resolves, "check mode validates the committed pins; a newer upstream release does not fail it")
 }
 
-func TestRunCheckRejectsPinOutsideRange(t *testing.T) {
+func TestRunRejectsPinOutsideRange(t *testing.T) {
+	opts := setupRepo(t)
+	helm := newFakeHelm()
+
+	// A Renovate bump across the range's major must fail the curation loudly —
+	// widening the range in curate.yaml is a deliberate human act.
+	config, err := os.ReadFile(opts.configPath)
+	require.NoError(t, err)
+	edited := replaceOnce(string(config), `version: "5.5.3"`, `version: "6.0.0"`)
+	require.NotEqual(t, string(config), edited)
+	require.NoError(t, os.WriteFile(opts.configPath, []byte(edited), 0o644))
+
+	require.ErrorContains(t, run(opts, helm), `dependency "muster" resolved to 6.0.0, outside range 5.x`)
+	require.ErrorContains(t, run(checkMode(opts), helm), `dependency "muster" resolved to 6.0.0, outside range 5.x`)
+}
+
+func TestRunCheckDetectsHandEditedPin(t *testing.T) {
 	opts := setupRepo(t)
 	helm := newFakeHelm()
 	require.NoError(t, run(opts, helm))
@@ -136,11 +139,11 @@ func TestRunCheckRejectsPinOutsideRange(t *testing.T) {
 	chartPath := filepath.Join(opts.chartDir, "Chart.yaml")
 	chart, err := os.ReadFile(chartPath)
 	require.NoError(t, err)
-	edited := replaceOnce(string(chart), `version: "5.5.3"`, `version: "6.0.0"`)
+	edited := replaceOnce(string(chart), `version: "5.5.3"`, `version: "5.5.4"`)
 	require.NotEqual(t, string(chart), edited)
 	require.NoError(t, os.WriteFile(chartPath, []byte(edited), 0o644))
 
-	require.ErrorContains(t, run(checkMode(opts), helm), `dependency "muster" resolved to 6.0.0, outside range 5.x`)
+	require.ErrorContains(t, run(checkMode(opts), helm), "Chart.yaml differs from the generator output")
 }
 
 func TestRunCheckDetectsStaleValues(t *testing.T) {

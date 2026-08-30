@@ -64,6 +64,12 @@ type KeyRule struct {
 type Dependency struct {
 	Name  string `yaml:"name"`
 	Range string `yaml:"range"`
+	// Version is the exact pin written into Chart.yaml, bumped by Renovate
+	// (the `# registry:` hint above each pin in curate.yaml feeds the
+	// org-wide renovate-presets customManager). The generator uses it
+	// verbatim and never asks the registry, so a component release cannot
+	// change a curation run.
+	Version string `yaml:"version"`
 	// Repository is set only for an extra dependency (not in the fleet).
 	Repository string `yaml:"repository"`
 	// Enabled is the default toggle of an extra dependency.
@@ -176,6 +182,9 @@ func (c *Config) Validate() error {
 		seen[dependency.Name] = true
 		if !majorRangeRe.MatchString(dependency.Range) {
 			return fmt.Errorf("dependency %q: range %q must have the form <major>.x", dependency.Name, dependency.Range)
+		}
+		if !exactVersionRe.MatchString(dependency.Version) {
+			return fmt.Errorf("dependency %q: version %q must be an exact version (the pin Renovate bumps)", dependency.Name, dependency.Version)
 		}
 		if dependency.IsExtra() && dependency.Enabled == nil {
 			return fmt.Errorf("extra dependency %q must set enabled", dependency.Name)

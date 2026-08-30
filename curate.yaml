@@ -18,7 +18,9 @@ fleet:
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
-  # Exact pin, bumped by the weekly curation job.
+  # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
+  # customManager convention).
+  # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
   version: 3.2.2
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
@@ -55,35 +57,59 @@ chart:
         url: https://github.com/giantswarm/agent-platform-standalone/issues
 
 # One dependency per component, keyed by the exact chart name (the values key;
-# no alias). `range` is major-bounded (<major>.x); the generator resolves it to
-# the newest published version and writes that exact pin into Chart.yaml.
-# A dependency with a `repository` is an extra one the fleet does not ship;
-# it needs an explicit `enabled` default.
+# no alias). `version` is the exact pin the generator writes into Chart.yaml —
+# Renovate bumps it: the `# registry:` hint directly above each pin is the
+# org-wide convention giantswarm/renovate-presets matches (docker datasource).
+# The curate-regen workflow then regenerates Chart.yaml/Chart.lock/README on
+# the Renovate branch. `range` is major-bounded (<major>.x) and guards the
+# pin: a bump across the major fails the curation, so widening a range is a
+# deliberate human edit. A dependency with a `repository` is an extra one the
+# fleet does not ship; it needs an explicit `enabled` default.
 dependencies:
   - name: muster
     range: "5.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/muster
+    version: "5.7.2"
   - name: valkey
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/valkey
+    version: "0.1.4"
   - name: kagent
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kagent
+    version: "0.1.37"
   - name: agentgateway
     # The 2.x line flattened the upstream keys onto the chart root, so the fleet
     # forwards this block unnested. A 1.x chart would read none of it.
     range: "2.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agentgateway
+    version: "2.0.3"
   - name: agent-platform-mcps
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
+    version: "0.6.8"
   - name: klaus-gateway
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
+    version: "0.30.20"
   - name: dicebear
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
+    version: "0.3.7"
   - name: agent-sandbox
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
+    version: "0.2.24"
   - name: backstage
     range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/backstage
+    version: "0.200.6"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
   - name: cloudnative-pg
     range: "0.x"
+    # registry: ghcr.io/cloudnative-pg/charts/cloudnative-pg
+    version: "0.29.0"
     repository: oci://ghcr.io/cloudnative-pg/charts
     enabled: false
 

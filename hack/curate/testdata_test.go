@@ -127,14 +127,19 @@ chart:
 dependencies:
   - name: muster
     range: "5.x"
+    version: "5.5.3"
   - name: kagent
     range: "0.x"
+    version: "0.1.37"
   - name: agent-platform-mcps
     range: "0.x"
+    version: "0.6.7"
   - name: agent-sandbox
     range: "0.x"
+    version: "0.2.23"
   - name: backstage
     range: "0.x"
+    version: "0.195.2"
     repository: oci://example/extra
     enabled: false
 keys:
