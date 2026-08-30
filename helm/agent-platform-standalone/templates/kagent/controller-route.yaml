@@ -1,0 +1,101 @@
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.kagent.controllerRoute.enabled }}
+{{- $route := .Values.components.kagent.controllerRoute }}
+{{- $ns := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
+{{- $kagentFullname := .Values.kagent.kagent.fullnameOverride | default .Release.Name }}
+# AgentgatewayBackend — registers the kagent controller as a backend that
+# agentgateway can proxy to after JWT validation.
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: kagent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  policies:
+    auth:
+      # Gateway strips the JWT after validation; passthrough re-injects it so
+      # trusted-proxy mode can extract the sub claim.
+      passthrough: {}
+  static:
+    host: {{ printf "%s-controller.%s.svc.cluster.local" $kagentFullname $ns }}
+    port: 8083
+---
+# HTTPRoute — exposes the kagent API at <pathPrefix> on the agentgateway Gateway.
+# Path prefix is stripped (URLRewrite) before forwarding so the controller
+# receives requests at /api/... as it expects.
+#
+# This is the internal data-plane hop. It is deliberately NOT hostname-scoped:
+# in-cluster A2A callers (e.g. klaus-gateway's --a2a-url, which points at the
+# agentgateway Service's cluster-DNS name) send Host=<svc>.<ns>.svc.cluster.local,
+# which would not match the public hostname. A host-scoped inner route lets those
+# requests fall through to the catch-all MCP route ("/"), where they are handled
+# as MCP Streamable-HTTP and rejected with 406 ("client must accept both
+# application/json and text/event-stream"). The path prefix (/kagent) is more
+# specific than the MCP "/" route, so a hostname-less route wins for every Host.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kagent-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Release.Namespace }}
+      group: gateway.networking.k8s.io
+      kind: Gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $route.pathPrefix }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: kagent
+          kind: AgentgatewayBackend
+          group: agentgateway.dev
+{{- if not (include "agent-platform-standalone.edgeIsDataPlane" .) }}
+---
+# HTTPRoute — exposes the kagent API on the outer public Gateway (TLS-terminating).
+# Forwards <pathPrefix>/* on the public hostname to the agentgateway Service,
+# which then applies JWT validation and the inner URLRewrite before forwarding
+# to the kagent controller. No URLRewrite here: the prefix strip happens at the
+# inner hop only. Not rendered when the data plane is the edge itself: the inner
+# route above then serves <pathPrefix> on the HTTPS listener directly.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kagent-controller-public
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- $override := list }}
+    {{- if $route.parentRef.name }}
+    {{- $override = list (dict "name" $route.parentRef.name "namespace" $route.parentRef.namespace "group" "gateway.networking.k8s.io" "kind" "Gateway") }}
+    {{- end }}
+    {{- include "agent-platform-standalone.parentRefs" (dict "ctx" . "override" $override "key" "components.kagent.controllerRoute.parentRef") | nindent 4 }}
+  hostnames:
+    - {{ include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "agentgateway" "override" $route.hostname "key" "components.kagent.controllerRoute.hostname") | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $route.pathPrefix }}
+      {{- with (include "agent-platform-standalone.routeTimeouts" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      backendRefs:
+        - name: {{ .Values.gateway.name }}
+          port: 8080
+{{- end }}
+{{- end }}

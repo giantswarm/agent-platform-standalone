@@ -1,0 +1,49 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+// Helm is the subset of the helm CLI the generator needs.
+type Helm interface {
+	Pull(repository, chart, version, destDir string) error
+	DependencyUpdate(chartDir string) error
+	DependencyBuild(chartDir string) error
+}
+
+type execHelm struct {
+	bin string
+}
+
+func (h execHelm) run(stdout bool, args ...string) ([]byte, error) {
+	command := exec.Command(h.bin, args...)
+	var out, errOut bytes.Buffer
+	command.Stdout = &out
+	command.Stderr = &errOut
+	if !stdout {
+		command.Stdout = os.Stderr
+	}
+	if err := command.Run(); err != nil {
+		return nil, fmt.Errorf("%s %s: %w\n%s", h.bin, strings.Join(args, " "), err, errOut.String())
+	}
+	return out.Bytes(), nil
+}
+
+func (h execHelm) Pull(repository, chart, version, destDir string) error {
+	_, err := h.run(false, "pull", strings.TrimSuffix(repository, "/")+"/"+chart, "--version", version, "--untar", "--destination", destDir)
+	return err
+}
+
+func (h execHelm) DependencyUpdate(chartDir string) error {
+	_, err := h.run(false, "dependency", "update", chartDir)
+	return err
+}
+
+func (h execHelm) DependencyBuild(chartDir string) error {
+	_, err := h.run(false, "dependency", "build", chartDir)
+	return err
+}

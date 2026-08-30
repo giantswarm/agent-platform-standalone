@@ -1,0 +1,40 @@
+{{- /* Layer-1 route: the public Gateway forwards /mcp to the agentgateway data
+plane. Not rendered when that data plane is the edge itself. */ -}}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) (not (include "agent-platform-standalone.edgeIsDataPlane" .)) }}
+{{- $fullName := .Values.gateway.name }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    {{- with (include "agent-platform-standalone.httpRouteLabels" (dict "ctx" . "route" "mcp")) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  {{- with (include "agent-platform-standalone.httpRouteAnnotations" (dict "ctx" . "route" "mcp")) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- include "agent-platform-standalone.parentRefs" (dict "ctx" . "override" .Values.ingress.parentRefs "key" "ingress.parentRefs") | nindent 4 }}
+  {{- if .Values.ingress.hostnames }}
+  hostnames:
+    {{- toYaml .Values.ingress.hostnames | nindent 4 }}
+  {{- else if .Values.global.domain }}
+  hostnames:
+    - {{ include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "muster" "key" "ingress.hostnames") | quote }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /mcp
+      {{- with (include "agent-platform-standalone.routeTimeouts" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      backendRefs:
+        - name: {{ $fullName }}
+          port: 8080
+{{- end }}

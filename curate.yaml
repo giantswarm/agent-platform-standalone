@@ -1,0 +1,413 @@
+# Input of hack/curate.sh, the generator that produces
+# helm/agent-platform-standalone/{Chart.yaml,values.yaml,Chart.lock}, the
+# chart's templates and examples/giantswarm.yaml.
+#
+# The fleet meta-package (giantswarm/agent-platform) is the source of truth for
+# component defaults until step 2 of the plan. The generator reads its values
+# and the frozen agent-platform-connectivity values at the pinned version, and
+# transforms them with the rules below. Every top-level key of both charts must
+# have a rule (deny-unknown): a fleet rename or a new Giant Swarm-only default
+# fails the run instead of leaking into the vanilla defaults. On top of the
+# transformed values the generator merges overlay/contract.yaml (the umbrella's
+# input contract, kept by every install) and overlay/vanilla.yaml (the fleet
+# defaults a vanilla cluster turns off); examples/giantswarm.yaml is generated
+# by reverting every vanilla leaf to its fleet value and merging
+# overlay/giantswarm.yaml on top.
+
+fleet:
+  repository: oci://gsoci.azurecr.io/charts/giantswarm
+  chart: agent-platform
+  connectivityChart: agent-platform-connectivity
+  # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
+  # customManager convention).
+  # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
+  version: 3.2.2
+  # Fleet components that are not dependencies: this chart renders their
+  # templates itself, generated from the connectivity chart on every run.
+  inlineComponents:
+    - agent-platform-connectivity
+
+# Static Chart.yaml metadata. `dependencies` is generated; `version` stays
+# 0.0.0-dev because app-build-suite stamps the git version at build time.
+chart:
+  apiVersion: v2
+  name: agent-platform-standalone
+  type: application
+  description: |
+    Giant Swarm Agent Platform as one plain Helm chart: muster (MCP gateway),
+    kagent (agent runtime), agentgateway (data plane), valkey, the platform MCP
+    servers, klaus-gateway, DiceBear avatars, agent-sandbox, Backstage and the
+    CloudNativePG operator as dependencies, plus the wiring (routes, gateway,
+    network policies) that makes them one platform. Installs on any conformant
+    Kubernetes cluster with `helm install`; no GitOps controller required.
+  home: https://github.com/giantswarm/agent-platform-standalone
+  icon: https://s.giantswarm.io/app-icons/giantswarm/1/light.svg
+  sources:
+    - https://github.com/giantswarm/agent-platform-standalone
+    - https://github.com/giantswarm/agent-platform
+  appVersion: "0.1.0"
+  version: 0.0.0-dev
+  annotations:
+    io.giantswarm.application.audience: all
+    io.giantswarm.application.managed: "false"
+    io.giantswarm.application.team: bumblebee
+    artifacthub.io/license: Apache-2.0
+    artifacthub.io/links: |
+      - name: Support
+        url: https://github.com/giantswarm/agent-platform-standalone/issues
+
+# One dependency per component, keyed by the exact chart name (the values key;
+# no alias). `version` is the exact pin the generator writes into Chart.yaml —
+# Renovate bumps it: the `# registry:` hint directly above each pin is the
+# org-wide convention giantswarm/renovate-presets matches (docker datasource).
+# The curate-regen workflow then regenerates Chart.yaml/Chart.lock/README on
+# the Renovate branch. `range` is major-bounded (<major>.x) and guards the
+# pin: a bump across the major fails the curation, so widening a range is a
+# deliberate human edit. A dependency with a `repository` is an extra one the
+# fleet does not ship; it needs an explicit `enabled` default.
+dependencies:
+  - name: muster
+    range: "5.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/muster
+    version: "5.7.2"
+  - name: valkey
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/valkey
+    version: "0.1.4"
+  - name: kagent
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kagent
+    version: "0.1.37"
+  - name: agentgateway
+    # The 2.x line flattened the upstream keys onto the chart root, so the fleet
+    # forwards this block unnested. A 1.x chart would read none of it.
+    range: "2.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agentgateway
+    version: "2.0.3"
+  - name: agent-platform-mcps
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
+    version: "0.6.8"
+  - name: klaus-gateway
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
+    version: "0.30.20"
+  - name: dicebear
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
+    version: "0.3.7"
+  - name: agent-sandbox
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
+    version: "0.2.24"
+  - name: backstage
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/backstage
+    version: "0.200.6"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    enabled: false
+  - name: cloudnative-pg
+    range: "0.x"
+    # registry: ghcr.io/cloudnative-pg/charts/cloudnative-pg
+    version: "0.29.0"
+    repository: oci://ghcr.io/cloudnative-pg/charts
+    enabled: false
+
+# Rule per top-level key of the fleet and connectivity values.
+#   keep          copy the fleet block under the same key
+#   drop          fleet-only mechanics, not part of the umbrella
+#   dependencies  the fleet `components` map: source of the dependency list
+#   wiring        umbrella-owned block, copied from the connectivity values
+#                 (its templates read it and live in this chart); `moveTo`
+#                 relocates it under a dotted path, e.g. global.networkPolicy,
+#                 and the template rewrite follows the move
+#   umbrella      umbrella-only key neither source chart knows; an overlay
+#                 must define it, a fleet or connectivity block under the
+#                 same key fails the run
+#   component     a component's values: renamed to the chart name, `lift` keys
+#                 moved to components.<chart>.*, nested under the fleet
+#                 valuesKey. `keepEnabled` forwards an `enabled` key the
+#                 component chart owns; without it a top-level `enabled` fails
+#                 the run, because components.<chart>.enabled is the only toggle
+#   lift          a block that holds no component values: every sub-key must be
+#                 listed in `lift` and names the dependency in `chart`; any
+#                 other sub-key fails the run
+#
+# `allowShadow` declares that the key also appears in the source chart the rule
+# does not read (a wiring key in the fleet values, any other key in the
+# connectivity values) and that this shadow copy is discarded deliberately.
+# Without it a cross-source copy fails the run, so the two copies cannot drift
+# apart unnoticed.
+#
+# The on/off default of every fleet component comes from the fleet's own
+# components.<name>.enabled. Nothing here restates it.
+keys:
+  global: {action: keep, allowShadow: true}
+  gitops: {action: drop}
+  components: {action: dependencies, allowShadow: true}
+  ingress: {action: wiring, allowShadow: true}
+  gateway: {action: wiring, allowShadow: true}
+  gatewayApi: {action: wiring, allowShadow: true}
+  # Under global so a component chart can read the same flavor split later;
+  # Helm forwards only global.* to subcharts. Downstream-only: upstream keeps
+  # .Values.networkPolicy, the template rewrite follows the move.
+  networkPolicy: {action: wiring, moveTo: global.networkPolicy, allowShadow: true}
+  kyvernoPolicies: {action: wiring, allowShadow: true}
+  extraObjects: {action: wiring, allowShadow: true}
+  postgres: {action: wiring, allowShadow: true}
+  muster:
+    action: component
+    # The muster chart has an `enabled` value of its own, so this one block
+    # keeps the key instead of failing on it.
+    keepEnabled: true
+    allowShadow: true
+  valkey: {action: component, allowShadow: true}
+  kagent:
+    action: component
+    # Read by the umbrella templates, not by the kagent chart.
+    lift: [controllerRoute, uiRoute, modelConfigs, remoteMcpServers]
+    allowShadow: true
+  agentgateway: {action: component, allowShadow: true}
+  klausGateway: {action: component, allowShadow: true}
+  dicebear: {action: component, allowShadow: true}
+  agent-platform-mcps: {action: component, allowShadow: true}
+  agentSandbox:
+    action: lift
+    chart: agent-sandbox
+    lift: [podSecurity]
+    allowShadow: true
+
+# `# @schema` line comments injected into the generated values.yaml, keyed by
+# the path in the GENERATED layout. The schema pre-commit hook turns them into
+# constraints the curated defaults alone would get wrong: an array default
+# freezes its item shape (no TLS listener, no valueFrom env var, no
+# sectionName parentRef, no extra securityContext field would validate), and a
+# free-string mode selector accepts a typo that silently disables every
+# template gated on it. A path the generated values do not carry fails the run.
+#
+# The itemRef entries point at the real API schemas (bundled into
+# values.schema.json at pre-commit time); together with the hook's
+# $ref/unevaluatedProperties fix they validate array items against the actual
+# Gateway API listener and core EnvVar shapes instead of the frozen defaults.
+annotations:
+  gateway.listeners: "itemRef: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/gateway.networking.k8s.io/gateway_v1.json#/properties/spec/properties/listeners/items"  # yamllint disable-line rule:line-length
+  gateway.parameters.dataPlaneEnv: "itemRef: $k8s/envvar.json"
+  components.kagent.controllerRoute.parentRef: "additionalProperties: true"
+  components.kagent.uiRoute.parentRef: "additionalProperties: true"
+  components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
+  global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
+  # Operator-set label/annotation maps: the schema generator would close the
+  # curated empty defaults, rejecting every key an operator adds.
+  ingress.httpRoute.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.labels: "type: object; additionalProperties: true"
+  ingress.httpRoute.muster.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.muster.labels: "type: object; additionalProperties: true"
+  ingress.httpRoute.mcp.annotations: "type: object; additionalProperties: true"
+  ingress.httpRoute.mcp.labels: "type: object; additionalProperties: true"
+  ingress.backendTrafficPolicy.annotations: "type: object; additionalProperties: true"
+  ingress.backendTrafficPolicy.labels: "type: object; additionalProperties: true"
+
+# The connectivity chart's templates are copied into this chart on every run.
+# Helper names take the chart-name prefix, and every values path the transform
+# moved is rewritten from the rules above. A template that reads a path this
+# chart does not carry fails the run.
+templates:
+  # The one path the values rules cannot derive: `muster.enabled` exists in both
+  # layouts (the muster chart owns it), but the netpol gate asks whether the
+  # component has a release, which is components.muster.enabled.
+  rewrite:
+    - from: .Values.muster.enabled
+      to: .Values.components.muster.enabled
+  # Exact-once text edits applied after the rewrites, where the upstream copy
+  # is wrong for the standalone layout. A stale find (upstream changed the
+  # text) fails the run; each entry names the upstream fix that retires it.
+  patch:
+    # The kagent UI Service is named from the kagent chart's fullnameOverride
+    # (pinned to `kagent` in values.yaml), not from the release name. Upstream
+    # bug in agent-platform-connectivity: the oauth2-proxy branch and
+    # controller-route.yaml already honor the override, this branch does not.
+    - file: kagent/ui-httproute.yaml
+      find: |-
+        - name: {{ printf "%s-ui" .Release.Name }}
+      replace: |-
+        - name: {{ printf "%s-ui" (.Values.kagent.kagent.fullnameOverride | default .Release.Name) }}
+    # The public `/` route targets the muster Service: without a component gate
+    # it renders with muster disabled and blackholes every hostname on the
+    # shared Gateway. Upstream never installs without muster; this chart does.
+    - file: ingress/muster-httproute.yaml
+      find: |-
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+      replace: |-
+        {{- if (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster")) }}
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+    - file: ingress/muster-httproute.yaml
+      find: |-
+        port: {{ include "agent-platform-standalone.musterServicePort" . }}
+      replace: |-
+        port: {{ include "agent-platform-standalone.musterServicePort" . }}
+        {{- end }}
+    # The kagent Namespace must not exist (and be Helm-owned, so deleted on
+    # uninstall) when the kagent component is off.
+    - file: namespace.yaml
+      find: |-
+        {{- if and .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
+      replace: |-
+        {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
+        {{- if and $kagentOn .Values.kagent.kagent.namespaceOverride (ne .Values.kagent.kagent.namespaceOverride .Release.Namespace) }}
+    # Two of the legacy-toggle hints probed keys the strict root schema rejects
+    # before templates run (dead rows), while the renamed opaque blocks accepted
+    # klaus-gateway.enabled / agent-sandbox.enabled silently — the exact trap
+    # the helper exists to catch. The probe must also be coalescing-safe, and
+    # there are TWO coalescing sources: plain `helm install` merges the
+    # klaus-gateway chart's own top-level `enabled: true` default (its values
+    # say the chart ignores it) into .Values while the dependency is on, and
+    # chart-operator (the chart installed as a Giant Swarm App — the ATS kind
+    # smoke, where this bit) passes chartutil-coalesced values, which include
+    # the defaults of DISABLED dependencies, back as overrides — so the key is
+    # present in App installs even while the component is off. A legacy
+    # klaus-gateway.enabled is therefore provably the operator's only when its
+    # value is an explicit false (the only injected default is true) — the
+    # case where the operator believes the component is off while it deploys
+    # anyway; a leftover `true` is silently ignored. Deviates from the
+    # while-off leg upstreamed in agent-platform#249, which chart-operator
+    # installs trip with the component off. The referenced UPGRADE.md does not
+    # exist yet (issue #8).
+    # Upstream's guard is coalescing-safe since agent-platform#249 and reports
+    # a legacy key always while the component is off. That leg trips under
+    # chart-operator (this chart installed as a Giant Swarm App — the ATS kind
+    # smoke, where this bit): it passes chartutil-coalesced values, which
+    # include the defaults of DISABLED dependencies, back as overrides, so
+    # klaus-gateway's own `enabled: true` default is present even while the
+    # component is off. This copy therefore probes the four blocks that own no
+    # `enabled` default by key presence alone (stricter than upstream: a
+    # leftover key fails even while the component is on), and klaus-gateway
+    # only on an explicit false — the one provably operator-set case, where the
+    # operator believes the component is off while it deploys anyway. Also
+    # renames the probe keys to this chart's exact dependency names and drops
+    # the UPGRADE.md reference (does not exist yet, issue #8).
+    - file: _helpers.tpl
+      find: |-
+        {{- $moved := list
+              (list "agentgateway" "components.agentgateway.enabled")
+              (list "valkey" "components.valkey.enabled")
+              (list "kagent" "components.kagent.enabled")
+              (list "klausGateway" "components.klaus-gateway.enabled")
+              (list "agentSandbox" "components.agent-sandbox.enabled") -}}
+        {{- $found := list -}}
+        {{- range $moved -}}
+        {{- $block := index $.Values (first .) | default dict -}}
+        {{- if hasKey $block "enabled" -}}
+        {{- $on := include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" (index (splitList "." (last .)) 1)) -}}
+        {{- if or (not $on) (not (index $block "enabled")) -}}
+        {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
+        {{- end -}}
+        {{- end -}}
+        {{- end -}}
+        {{- with $found -}}
+        {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s (see UPGRADE.md)" (join ", " .)) -}}
+        {{- end -}}
+      replace: |-
+        {{- $moved := list
+              (list "agentgateway" "components.agentgateway.enabled")
+              (list "valkey" "components.valkey.enabled")
+              (list "kagent" "components.kagent.enabled")
+              (list "agent-sandbox" "components.agent-sandbox.enabled") -}}
+        {{- $found := list -}}
+        {{- range $moved -}}
+        {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
+        {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
+        {{- end -}}
+        {{- end -}}
+        {{- /* klaus-gateway is the one dependency whose chart owns a top-level
+        `enabled` default. It reaches .Values through Helm's coalescing while
+        the dependency is on, and through chart-operator's coalesced override
+        values even while it is off, so key presence never proves an operator
+        set the legacy toggle — an explicit false does (the only injected
+        default is true). */ -}}
+        {{- $klausGateway := index $.Values "klaus-gateway" | default dict -}}
+        {{- if and (hasKey $klausGateway "enabled") (not (index $klausGateway "enabled")) -}}
+        {{- $found = append $found "klaus-gateway.enabled -> components.klaus-gateway.enabled" -}}
+        {{- end -}}
+        {{- with $found -}}
+        {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
+        {{- end -}}
+    # The copied doc-comment describes upstream's probe (report always while
+    # off), which is not what the patched copy above does; the byte-checked
+    # artifact must not document semantics it does not implement.
+    - file: _helpers.tpl
+      find: |-
+        The probe is coalescing-safe: in a layout where a block feeds a real Helm
+        dependency (the standalone umbrella copies this helper), Helm coalesces that
+        chart's own top-level `enabled: true` default into the block once the dependency
+        is on (klaus-gateway ships one), so hasKey cannot tell an operator-set value from
+        the chart default. A legacy key is therefore reported when it is provably the
+        operator's: always while the component is off (a disabled dependency's block is
+        never coalesced), and while it is on when the value is an explicit false (the
+        only coalesced default is true) — exactly the case where the operator believes
+        the component is off while it runs anyway. On + true is indistinguishable from a
+        coalesced default and passes. The removed `mcps:` block needs no entry: the root
+        schema rejects it already.
+      replace: |-
+        This copy's probe deviates from upstream's coalescing-safe semantics
+        (agent-platform#249): chart-operator (this chart installed as a Giant
+        Swarm App) passes chartutil-coalesced values — including the defaults of
+        DISABLED dependencies — back as overrides, so upstream's while-off leg
+        trips on the injected klaus-gateway default. Four of the five blocks own
+        no top-level `enabled` default, so for them key presence alone proves an
+        operator set the legacy toggle and is always reported. klaus-gateway
+        ships `enabled: true` in its own chart, so its key is reported only on
+        an explicit false — the case where the operator believes the component
+        is off while it deploys anyway. The removed `mcps:` block needs no
+        entry: the root schema rejects it already.
+    # The copied helper doc states the upstream default (enabled: true), which
+    # overlay/vanilla.yaml flips; the byte-checked artifact must not document a
+    # wrong default. Retires when upstream drops the default from the prose.
+    - file: _helpers.tpl
+      find: |-
+        (global.observability.metrics.serviceMonitor.enabled, default true). The
+      replace: |-
+        (global.observability.metrics.serviceMonitor.enabled; the vanilla default
+        of this chart is false). The
+    # ingress.mode=muster-direct turns the agentgateway component (and with it
+    # the agentgateway.dev CRDs) off, so anything that renders agentgateway.dev
+    # resources or attaches to the chart-owned Gateway must fail loudly in that
+    # mode instead of shipping resources the API server rejects.
+    - file: _helpers.tpl
+      find: |-
+        {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
+        {{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+        {{- end -}}
+      replace: |-
+        {{- if and (eq $mode "muster-direct") $agentgatewayEnabled -}}
+        {{- fail "components.agentgateway.enabled must be false in muster-direct mode; the controller dependency condition must match ingress.mode" -}}
+        {{- end -}}
+        {{- if eq $mode "muster-direct" -}}
+        {{- $mcpsValues := index .Values "agent-platform-mcps" | default dict -}}
+        {{- $mcpsOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "agent-platform-mcps") -}}
+        {{- if and $mcpsOn (dig "agentgateway" "enabled" false $mcpsValues) (dig "mcpServers" (list) $mcpsValues) -}}
+        {{- fail "muster-direct mode cannot serve agentgateway.dev resources rendered per MCP server; set agent-platform-mcps.agentgateway.enabled=false to reach MCP servers through muster" -}}
+        {{- end -}}
+        {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") -}}
+        {{- if and $kagentOn .Values.components.kagent.controllerRoute.enabled -}}
+        {{- fail "components.kagent.controllerRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+        {{- end -}}
+        {{- $klausGatewayOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "klaus-gateway") -}}
+        {{- if and $klausGatewayOn (dig "agentgatewayRoute" "enabled" false (index .Values "klaus-gateway" | default dict)) -}}
+        {{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
+        {{- end -}}
+        {{- end -}}
+  # Files under templates/ this generator does not produce. The install notes
+  # are the umbrella's own: the fleet's version tells the reader to install the
+  # meta-package. The Backstage app-config and route are umbrella-only: the
+  # fleet's Backstage is configured by the Giant Swarm management cluster, not
+  # by the connectivity chart. They call the generated (already renamed)
+  # helpers directly.
+  extra:
+    - NOTES.txt
+    - backstage/app-config.yaml
+    - backstage/httproute.yaml
+    # Guards the curated oauth2-proxy redirect-url (a values-level default the
+    # connectivity chart does not know) against a diverging UI hostname.
+    - kagent/ui-redirect-validate.yaml

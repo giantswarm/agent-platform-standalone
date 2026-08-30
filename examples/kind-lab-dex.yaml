@@ -1,0 +1,134 @@
+# kind quick start: the chart's agentgateway Gateway is the public edge, a lab
+# Dex is the identity provider.
+#
+#   kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+#   kubectl apply -f prerequisites/lab-dex.yaml
+#   kubectl -n agent-platform wait --for=condition=complete job/lab-dex-cert-gen
+#   helm dependency build helm/agent-platform-standalone
+#   helm install agent-platform helm/agent-platform-standalone -n agent-platform \
+#     --create-namespace -f examples/kind-lab-dex.yaml
+#
+# LAB ONLY. The lab Dex (static password users, no upstream connector), the
+# self-signed wildcard certificate and the Secrets below come from
+# prerequisites/lab-dex.yaml. Never a production path. See the README's
+# "Lab quick start (kind)" for the full walkthrough.
+#
+# Prerequisites on the cluster (all provided by prerequisites/lab-dex.yaml
+# except the Gateway API CRDs): in the release namespace the Secret
+# `agent-platform-idp` (dex-client-secret, registration-token,
+# oauth-encryption-key, valkey-password, backstage-session-secret), the
+# wildcard certificate Secret `agent-platform-tls` and the lab CA Secret
+# `agent-platform-idp-ca` (key ca.crt); DNS for *.127.0.0.1.nip.io (the nip.io
+# wildcard resolves to localhost outside the cluster; inside pods the lab's
+# CoreDNS rewrite points it at the edge Gateway Service).
+
+global:
+  domain: 127.0.0.1.nip.io
+  identity:
+    issuerUrl: https://dex.127.0.0.1.nip.io
+    clientId: agent-platform
+    existingSecret: agent-platform-idp
+    ca:
+      secretName: agent-platform-idp-ca
+
+# The chart-owned agentgateway Gateway is the public edge: it terminates TLS
+# for *.127.0.0.1.nip.io and every public route attaches to its HTTPS listener.
+gatewayApi:
+  gateway:
+    create: true
+    tls:
+      secretName: agent-platform-tls
+
+components:
+  muster:
+    enabled: true
+  valkey:
+    enabled: true
+  kagent:
+    enabled: true
+    controllerRoute:
+      enabled: true
+  agentgateway:
+    enabled: true
+  agent-platform-mcps:
+    enabled: true
+  backstage:
+    enabled: true
+  klaus-gateway:
+    enabled: false
+  agent-sandbox:
+    enabled: false
+  cloudnative-pg:
+    enabled: false
+
+# client -> agentgateway /mcp -> muster
+ingress:
+  mode: agentgateway-muster
+
+# Sized for a small lab VM (the CI smoke runs the whole platform on two
+# cores): modest CPU requests so everything schedules next to the system
+# pods and the 100m the agentgateway control plane requests for its
+# data-plane pod. Limits keep the chart defaults; drop these overrides on a
+# bigger machine.
+kagent:
+  kagent:
+    controller:
+      resources:
+        requests:
+          cpu: 50m
+    ui:
+      resources:
+        requests:
+          cpu: 50m
+    database:
+      postgres:
+        bundled:
+          resources:
+            requests:
+              cpu: 50m
+
+# The muster chart reads its own OIDC keys; they must match global.identity
+# (the render fails otherwise).
+muster:
+  # Lab sizing, see the comment on `gateway:` above.
+  resources:
+    requests:
+      cpu: 50m
+  muster:
+    oauth:
+      server:
+        baseUrl: https://muster.127.0.0.1.nip.io
+        dex:
+          issuerUrl: https://dex.127.0.0.1.nip.io
+          clientId: agent-platform
+          # The lab Dex resolves to a private address.
+          allowPrivateIPOIDC: true
+        existingSecret: agent-platform-idp
+        # Accept Dex ID tokens carrying the dex-k8s-authenticator audience as
+        # bearer tokens. Backstage forwards the logged-in user's ID token to
+        # muster, and its GS auth provider requests that cross-client audience
+        # by default (components.backstage.extraScopes); without this muster
+        # rejects every Backstage call. The lab Dex's trustedPeers client
+        # mints the audience.
+        trustedAudiences:
+          - dex-k8s-authenticator
+    # The lab CA, for OIDC discovery and JWKS against the lab Dex.
+    extraCaFile:
+      secret:
+        name: agent-platform-idp-ca
+        key: ca.crt
+
+valkey:
+  valkey:
+    auth:
+      # The same Secret muster reads `valkey-password` from. The ACL init
+      # reads each user's password from the key named by passwordKey (its
+      # default is the username, and the Secret carries no `default` key).
+      usersExistingSecret: agent-platform-idp
+      aclUsers:
+        default:
+          passwordKey: valkey-password
+
+agent-platform-mcps:
+  agentgateway:
+    viaMuster: true

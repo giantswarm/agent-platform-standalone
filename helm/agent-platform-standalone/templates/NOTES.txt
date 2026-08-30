@@ -1,0 +1,46 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed in namespace {{ .Release.Namespace }}.
+
+Components on: {{- range $name, $component := .Values.components }}{{- if $component.enabled }} {{ $name }}{{- end }}{{- end }}
+{{- if (include "agent-platform-standalone.ingress.agentgateway" .) }}
+
+Gateway:        {{ .Values.gateway.name }} (class {{ .Values.gateway.gatewayClassName }})
+{{- if (include "agent-platform-standalone.edgeIsDataPlane" .) }}
+Public edge:    this Gateway, HTTPS listener for *.{{ .Values.global.domain }} (Service type {{ .Values.gatewayApi.gateway.serviceType }})
+{{- else }}
+Listener port:  {{ with (.Values.gateway.listeners | default list | first) }}{{ .port }}{{ else }}none (gateway.listeners is empty){{ end }}
+Service type:   {{ .Values.gateway.parameters.serviceType }} (data-plane Service forced via AgentgatewayParameters overlay)
+{{- end }}
+
+Verify the data-plane Deployment renders after the controller picks up the Gateway:
+  kubectl -n {{ .Release.Namespace }} get gateway,deployment -l gateway.networking.k8s.io/gateway-name={{ .Values.gateway.name }}
+{{- end }}
+
+Cluster prerequisites (the chart does not install them):
+  kubectl get crd gateways.gateway.networking.k8s.io   # Gateway API CRDs + one implementation
+
+The component charts ship their own CRDs in their crds/ directories (muster,
+agentgateway, kagent, agent-sandbox, klaus-gateway). Helm installs them on the
+first install but never upgrades them: after `helm upgrade` to a release that
+bumps a component, re-apply that component's CRDs.
+{{- if and .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "kubernetes") }}
+
+WARNING: global.networkPolicy.flavor is kubernetes. NetworkPolicy has no FQDN
+egress, so the rules that name the identity provider and the model endpoints
+allow egress to every non-private address on 443 instead
+(global.networkPolicy.kubernetes.worldExcludedCIDRs). Narrow them with
+global.networkPolicy.additionalEgressCIDRs where the addresses are known.
+{{- end }}
+{{- if .Values.kyvernoPolicies.enabled }}
+
+kyvernoPolicies.enabled is true. On a cluster whose Kyverno admission fails
+closed, a first `helm install` can be rejected before Kyverno has loaded the
+policies this release ships; run `helm upgrade` once more.
+{{- end }}
+{{- if and (index .Values.components "cloudnative-pg").enabled (not .Values.postgres.enabled) }}
+
+components.cloudnative-pg.enabled is true and postgres.enabled is false: the
+operator is installed. Enable the platform database in a second revision:
+  helm upgrade ... --set postgres.enabled=true
+The two cannot land in one first install: the CloudNativePG chart templates its
+CRDs, so the Cluster manifest has no API to map to until the operator release exists.
+{{- end }}

@@ -1,0 +1,45 @@
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.kagent.uiRoute.enabled }}
+{{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
+{{- $uiRoute := .Values.components.kagent.uiRoute }}
+{{- $oauth2proxyEnabled := index .Values.kagent.kagent "oauth2-proxy" "enabled" | default false }}
+# HTTPRoute for the kagent UI on the public Gateway.
+# Placed in the kagent namespace so the backend Service (UI or oauth2-proxy)
+# is in the same namespace — no ReferenceGrant needed.
+#
+# When oauth2-proxy is enabled: traffic flows public → oauth2-proxy → kagent UI.
+# When oauth2-proxy is disabled: traffic goes directly to the UI (dev only —
+# anyone with the hostname can access the UI without authentication).
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "agent-platform-standalone.name" . }}-ui
+  namespace: {{ $kagentNs }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- $override := list }}
+    {{- if $uiRoute.parentRef.name }}
+    {{- $override = list (dict "name" $uiRoute.parentRef.name "namespace" $uiRoute.parentRef.namespace "group" "gateway.networking.k8s.io" "kind" "Gateway") }}
+    {{- end }}
+    {{- include "agent-platform-standalone.parentRefs" (dict "ctx" . "override" $override "key" "components.kagent.uiRoute.parentRef") | nindent 4 }}
+  hostnames:
+    - {{ include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "kagent" "override" $uiRoute.hostname "key" "components.kagent.uiRoute.hostname") | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      {{- with (include "agent-platform-standalone.routeTimeouts" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      backendRefs:
+        {{- if $oauth2proxyEnabled }}
+        - name: {{ index .Values.kagent.kagent "oauth2-proxy" "fullnameOverride" | default (printf "%s-oauth2-proxy" .Release.Name) }}
+          port: 4180
+        {{- else }}
+        - name: {{ printf "%s-ui" (.Values.kagent.kagent.fullnameOverride | default .Release.Name) }}
+          port: 8080
+        {{- end }}
+{{- end }}

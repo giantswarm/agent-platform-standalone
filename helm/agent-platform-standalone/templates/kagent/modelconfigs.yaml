@@ -1,0 +1,20 @@
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "kagent")) .Values.components.kagent.modelConfigs }}
+{{- $ns := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
+{{- range .Values.components.kagent.modelConfigs }}
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: {{ required "components.kagent.modelConfigs[].name is required" .name | quote }}
+  namespace: {{ $ns }}
+  {{- with .displayName }}
+  annotations:
+    ui.giantswarm.io/display-name: {{ . | quote }}
+  {{- end }}
+spec:
+  provider: {{ required "components.kagent.modelConfigs[].provider is required" .provider | quote }}
+  model: {{ required "components.kagent.modelConfigs[].model is required" .model | quote }}
+  apiKeySecret: {{ required "components.kagent.modelConfigs[].apiKeySecret is required" .apiKeySecret | quote }}
+  apiKeySecretKey: {{ .apiKeySecretKey | default "ANTHROPIC_API_KEY" | quote }}
+{{- end }}
+{{- end }}

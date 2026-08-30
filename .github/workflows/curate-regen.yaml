@@ -1,0 +1,45 @@
+name: curate-regen
+# Renovate bumps the exact pins in curate.yaml (the `# registry:` hints) but
+# cannot run the curation generator, so on Renovate branches this workflow
+# regenerates Chart.yaml, Chart.lock, the chart templates and the helm-docs
+# README from the bumped pins and pushes the result back onto the PR branch.
+# The second run after that push finds a clean tree and no-ops.
+on:
+  pull_request:
+    branches:
+      - main
+      - feat/curate-generator
+jobs:
+  regen:
+    if: startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: curate-regen-${{ github.head_ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          # Taylor Bot's PAT, not GITHUB_TOKEN: a GITHUB_TOKEN push would not
+          # retrigger the required checks on the regenerated commit, leaving
+          # the PR stuck on "Expected" statuses.
+          token: ${{ secrets.TAYLORBOT_GITHUB_ACTION }}
+      - name: Regenerate the curated chart from the bumped pins
+        run: hack/curate.sh
+      - name: Regenerate the chart README
+        # The hook exits non-zero when it rewrites files - that is the point
+        # here; a genuinely broken run still surfaces in the pre-commit check.
+        run: pipx run pre-commit run helm-docs --all-files || true
+      - name: Push the regenerated files
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "generated files already in sync"
+            exit 0
+          fi
+          git config user.name "Taylor Bot"
+          git config user.email "dev@giantswarm.io"
+          git add -A
+          git commit -m "chore: regenerate the curated chart for the Renovate bump"
+          git push

@@ -1,2 +1,10 @@
 vendor
 .vendir*
+
+# Helm pulls dependency archives here; Chart.lock is the committed BOM.
+helm/*/charts/
+*.curate
+build/
+
+# Python bytecode (ATS test runs)
+__pycache__/

@@ -1,0 +1,72 @@
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) .Values.gateway.parameters.enabled }}
+{{- /* Data-plane env: OTEL_* from global.observability.traces.otlp first, then
+gateway.parameters.dataPlaneEnv minus entries the global block already named —
+so a set global endpoint wins over the defaults without duplicating env names. */ -}}
+{{- $otlp := list }}
+{{- with (include "agent-platform-standalone.otlpEnv" .) }}
+{{- $otlp = . | fromYamlArray }}
+{{- end }}
+{{- $otlpNames := dict }}
+{{- range $otlp }}
+{{- $_ := set $otlpNames .name true }}
+{{- end }}
+{{- $env := $otlp }}
+{{- range (.Values.gateway.parameters.dataPlaneEnv | default list) }}
+{{- if not (hasKey $otlpNames .name) }}
+{{- $env = append $env . }}
+{{- end }}
+{{- end }}
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: {{ include "agent-platform-standalone.parametersName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  {{- with .Values.agentgateway.proxy.image }}
+  image:
+    registry: {{ .registry }}
+    repository: {{ .repository }}
+    {{- with .tag }}
+    tag: {{ . }}
+    {{- end }}
+  {{- end }}
+  service:
+    {{- /* The CRD embeds the Service customization as a ServiceSpec under
+    spec.service.spec; a `type` directly under `service` is not in the
+    schema (pruned client-side, rejected by server-side apply). */}}
+    spec:
+      {{- if (include "agent-platform-standalone.edgeIsDataPlane" .) }}
+      type: {{ .Values.gatewayApi.gateway.serviceType }}
+      {{- else }}
+      type: {{ .Values.gateway.parameters.serviceType }}
+      {{- end }}
+  deployment:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: true
+          securityContext:
+            {{- toYaml .Values.gateway.parameters.podSecurityContext | nindent 12 }}
+          {{- with .Values.gateway.parameters.dataPlaneVolumes }}
+          volumes:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: agentgateway
+              securityContext:
+                {{- toYaml .Values.gateway.parameters.containerSecurityContext | nindent 16 }}
+              {{- with .Values.gateway.parameters.dataPlaneResources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with $env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.gateway.parameters.dataPlaneVolumeMounts }}
+              volumeMounts:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+{{- end }}

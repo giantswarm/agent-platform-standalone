@@ -1,0 +1,142 @@
+# The umbrella's input contract, merged by hack/curate.sh on top of the
+# transformed fleet defaults before overlay/vanilla.yaml: opinionated defaults
+# for the global.* identity keys the fleet leaves empty, the umbrella-only
+# keys, and the wiring the umbrella templates need inside component blocks.
+# Every installation keeps these; examples/giantswarm.yaml never reverts them.
+# Only umbrella-owned keys and dependency names are allowed at the top level.
+
+global:
+  identity:
+    # OAuth client registered at the provider for the platform. The fleet
+    # ships no default; one shared convention keeps the muster consistency
+    # check, the examples and the prerequisites manifest aligned.
+    clientId: agent-platform
+    # Secret in the release namespace with the platform credentials:
+    #   dex-client-secret, registration-token, oauth-encryption-key,
+    #   valkey-password           muster and valkey
+    #   backstage-session-secret  Backstage cookie signing key
+    existingSecret: agent-platform-idp
+    # CA of a provider with a private certificate (the lab Dex). Mounted into
+    # Backstage (NODE_EXTRA_CA_CERTS). muster reads the same Secret through
+    # muster.muster.extraCaFile.secret.name. Empty: system trust only.
+    ca:
+      secretName: ""
+      key: ca.crt
+
+components:
+  backstage:
+    # Public hostname; empty derives backstage.<global.domain>.
+    hostname: ""
+    # Gateway of the Backstage route; empty follows the platform default.
+    parentRefs: []
+    # Extra OIDC scopes the Backstage login requests. The two defaults are
+    # Dex cross-client scopes: muster trusts the dex-k8s-authenticator
+    # audience on forwarded tokens. Set [] for a provider that rejects unknown
+    # scopes (Keycloak, Entra ID).
+    extraScopes:
+      - federated:id
+      - audience:server:client_id:dex-k8s-authenticator
+    # Sidebar pages of the Giant Swarm portal hidden on the vanilla UI.
+    disabledExtensions:
+      - page:gs/clusters
+      - nav-item:gs/clusters
+      - page:gs/deployments
+      - nav-item:gs/deployments
+      - page:gs/installations
+      - nav-item:gs/installations
+      - page:flux
+      - nav-item:flux
+      - page:ai-chat
+      - api:ai-chat/service
+      - api:ai-chat/drawer
+      - app-root-element:ai-chat/drawer
+    # Skill repositories offered when an agent is created.
+    skillsRepositories:
+      - https://github.com/giantswarm/agent-skills
+
+ingress:
+  httpRoute:
+    # Portable stream timeout on the umbrella-owned routes (muster `/`, the
+    # agentgateway `/mcp`, the kagent routes): `0s` asks the implementation to
+    # disable the request timeout so MCP/SSE streams stay open. Envoy-specific
+    # policies stay opt-in under ingress.backendTrafficPolicy.
+    timeouts:
+      request: "0s"
+
+gateway:
+  parameters:
+    # OTEL env comes from global.observability.traces.otlp; this list is for
+    # extra data-plane env only. The fleet default points at the Giant Swarm
+    # otlp-gateway, which a standalone cluster does not run.
+    dataPlaneEnv: []
+
+kagent:
+  kagent:
+    oauth2-proxy:
+      # The oauth2-proxy chart renders extraArgs through tpl against its own
+      # root, which carries the umbrella's global.* block.
+      #
+      # redirect-url always derives from global.domain: the oauth2-proxy
+      # subchart cannot see components.kagent.uiRoute.hostname, so an override
+      # of that hostname must override redirect-url here too, or the callback
+      # lands on the derived kagent.<global.domain>.
+      extraArgs:
+        oidc-issuer-url: "{{ .Values.global.identity.issuerUrl }}"
+        client-id: "{{ .Values.global.identity.clientId }}"
+        redirect-url: "https://kagent.{{ .Values.global.domain }}/oauth2/callback"
+      extraEnv:
+        - name: UPSTREAM_URL
+          value: http://kagent-ui:8080
+
+# The Backstage chart's own Ingress is off; the umbrella renders the HTTPRoute
+# and the app-config ConfigMap (templates/backstage/) from global.*.
+backstage:
+  ingress:
+    enabled: false
+  # No VPA object by default: the VerticalPodAutoscaler CRD is not part of
+  # Kubernetes conformance, and the chart's promise is a plain helm install on
+  # any conformant cluster. (The CI smoke never catches this: apptestctl
+  # installs the VPA CRD on the ATS kind cluster.)
+  resources:
+    verticalPodAutoscaler:
+      enabled: false
+  backstage:
+    # The image's base configuration, restated: any explicit --config replaces
+    # Backstage's default config set, and the chart passes extraAppConfig as
+    # --config flags — without these two the backend runs on the overlay
+    # alone and the app plugin fails startup on schema keys only the base
+    # config carries (e.g. `grafana`). Same flags as the image's own CMD.
+    args:
+      - --config
+      - app-config.yaml
+      - --config
+      - app-config.production.yaml
+    extraAppConfig:
+      - filename: app-config.agent-platform.yaml
+        configMapRef: agent-platform-backstage-app-config
+    # Rendered through tpl against the backstage chart root, so the Secret
+    # names follow global.identity. NODE_EXTRA_CA_CERTS stays empty (Node
+    # ignores it) unless a private CA Secret is named, so Node does not warn
+    # about a missing file on every start.
+    extraEnvVars:
+      - name: AUTH_SESSION_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: backstage-session-secret
+      - name: AGENT_PLATFORM_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: "{{ .Values.global.identity.existingSecret }}"
+            key: dex-client-secret
+      - name: NODE_EXTRA_CA_CERTS
+        value: "{{ if .Values.global.identity.ca.secretName }}/etc/agent-platform/idp-ca/{{ .Values.global.identity.ca.key }}{{ end }}"
+    extraVolumes:
+      - name: idp-ca
+        secret:
+          secretName: "{{ .Values.global.identity.ca.secretName | default \"agent-platform-idp-ca\" }}"
+          optional: true
+    extraVolumeMounts:
+      - name: idp-ca
+        mountPath: /etc/agent-platform/idp-ca
+        readOnly: true

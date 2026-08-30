@@ -1,0 +1,90 @@
+{{- if .Values.postgres.enabled }}
+{{- $db := .Values.postgres.applicationDatabase }}
+{{- $schema := $db.schema | default "kagent" }}
+{{- $owner := $db.owner | default "kagent" }}
+{{- $clusterName := .Values.postgres.clusterName }}
+{{- $ns := .Values.postgres.namespace | default .Release.Namespace }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $clusterName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+  annotations:
+    # The database outlives the release: an uninstall or a postgres.enabled
+    # flip must not drop the platform's data.
+    helm.sh/resource-policy: keep
+spec:
+  instances: {{ .Values.postgres.instances | default 3 }}
+  {{- if .Values.postgres.image.name }}
+  imageName: {{ .Values.postgres.image.name | quote }}
+  {{- end }}
+  storage:
+    size: {{ .Values.postgres.storage.size | default "20Gi" | quote }}
+    {{- if .Values.postgres.storage.storageClass }}
+    storageClass: {{ .Values.postgres.storage.storageClass | quote }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: {{ $db.name | default "kagent" }}
+      owner: {{ $owner }}
+      postInitApplicationSQL:
+        # Create the named schema so kagent's golang-migrate lands here, not public.
+        - "CREATE SCHEMA IF NOT EXISTS {{ $schema }} AUTHORIZATION {{ $owner }}"
+        # Default search_path routes bare CREATE TABLE into the named schema.
+        # public is kept second so the vector type (in public after CREATE EXTENSION)
+        # resolves correctly.
+        - "ALTER ROLE {{ $owner }} SET search_path TO {{ $schema }}, public"
+      {{- if and .Values.postgres.vector.enabled (not .Values.postgres.vector.extensionImage.reference) }}
+      # pgvector: CREATE EXTENSION as superuser in template1 so it propagates to
+      # the application database. The pgvector binary must be present in the
+      # operand image (set postgres.image.name to a pgvector-bundled image).
+      postInitTemplateSQL:
+        - "CREATE EXTENSION IF NOT EXISTS vector"
+      {{- end }}
+  {{- if and .Values.postgres.vector.enabled .Values.postgres.vector.extensionImage.reference }}
+  # CNPG 1.29+ / PG 18 ImageVolume: mount the pgvector binary from a sidecar
+  # OCI image. A Database CR (database.yaml) instructs CNPG to run
+  # CREATE EXTENSION as the operator (superuser). Requires the Kubernetes
+  # ImageVolume feature gate and the postgresql.cnpg.io/v1 Database CRD.
+  postgresql:
+    extensions:
+      - name: pgvector
+        image:
+          reference: {{ .Values.postgres.vector.extensionImage.reference | quote }}
+  {{- end }}
+  # TODO(backup): add barmanObjectStore / ObjectStore once a target bucket exists.
+  # Backup is optional for function but needed for PITR on production clusters.
+  # CNPG Barman supports S3, Azure Blob, GCS, and S3-compatible (MinIO via
+  # endpointURL) — pick credentials per cloud (IRSA on EKS, azureCredentials on
+  # Azure, static key for MinIO).
+  {{- /* Gated with the other monitor objects on
+  global.observability.metrics.serviceMonitor.enabled: a cluster without the
+  monitoring.coreos.com CRDs cannot admit the generated PodMonitor. */ -}}
+  {{- if (include "agent-platform-standalone.serviceMonitor" .) }}
+  {{- $monitorLabels := .Values.global.observability.metrics.serviceMonitor.labels | default (dict "observability.giantswarm.io/tenant" "giantswarm") }}
+  # Labels the operator copies onto every object it creates for this Cluster,
+  # including the generated PodMonitor. Giant Swarm's monitoring agent
+  # (alloy-metrics) discovers PodMonitors by a label on the PodMonitor
+  # *object* -- observability.giantswarm.io/tenant In [<tenant>], or the
+  # legacy application.giantswarm.io/team Exists -- and a PodMonitor matching
+  # neither selector is created and silently never scraped. CNPG's stock
+  # PodMonitor labels carry neither, so the tenant label must be inherited
+  # here; a podMonitorRelabelings entry cannot do this, it only rewrites
+  # scraped series, not the object's labels. The labels come from
+  # global.observability.metrics.serviceMonitor.labels, defaulting to the
+  # Giant Swarm tenant label.
+  inheritedMetadata:
+    labels:
+      {{- toYaml $monitorLabels | nindent 6 }}
+  # Enable built-in CNPG PodMonitor for metrics scraping.
+  # Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1).
+  monitoring:
+    enablePodMonitor: true
+    podMonitorMetricRelabelings:
+      - sourceLabels: [__name__]
+        regex: cnpg_.*
+        action: keep
+  {{- end }}
+{{- end }}

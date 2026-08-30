@@ -1,0 +1,3 @@
+{{- include "agent-platform-standalone.validateLegacyToggles" . -}}
+{{- include "agent-platform-standalone.validateIngress" . -}}
+{{- include "agent-platform-standalone.validateGlobal" . -}}

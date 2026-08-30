@@ -2,3 +2,7 @@ replace-chart-version-with-git: true
 generate-metadata: true
 chart-dir: ./helm/agent-platform-standalone
 destination: ./build
+# app-build-suite renders the chart with values.yaml only. The ingress guard
+# fails on empty ingress.parentRefs by design, so the validator gets the same
+# render-valid values file `ct lint` uses.
+helm-template-extra-values: helm/agent-platform-standalone/ci/ci-values.yaml

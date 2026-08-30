@@ -1,0 +1,27 @@
+{{- /* Targets the layer-1 /mcp route, so it is suppressed with it in edge mode. */ -}}
+{{- if and (include "agent-platform-standalone.ingress.agentgateway" .) (not (include "agent-platform-standalone.edgeIsDataPlane" .)) .Values.ingress.backendTrafficPolicy.enabled }}
+{{- $fullName := .Values.gateway.name }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    {{- with .Values.ingress.backendTrafficPolicy.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.ingress.backendTrafficPolicy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $fullName }}
+      namespace: {{ .Release.Namespace }}
+  timeout:
+    http:
+      requestTimeout: {{ .Values.ingress.backendTrafficPolicy.timeout | quote }}
+{{- end }}
