@@ -75,8 +75,9 @@ kagent:                # the kagent chart's own values, forwarded verbatim
   reads `muster.muster.oauth.server.*`; set the same values there, the render
   fails when they differ.
 - Vanilla defaults: no network policy, no Kyverno object, no ServiceMonitor or
-  PodMonitor, no OTLP endpoint. `examples/giantswarm.yaml` (generated) turns
-  them back on.
+  PodMonitor, no VerticalPodAutoscaler, no OTLP endpoint — nothing that needs
+  a CRD outside Kubernetes conformance. `examples/giantswarm.yaml` (generated)
+  turns the fleet's defaults back on.
 - `components.<name>.enabled` turns a dependency on or off. Hyphenated names
   need quotes on the command line: `--set 'components.klaus-gateway.enabled=true'`.
 - `global`, `components`, `gatewayApi` and the wiring blocks (`ingress`,
@@ -123,6 +124,16 @@ helm install agent-platform helm/agent-platform-standalone \
 Gateway is the public edge and a lab Dex is the identity provider (see the
 walkthrough below). `examples/giantswarm.yaml` (generated) is what a Giant
 Swarm installation sets on top of the vanilla defaults.
+
+> **Helm version, current state.** The plain-CLI install is blocked on both
+> Helm majors right now: Helm 3 cannot store the release — the dependency
+> archives alone exceed the 1 MiB release-Secret cap
+> ([#21](https://github.com/giantswarm/agent-platform-standalone/issues/21)) —
+> and Helm 4's server-side apply fails on
+> [giantswarm/agent-platform#250](https://github.com/giantswarm/agent-platform/issues/250).
+> Helm 4 becomes the supported path once the #250 fix ships through a
+> connectivity release and a pin bump; Helm 3 stays out. Installs through the
+> Giant Swarm app platform (App CR — what the CI smoke runs) are unaffected.
 
 ### Lab quick start (kind)
 
@@ -181,6 +192,15 @@ kubectl -n agent-platform get secret agent-platform-idp-ca -o jsonpath='{.data.c
 
 and trust it in the browser or pass it to the client, or click through the
 browser warning — it is a lab.
+
+One lab-topology limitation to know before chasing it as a bug: the Backstage
+pages that read through the Kubernetes API with the signed-in user's token —
+the Agents list, the MCPServer fleet health — show "Couldn't read 1
+installation" on plain kind, because the kind apiserver trusts no OIDC issuer.
+The muster-backed pages (MCP Servers dashboard, Tool explorer, Sessions) work.
+On a cluster whose apiserver trusts the same issuer those reads work too;
+wiring the apiserver to the lab Dex is exactly what
+[agentlab](https://github.com/giantswarm/agentplatform-kind) does on kind.
 
 ### Upgrades
 
