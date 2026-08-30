@@ -5,3 +5,6 @@ vendor
 helm/*/charts/
 *.curate
 build/
+
+# Python bytecode (ATS test runs)
+__pycache__/
