@@ -8,16 +8,17 @@
 # examples/kind-lab-dex.yaml after preparing the cluster — the same order the
 # README quick start documents.
 #
-# The upgrade scenario is ATS-driven: install the latest published chart from
-# the catalog (no values — up to 0.1.1 the chart was an empty skeleton, and
-# the current values would fail its schema), run the pre-upgrade stage (which
-# applies the prerequisites), run tests/ats/upgrade-hook.sh (the documented
-# CRD re-apply one-liner — `helm upgrade` never touches crds/), upgrade the
-# App CR to the candidate with the kind lab values, and re-run the readiness
-# and auth assertions.
+# The upgrade scenario is SKIPPED (issue #32): ATS installs the baseline
+# (latest catalog release) before any cluster preparation runs, and since
+# 0.2.0 the baseline is the full umbrella that cannot come up without the
+# prerequisites (lab-dex secret, Gateway API CRDs) — the App CR never
+# converges and CI kills the silent wait after 10 minutes, which blocked
+# every chart publish after 0.2.0. Re-enable once the baseline can install
+# cleanly on a bare cluster or ATS can prepare the cluster first; the old
+# scenario wiring (upgrade-tests-*) is kept below for that moment.
 #
-# The functional step stays skipped: smoke covers install + auth, upgrade
-# covers the released-to-candidate path, and there is no third scenario yet.
+# The functional step stays skipped: smoke covers install + auth, and there
+# is no third scenario yet.
 app-tests-app-config-file: examples/kind-lab-dex.yaml
 app-tests-deploy-namespace: agent-platform
 app-tests-skip-app-deploy: true
@@ -29,4 +30,4 @@ upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
 upgrade-tests-app-version: latest
 upgrade-tests-upgrade-hook: tests/ats/upgrade-hook.sh
 
-skip-steps: [functional]
+skip-steps: [functional, upgrade]

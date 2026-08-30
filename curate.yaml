@@ -103,7 +103,7 @@ dependencies:
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.200.15"
+    version: "0.200.16"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
   - name: cloudnative-pg
