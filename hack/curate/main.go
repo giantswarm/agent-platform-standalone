@@ -106,34 +106,15 @@ func run(opts options, helm Helm) error {
 		return err
 	}
 
-	// Check mode validates the committed pins and never asks the registry for
-	// newer versions: a component release must not fail an unrelated PR.
-	var pinned map[string]string
-	if opts.check {
-		if pinned, err = pinnedVersions(filepath.Join(opts.chartDir, "Chart.yaml")); err != nil {
-			return err
-		}
-	}
+	// The exact pins live in curate.yaml, bumped by Renovate; the generator
+	// uses them verbatim (BuildChartYAML rejects a pin outside its range) and
+	// never asks the registry for newer versions, so a component release
+	// cannot change a curation run or fail an unrelated PR — in generate and
+	// check mode alike.
 	resolved := map[string]string{}
 	for _, dependency := range config.Dependencies {
-		var version string
-		if opts.check {
-			var ok bool
-			if version, ok = pinned[dependency.Name]; !ok {
-				return fmt.Errorf("Chart.yaml has no pin for dependency %q; run hack/curate.sh", dependency.Name)
-			}
-		} else {
-			repository := dependency.Repository
-			if !dependency.IsExtra() {
-				component, _ := fleetComponentByChart(components, dependency.Name)
-				repository = component.Repository
-			}
-			if version, err = helm.ResolveVersion(repository, dependency.Name, dependency.Range); err != nil {
-				return fmt.Errorf("resolve %s %s: %w", dependency.Name, dependency.Range, err)
-			}
-		}
-		resolved[dependency.Name] = version
-		fmt.Fprintf(os.Stderr, "curate: %-22s %-6s -> %s\n", dependency.Name, dependency.Range, version)
+		resolved[dependency.Name] = dependency.Version
+		fmt.Fprintf(os.Stderr, "curate: %-22s %-6s -> %s\n", dependency.Name, dependency.Range, dependency.Version)
 	}
 
 	chart, err := BuildChartYAML(config, components, resolved)
@@ -184,28 +165,6 @@ func run(opts options, helm Helm) error {
 		return err
 	}
 	return refreshLock(opts.chartDir, helm)
-}
-
-// pinnedVersions reads the dependency pins of the committed Chart.yaml.
-func pinnedVersions(path string) (map[string]string, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var chart struct {
-		Dependencies []struct {
-			Name    string `yaml:"name"`
-			Version string `yaml:"version"`
-		} `yaml:"dependencies"`
-	}
-	if err := yaml.Unmarshal(raw, &chart); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	pinned := make(map[string]string, len(chart.Dependencies))
-	for _, dependency := range chart.Dependencies {
-		pinned[dependency.Name] = dependency.Version
-	}
-	return pinned, nil
 }
 
 func loadOverlay(path string) (*yaml.Node, error) {

@@ -217,8 +217,8 @@ func TestTransformNewFleetComponentFails(t *testing.T) {
 
 func TestTransformDependencyMissingFromFleetFails(t *testing.T) {
 	in := fixtureInputs(t)
-	in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  - name: muster\n    range: \"5.x\"\n",
-		"  - name: muster\n    range: \"5.x\"\n  - name: ghost\n    range: \"1.x\"\n", 1))
+	in.Config = parseConfig(t, strings.Replace(fixtureConfig, "  - name: muster\n    range: \"5.x\"\n    version: \"5.5.3\"\n",
+		"  - name: muster\n    range: \"5.x\"\n    version: \"5.5.3\"\n  - name: ghost\n    range: \"1.x\"\n    version: \"1.0.0\"\n", 1))
 	_, err := Transform(in)
 	require.ErrorContains(t, err, `dependency "ghost" is not a fleet component`)
 }

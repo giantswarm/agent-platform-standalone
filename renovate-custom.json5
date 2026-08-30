@@ -1,7 +1,14 @@
 // Repo-specific Renovate rules, extended last by the generated renovate.json5.
 {
-  // Chart dependencies are the curated BOM: hack/curate.sh refreshes Chart.yaml
-  // and Chart.lock. Renovate must never touch them (two bots on Chart.yaml fight).
+  // The dependency pins Renovate manages live in curate.yaml: the org preset's
+  // customManager matches the `# registry:` hint above each `version:` pin
+  // (docker datasource against the chart OCI repos). On a Renovate branch the
+  // curate-regen workflow then reruns hack/curate.sh so Chart.yaml, Chart.lock
+  // and the chart README follow the bumped pin.
+  //
+  // Chart.yaml and Chart.lock themselves are generator OUTPUT, so the helm
+  // managers stay disabled: a direct Renovate edit there would be overwritten
+  // by the next curation run (two bots on Chart.yaml fight).
   helmv3: {
     enabled: false,
   },
