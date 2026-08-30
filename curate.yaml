@@ -19,7 +19,7 @@ fleet:
   chart: agent-platform
   connectivityChart: agent-platform-connectivity
   # Exact pin, bumped by the weekly curation job.
-  version: 3.1.0
+  version: 3.2.2
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -248,6 +248,19 @@ templates:
     # while-off leg upstreamed in agent-platform#249, which chart-operator
     # installs trip with the component off. The referenced UPGRADE.md does not
     # exist yet (issue #8).
+    # Upstream's guard is coalescing-safe since agent-platform#249 and reports
+    # a legacy key always while the component is off. That leg trips under
+    # chart-operator (this chart installed as a Giant Swarm App — the ATS kind
+    # smoke, where this bit): it passes chartutil-coalesced values, which
+    # include the defaults of DISABLED dependencies, back as overrides, so
+    # klaus-gateway's own `enabled: true` default is present even while the
+    # component is off. This copy therefore probes the four blocks that own no
+    # `enabled` default by key presence alone (stricter than upstream: a
+    # leftover key fails even while the component is on), and klaus-gateway
+    # only on an explicit false — the one provably operator-set case, where the
+    # operator believes the component is off while it deploys anyway. Also
+    # renames the probe keys to this chart's exact dependency names and drops
+    # the UPGRADE.md reference (does not exist yet, issue #8).
     - file: _helpers.tpl
       find: |-
         {{- $moved := list
@@ -258,8 +271,12 @@ templates:
               (list "agentSandbox" "components.agent-sandbox.enabled") -}}
         {{- $found := list -}}
         {{- range $moved -}}
-        {{- if hasKey (index $.Values (first .) | default dict) "enabled" -}}
+        {{- $block := index $.Values (first .) | default dict -}}
+        {{- if hasKey $block "enabled" -}}
+        {{- $on := include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" (index (splitList "." (last .)) 1)) -}}
+        {{- if or (not $on) (not (index $block "enabled")) -}}
         {{- $found = append $found (printf "%s.enabled -> %s" (first .) (last .)) -}}
+        {{- end -}}
         {{- end -}}
         {{- end -}}
         {{- with $found -}}
@@ -290,6 +307,34 @@ templates:
         {{- with $found -}}
         {{- fail (printf "component toggles moved into components.<name>.enabled and the old keys are ignored; move %s" (join ", " .)) -}}
         {{- end -}}
+    # The copied doc-comment describes upstream's probe (report always while
+    # off), which is not what the patched copy above does; the byte-checked
+    # artifact must not document semantics it does not implement.
+    - file: _helpers.tpl
+      find: |-
+        The probe is coalescing-safe: in a layout where a block feeds a real Helm
+        dependency (the standalone umbrella copies this helper), Helm coalesces that
+        chart's own top-level `enabled: true` default into the block once the dependency
+        is on (klaus-gateway ships one), so hasKey cannot tell an operator-set value from
+        the chart default. A legacy key is therefore reported when it is provably the
+        operator's: always while the component is off (a disabled dependency's block is
+        never coalesced), and while it is on when the value is an explicit false (the
+        only coalesced default is true) — exactly the case where the operator believes
+        the component is off while it runs anyway. On + true is indistinguishable from a
+        coalesced default and passes. The removed `mcps:` block needs no entry: the root
+        schema rejects it already.
+      replace: |-
+        This copy's probe deviates from upstream's coalescing-safe semantics
+        (agent-platform#249): chart-operator (this chart installed as a Giant
+        Swarm App) passes chartutil-coalesced values — including the defaults of
+        DISABLED dependencies — back as overrides, so upstream's while-off leg
+        trips on the injected klaus-gateway default. Four of the five blocks own
+        no top-level `enabled` default, so for them key presence alone proves an
+        operator set the legacy toggle and is always reported. klaus-gateway
+        ships `enabled: true` in its own chart, so its key is reported only on
+        an explicit false — the case where the operator believes the component
+        is off while it deploys anyway. The removed `mcps:` block needs no
+        entry: the root schema rejects it already.
     # The copied helper doc states the upstream default (enabled: true), which
     # overlay/vanilla.yaml flips; the byte-checked artifact must not document a
     # wrong default. Retires when upstream drops the default from the prose.

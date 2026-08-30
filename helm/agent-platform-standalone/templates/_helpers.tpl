@@ -58,8 +58,18 @@ Fail the render when a component's on/off toggle is still set the old way, insid
 the component's own values block. Those blocks are additionalProperties: true, so
 a leftover `enabled` key validates and is then ignored — the component silently
 falls back to the `components.<name>.enabled` default, which is off for five of
-the six. This turns that into a loud failure naming the new key. The removed
-`mcps:` block needs no entry: the root schema rejects it already.
+the six. This turns that into a loud failure naming the new key.
+This copy's probe deviates from upstream's coalescing-safe semantics
+(agent-platform#249): chart-operator (this chart installed as a Giant
+Swarm App) passes chartutil-coalesced values — including the defaults of
+DISABLED dependencies — back as overrides, so upstream's while-off leg
+trips on the injected klaus-gateway default. Four of the five blocks own
+no top-level `enabled` default, so for them key presence alone proves an
+operator set the legacy toggle and is always reported. klaus-gateway
+ships `enabled: true` in its own chart, so its key is reported only on
+an explicit false — the case where the operator believes the component
+is off while it deploys anyway. The removed `mcps:` block needs no
+entry: the root schema rejects it already.
 */}}
 {{- define "agent-platform-standalone.validateLegacyToggles" -}}
 {{- $moved := list

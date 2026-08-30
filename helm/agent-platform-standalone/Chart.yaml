@@ -29,7 +29,7 @@ annotations:
 # Chart.lock mirrors these pins; CI runs `helm dependency build` and fails on drift.
 dependencies:
   - name: muster
-    version: "5.7.0"  # range 5.x
+    version: "5.7.1"  # range 5.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.muster.enabled
   - name: valkey
@@ -57,11 +57,11 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
-    version: "0.2.23"  # range 0.x
+    version: "0.2.24"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: backstage
-    version: "0.200.1"  # range 0.x
+    version: "0.200.4"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg

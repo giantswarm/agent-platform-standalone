@@ -45,6 +45,11 @@ muster:
             enabled: false
           prometheusRule:
             enabled: false
+      # A Giant Swarm-shaped dashboard ConfigMap (labeled for the GS
+      # observability platform to pick up); nothing on a vanilla cluster
+      # loads it.
+      grafanaDashboard:
+        enabled: false
 
 valkey:
   ciliumNetworkPolicy:
