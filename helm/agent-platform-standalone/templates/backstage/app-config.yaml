@@ -84,12 +84,32 @@ data:
     muster:
       installations:
         - name: {{ .Release.Name }}
-          url: https://{{ $musterHostname }}
+          {{- /* The full MCP endpoint, not the bare hostname: the muster
+          backend plugin POSTs MCP Streamable-HTTP to this URL verbatim, and
+          muster serves MCP at /mcp (the bare origin answers 404). */}}
+          url: https://{{ $musterHostname }}/mcp
           authProvider: {{ $provider }}
-    {{- with $backstage.skillsRepositories }}
+    {{- $kagentRoute := dict }}
+    {{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent")) .Values.components.kagent.controllerRoute.enabled }}
+    {{- $kagentRoute = .Values.components.kagent.controllerRoute }}
+    {{- end }}
+    {{- if or $backstage.skillsRepositories $kagentRoute }}
     agentPlatform:
+      {{- with $backstage.skillsRepositories }}
       skills:
         repositories:
           {{- toYaml . | nindent 10 }}
+      {{- end }}
+      {{- if $kagentRoute }}
+      {{- /* Without this the plugin derives kagent.<baseDomain>/api — the
+      kagent UI hostname, which this umbrella fronts with oauth2-proxy at
+      most, never with the controller API. The controller API lives on the
+      controllerRoute: <hostname><pathPrefix>/* with the prefix stripped
+      before kagent, so its /api sits at <hostname><pathPrefix>/api. */}}
+      kagent:
+        installations:
+          {{ .Release.Name }}:
+            apiBaseUrl: https://{{ include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "agentgateway" "override" $kagentRoute.hostname "key" "components.kagent.controllerRoute.hostname") }}{{ $kagentRoute.pathPrefix }}/api
+      {{- end }}
     {{- end }}
 {{- end }}
