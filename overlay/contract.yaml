@@ -93,6 +93,13 @@ kagent:
 backstage:
   ingress:
     enabled: false
+  # No VPA object by default: the VerticalPodAutoscaler CRD is not part of
+  # Kubernetes conformance, and the chart's promise is a plain helm install on
+  # any conformant cluster. (The CI smoke never catches this: apptestctl
+  # installs the VPA CRD on the ATS kind cluster.)
+  resources:
+    verticalPodAutoscaler:
+      enabled: false
   backstage:
     # The image's base configuration, restated: any explicit --config replaces
     # Backstage's default config set, and the chart passes extraAppConfig as
