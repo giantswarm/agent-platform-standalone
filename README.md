@@ -125,15 +125,18 @@ Gateway is the public edge and a lab Dex is the identity provider (see the
 walkthrough below). `examples/giantswarm.yaml` (generated) is what a Giant
 Swarm installation sets on top of the vanilla defaults.
 
-> **Helm version, current state.** The plain-CLI install is blocked on both
-> Helm majors right now: Helm 3 cannot store the release — the dependency
-> archives alone exceed the 1 MiB release-Secret cap
-> ([#21](https://github.com/giantswarm/agent-platform-standalone/issues/21)) —
-> and Helm 4's server-side apply fails on
-> [giantswarm/agent-platform#250](https://github.com/giantswarm/agent-platform/issues/250).
-> Helm 4 becomes the supported path once the #250 fix ships through a
-> connectivity release and a pin bump; Helm 3 stays out. Installs through the
-> Giant Swarm app platform (App CR — what the CI smoke runs) are unaffected.
+> **Helm version.** Installing with the Helm CLI requires **Helm 4**. Helm 3
+> cannot store the release: the dependency archives alone exceed the 1 MiB
+> release-Secret cap
+> ([#21](https://github.com/giantswarm/agent-platform-standalone/issues/21)),
+> independent of which components are enabled — that holds until the
+> dependency payload shrinks below ~750 KiB (`kagent` dominates). Helm 4's
+> server-side apply used to reject the chart on
+> [giantswarm/agent-platform#250](https://github.com/giantswarm/agent-platform/issues/250);
+> fixed since the chart curates agent-platform 3.2.2. Installs through the
+> Giant Swarm app platform (App CR — what the CI smoke runs) are unaffected
+> and work under either constraint. Rendering, linting and
+> `helm dependency build` work on both majors.
 
 ### Lab quick start (kind)
 

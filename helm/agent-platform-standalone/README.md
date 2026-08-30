@@ -20,13 +20,13 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 |------------|------|---------|
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.8 |
-| oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.23 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.24 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.3 |
-| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.200.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.200.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.37 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.30.20 |
-| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
 ## Values
@@ -215,6 +215,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | muster.muster.observability.metrics.prometheus.serviceMonitor.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
 | muster.muster.observability.metrics.prometheus.prometheusRule.enabled | bool | `false` |  |
 | muster.muster.observability.metrics.prometheus.prometheusRule.labels."observability.giantswarm.io/tenant" | string | `"giantswarm"` |  |
+| muster.muster.observability.grafanaDashboard.enabled | bool | `false` |  |
+| muster.muster.observability.grafanaDashboard.giantswarm.enabled | bool | `true` |  |
 | valkey.ciliumNetworkPolicy.enabled | bool | `false` |  |
 | valkey.vpa.enabled | bool | `false` |  |
 | valkey.valkey.fullnameOverride | string | `"muster-valkey"` |  |
