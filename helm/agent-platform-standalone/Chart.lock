@@ -16,7 +16,7 @@ dependencies:
   version: 0.6.8
 - name: klaus-gateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.30.20
+  version: 0.30.22
 - name: dicebear
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.3.7
@@ -29,5 +29,5 @@ dependencies:
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:4dcf7fd563209cbcbaebf7c1c0a6dfe0e026389e66a13b56b8c88718c2089046
-generated: "2026-08-31T08:34:44.049055069+02:00"
+digest: sha256:f4117fb210e8c2776fb9c07e36a3ac9e60c5ccb205f0d3f86d7e972e2fb475c3
+generated: "2026-08-31T07:13:08.590994637Z"
