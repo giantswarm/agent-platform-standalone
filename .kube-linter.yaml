@@ -1,0 +1,10 @@
+checks:
+  # kube-linter renders the chart with its defaults, which since the
+  # full-platform-by-default change include backstage and kagent. Keep this
+  # list tight: every entry is a defence we are choosing to skip globally.
+  exclude:
+    # The giantswarm/backstage chart's backstage container and the kagent
+    # sub-chart's bundled postgresql lack readOnlyRootFilesystem, and neither
+    # upstream exposes a securityContext knob for it. Same exclusion as the
+    # agent-platform fleet meta-package.
+    - no-read-only-root-fs
