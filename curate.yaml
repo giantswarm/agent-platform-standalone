@@ -95,7 +95,7 @@ dependencies:
   - name: dicebear
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
-    version: "0.3.7"
+    version: "0.3.8"
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
