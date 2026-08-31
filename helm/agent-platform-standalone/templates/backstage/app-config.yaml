@@ -63,6 +63,13 @@ data:
             metadataUrl: {{ $issuer }}/.well-known/openid-configuration
             clientId: {{ .Values.global.identity.clientId }}
             clientSecret: ${AGENT_PLATFORM_OIDC_CLIENT_SECRET}
+            {{- /* Unset, the Backstage oidc authenticator sends prompt=none
+            on every authorize request. Dex ignores it, but a spec-strict
+            IdP (Google) answers a fresh login with error=interaction_required
+            — surfaced misleadingly as "iss missing from the response",
+            because the error redirect carries no RFC 9207 iss parameter and
+            openid-client checks that first. auto lets the IdP decide. */}}
+            prompt: auto
     gs:
       authProvider: {{ $provider }}
       {{- with $backstage.extraScopes }}
