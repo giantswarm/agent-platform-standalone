@@ -22,12 +22,12 @@ dependencies:
   version: 0.3.7
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.24
+  version: 0.2.25
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.200.22
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:9c4d8049c9f44231ac70ce384dea63cc97606e4ab5401de6a3e9425c5efd6aca
-generated: "2026-08-31T09:50:43.087680565+02:00"
+digest: sha256:29a2983532e9f7e6f4f10110d3de35400bf645d7f2a3f0177e4171df24da4d8c
+generated: "2026-08-31T08:01:16.37011436Z"

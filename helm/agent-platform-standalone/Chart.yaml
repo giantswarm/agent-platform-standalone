@@ -57,7 +57,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
-    version: "0.2.24"  # range 0.x
+    version: "0.2.25"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: backstage
