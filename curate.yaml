@@ -91,7 +91,7 @@ dependencies:
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
-    version: "0.30.20"
+    version: "0.30.22"
   - name: dicebear
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
