@@ -1265,6 +1265,9 @@
                         "enabled": {
                             "type": "boolean"
                         },
+                        "enabledExtensions": {
+                            "type": "array"
+                        },
                         "extraScopes": {
                             "type": "array",
                             "items": {

@@ -101,6 +101,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.backstage.parentRefs | list | `[]` |  |
 | components.backstage.extraScopes[0] | string | `"federated:id"` |  |
 | components.backstage.extraScopes[1] | string | `"audience:server:client_id:dex-k8s-authenticator"` |  |
+| components.backstage.enabledExtensions | list | `[]` |  |
 | components.backstage.disabledExtensions[0] | string | `"page:gs/clusters"` |  |
 | components.backstage.disabledExtensions[1] | string | `"nav-item:gs/clusters"` |  |
 | components.backstage.disabledExtensions[2] | string | `"page:gs/deployments"` |  |
