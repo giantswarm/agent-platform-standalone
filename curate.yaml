@@ -83,7 +83,7 @@ dependencies:
     # forwards this block unnested. A 1.x chart would read none of it.
     range: "2.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agentgateway
-    version: "2.0.3"
+    version: "2.0.4"
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
