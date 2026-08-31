@@ -83,6 +83,11 @@ data:
           oidcTokenProvider: {{ $provider }}
           pipeline: stable
           baseDomain: {{ $domain }}
+          {{- /* Standalone installations have no Giant Swarm observability
+          stack at observability.<baseDomain>. Backstage >= 0.200.26 reads
+          this and renders neutral "metrics unavailable" states instead of
+          querying Mimir and erroring; older versions ignore the key. */}}
+          mimirEnabled: false
     kubernetes:
       serviceLocatorMethod:
         type: multiTenant
