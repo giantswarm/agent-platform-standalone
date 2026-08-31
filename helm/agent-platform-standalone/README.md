@@ -26,6 +26,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.37 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.30.20 |
+| oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
@@ -61,7 +62,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | global.networkPolicy.kubernetes.worldExcludedCIDRs[3] | string | `"169.254.0.0/16"` |  |
 | components.muster.enabled | bool | `true` |  |
 | components.valkey.enabled | bool | `true` |  |
-| components.kagent.enabled | bool | `false` |  |
+| components.kagent.enabled | bool | `true` |  |
 | components.kagent.controllerRoute.enabled | bool | `false` |  |
 | components.kagent.controllerRoute.pathPrefix | string | `"/kagent"` |  |
 | components.kagent.controllerRoute.hostname | string | `""` |  |
@@ -83,8 +84,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.kagent.uiRoute.backendTrafficPolicy.labels | object | `{}` |  |
 | components.kagent.modelConfigs | list | `[]` |  |
 | components.kagent.remoteMcpServers | list | `[]` |  |
-| components.agentgateway.enabled | bool | `false` |  |
-| components.agent-platform-mcps.enabled | bool | `false` |  |
+| components.agentgateway.enabled | bool | `true` |  |
+| components.agent-platform-mcps.enabled | bool | `true` |  |
 | components.klaus-gateway.enabled | bool | `false` |  |
 | components.dicebear.enabled | bool | `false` |  |
 | components.agent-sandbox.enabled | bool | `false` |  |
@@ -96,7 +97,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.agent-sandbox.podSecurity.containerSecurityContext.capabilities.drop[0] | string | `"ALL"` |  |
 | components.agent-sandbox.podSecurity.containerSecurityContext.runAsNonRoot | bool | `true` |  |
 | components.agent-sandbox.podSecurity.containerSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
-| components.backstage.enabled | bool | `false` |  |
+| components.mcp-kubernetes.enabled | bool | `true` |  |
+| components.backstage.enabled | bool | `true` |  |
 | components.backstage.hostname | string | `""` |  |
 | components.backstage.parentRefs | list | `[]` |  |
 | components.backstage.extraScopes[0] | string | `"federated:id"` |  |
@@ -116,7 +118,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.backstage.disabledExtensions[11] | string | `"app-root-element:ai-chat/drawer"` |  |
 | components.backstage.skillsRepositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
 | components.cloudnative-pg.enabled | bool | `false` |  |
-| ingress.mode | string | `"muster-direct"` |  |
+| ingress.mode | string | `"agentgateway-muster"` |  |
 | ingress.parentRefs | list | `[]` |  |
 | ingress.hostnames | list | `[]` |  |
 | ingress.httpRoute.annotations | object | `{}` |  |
@@ -367,7 +369,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | agentgateway.resources.limits.cpu | string | `"500m"` |  |
 | agentgateway.resources.limits.memory | string | `"512Mi"` |  |
 | agent-platform-mcps.agentgateway.enabled | bool | `true` |  |
-| agent-platform-mcps.agentgateway.viaMuster | bool | `false` |  |
+| agent-platform-mcps.agentgateway.viaMuster | bool | `true` |  |
 | agent-platform-mcps.agentgateway.musterUrl | string | `"http://muster.agent-platform.svc.cluster.local:8090/mcp"` |  |
 | agent-platform-mcps.mcpServers | list | `[]` |  |
 | klaus-gateway.image.registry | string | `"gsoci.azurecr.io"` |  |
@@ -410,6 +412,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | dicebear.route.parentRefs | list | `[]` |  |
 | dicebear.route.hostnames | list | `[]` |  |
 | agent-sandbox | object | `{}` |  |
+| mcp-kubernetes.fullnameOverride | string | `"mcp-kubernetes"` |  |
 | backstage.ingress.enabled | bool | `false` |  |
 | backstage.resources.verticalPodAutoscaler.enabled | bool | `false` |  |
 | backstage.backstage.args | list | `["--config","app-config.yaml","--config","app-config.production.yaml"]` | config flags — without these two the backend runs on the overlay alone and the app plugin fails startup on schema keys only the base config carries (e.g. `grafana`). Same flags as the image's own CMD. |

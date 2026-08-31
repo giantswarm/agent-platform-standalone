@@ -1432,6 +1432,15 @@
                         }
                     }
                 },
+                "mcp-kubernetes": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
                 "muster": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1930,6 +1939,10 @@
                     "uniqueItems": true
                 }
             }
+        },
+        "mcp-kubernetes": {
+            "type": "object",
+            "additionalProperties": true
         },
         "muster": {
             "type": "object",
