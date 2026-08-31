@@ -203,7 +203,7 @@ installation" on plain kind, because the kind apiserver trusts no OIDC issuer.
 The muster-backed pages (MCP Servers dashboard, Tool explorer, Sessions) work.
 On a cluster whose apiserver trusts the same issuer those reads work too;
 wiring the apiserver to the lab Dex is exactly what
-[agentlab](https://github.com/giantswarm/agentplatform-kind) does on kind.
+[agentlab](https://github.com/giantswarm/agentlab) does on kind.
 
 ### Upgrades
 
