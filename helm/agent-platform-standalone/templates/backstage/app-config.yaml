@@ -35,8 +35,14 @@ data:
       extensions:
         - page:agent-platform
         - nav-item:agent-platform
+        {{- range $backstage.enabledExtensions }}
+        - {{ . }}
+        {{- end }}
+        {{- /* enabledExtensions wins: an extension listed in both is enabled. */}}
         {{- range $backstage.disabledExtensions }}
+        {{- if not (has . $backstage.enabledExtensions) }}
         - {{ . }}: false
+        {{- end }}
         {{- end }}
     backend:
       baseUrl: https://{{ $hostname }}

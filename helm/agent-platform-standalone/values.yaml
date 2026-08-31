@@ -246,6 +246,18 @@ components:
     extraScopes:
       - federated:id
       - audience:server:client_id:dex-k8s-authenticator
+    # Portal extensions to enable on top of the Agent Platform pages. Some
+    # portal pages are off by default in the Backstage app itself (Deployments,
+    # Clusters, Installations), so dropping them from disabledExtensions is not
+    # enough to show them -- list them here instead. Example, HelmRelease
+    # visibility for the agent create flow's "Go to the deployment" link
+    # (Deployments links to cluster details, so enable both):
+    #   - page:gs/deployments
+    #   - nav-item:gs/deployments
+    #   - page:gs/clusters
+    #   - nav-item:gs/clusters
+    # An extension listed here and in disabledExtensions ends up enabled.
+    enabledExtensions: []
     # Sidebar pages of the Giant Swarm portal hidden on the vanilla UI.
     disabledExtensions:
       - page:gs/clusters
