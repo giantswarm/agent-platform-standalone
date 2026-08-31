@@ -99,7 +99,7 @@ dependencies:
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
-    version: "0.2.24"
+    version: "0.2.25"
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
