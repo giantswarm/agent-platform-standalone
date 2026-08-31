@@ -69,7 +69,7 @@ dependencies:
   - name: muster
     range: "5.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/muster
-    version: "5.7.2"
+    version: "5.7.3"
   - name: valkey
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/valkey
