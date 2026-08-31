@@ -19,7 +19,7 @@ dependencies:
   version: 0.30.20
 - name: dicebear
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.3.7
+  version: 0.3.8
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.24
@@ -29,5 +29,5 @@ dependencies:
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:9c4d8049c9f44231ac70ce384dea63cc97606e4ab5401de6a3e9425c5efd6aca
-generated: "2026-08-31T09:50:43.087680565+02:00"
+digest: sha256:36579d218c94f9cd9c36fc4be7e5f099b86c2f15c4bf5484d896023d1b69dd91
+generated: "2026-08-31T09:38:55.193828493Z"
