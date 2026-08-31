@@ -1,7 +1,7 @@
 dependencies:
 - name: muster
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 5.7.2
+  version: 5.7.3
 - name: valkey
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.1.4
@@ -32,5 +32,5 @@ dependencies:
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:e6025eb1d8ad49663d94718e7f16af789c4c6bf71d7a50085104af4e326d73ed
-generated: "2026-08-31T10:35:19.479057712+02:00"
+digest: sha256:25e52ab5f79fb3a5d8aa73311e798c7832081348cd5afdd0098d49063215663b
+generated: "2026-08-31T10:13:33.838503114Z"
