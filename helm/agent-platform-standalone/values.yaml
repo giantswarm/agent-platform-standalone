@@ -1229,6 +1229,9 @@ agent-sandbox: {}  # @schema skipProperties: true; additionalProperties: true
 # without an auth block.
 mcp-kubernetes:  # @schema skipProperties: true; additionalProperties: true
   fullnameOverride: mcp-kubernetes
+  # The chart's own policy is on upstream; no Cilium on a vanilla cluster.
+  ciliumNetworkPolicy:
+    enabled: false
 # The Backstage chart's own Ingress is off; the umbrella renders the HTTPRoute
 # and the app-config ConfigMap (templates/backstage/) from global.*.
 backstage:  # @schema skipProperties: true; additionalProperties: true

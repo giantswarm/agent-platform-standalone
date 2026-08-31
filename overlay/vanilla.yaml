@@ -51,6 +51,11 @@ muster:
       grafanaDashboard:
         enabled: false
 
+mcp-kubernetes:
+  # The chart's own policy is on upstream; no Cilium on a vanilla cluster.
+  ciliumNetworkPolicy:
+    enabled: false
+
 valkey:
   ciliumNetworkPolicy:
     enabled: false
