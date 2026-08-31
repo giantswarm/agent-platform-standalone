@@ -65,7 +65,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.mcp-kubernetes.enabled
   - name: backstage
-    version: "0.200.26"  # range 0.x
+    version: "0.200.27"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg
