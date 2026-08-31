@@ -100,12 +100,18 @@ dependencies:
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
     version: "0.2.24"
+  - name: mcp-kubernetes
+    range: "1.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
+    version: "1.0.53"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    enabled: true
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
     version: "0.200.22"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
-    enabled: false
+    enabled: true
   - name: cloudnative-pg
     range: "0.x"
     # registry: ghcr.io/cloudnative-pg/charts/cloudnative-pg
@@ -411,3 +417,7 @@ templates:
     # Guards the curated oauth2-proxy redirect-url (a values-level default the
     # connectivity chart does not know) against a diverging UI hostname.
     - kagent/ui-redirect-validate.yaml
+    # Registers the bundled mcp-kubernetes dependency with muster; the fleet
+    # deploys mcp-kubernetes per-MC outside the meta-package, so the
+    # connectivity chart has no template for it.
+    - mcp-kubernetes/mcpserver.yaml

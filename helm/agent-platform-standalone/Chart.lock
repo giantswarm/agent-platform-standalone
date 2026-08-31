@@ -23,11 +23,14 @@ dependencies:
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.24
+- name: mcp-kubernetes
+  repository: oci://gsoci.azurecr.io/charts/giantswarm
+  version: 1.0.53
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.200.22
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:9c4d8049c9f44231ac70ce384dea63cc97606e4ab5401de6a3e9425c5efd6aca
-generated: "2026-08-31T09:50:43.087680565+02:00"
+digest: sha256:e6025eb1d8ad49663d94718e7f16af789c4c6bf71d7a50085104af4e326d73ed
+generated: "2026-08-31T10:35:19.479057712+02:00"

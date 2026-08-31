@@ -1,0 +1,23 @@
+{{- /*
+Registers the bundled mcp-kubernetes server with muster. The Service name is
+pinned by mcp-kubernetes.fullnameOverride (overlay/contract.yaml) so the URL
+survives any release name; the port follows the mcp-kubernetes chart's
+service.port. The chart's defaults serve in-cluster with OAuth off, so muster
+connects without an auth block — an installation that turns the server's
+OAuth on must override this CR (extraObjects) or manage its own MCPServer.
+*/ -}}
+{{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "mcp-kubernetes")) (include "agent-platform-standalone.componentEnabled" (dict "root" $ "name" "muster")) }}
+{{- $mcpk := index .Values "mcp-kubernetes" | default dict }}
+apiVersion: muster.giantswarm.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: mcp-kubernetes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    muster.giantswarm.io/type: mcp-kubernetes
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  autoStart: true
+  type: streamable-http
+  url: http://{{ dig "fullnameOverride" "mcp-kubernetes" $mcpk }}.{{ .Release.Namespace }}.svc.cluster.local:{{ dig "service" "port" 8080 $mcpk }}/mcp
+{{- end }}

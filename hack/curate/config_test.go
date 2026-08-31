@@ -19,7 +19,8 @@ func TestLoadConfigRepoFile(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{
 		"muster", "kagent", "agentgateway", "valkey", "dicebear", "klaus-gateway",
-		"agent-platform-mcps", "backstage", "agent-sandbox", "cloudnative-pg",
+		"agent-platform-mcps", "mcp-kubernetes", "backstage", "agent-sandbox",
+		"cloudnative-pg",
 	}, names)
 }
 

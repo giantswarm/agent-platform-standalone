@@ -24,6 +24,21 @@ global:
       key: ca.crt
 
 components:
+  # The standalone chart's product default is the FULL platform: an install
+  # that provides the required inputs (global.domain, global.identity, the
+  # public Gateway) gets muster, kagent, agentgateway, Backstage and
+  # mcp-kubernetes without per-component toggles (decision 2026-08-31). The
+  # fleet keeps these off — enablement is per-MC config there — so the
+  # umbrella overrides the transformed fleet defaults here. agentgateway on
+  # requires ingress.mode agentgateway-muster and
+  # agent-platform-mcps.agentgateway.viaMuster true (guard-enforced), set
+  # below in the same spirit.
+  kagent:
+    enabled: true
+  agentgateway:
+    enabled: true
+  agent-platform-mcps:
+    enabled: true
   backstage:
     # Public hostname; empty derives backstage.<global.domain>.
     hostname: ""
@@ -67,6 +82,11 @@ components:
       - https://github.com/giantswarm/agent-skills
 
 ingress:
+  # The full-platform default topology: client -> agentgateway /mcp -> muster,
+  # matching the fleet (agentgateway is the observability choke point for
+  # every MCP call). muster-direct stays supported for trimmed installs that
+  # set components.agentgateway.enabled: false.
+  mode: agentgateway-muster
   httpRoute:
     # Portable stream timeout on the umbrella-owned routes (muster `/`, the
     # agentgateway `/mcp`, the kagent routes): `0s` asks the implementation to
@@ -81,6 +101,20 @@ gateway:
     # extra data-plane env only. The fleet default points at the Giant Swarm
     # otlp-gateway, which a standalone cluster does not run.
     dataPlaneEnv: []
+
+# The default ingress.mode above is agentgateway-muster; the guard in
+# _helpers.tpl requires the two to agree whenever agent-platform-mcps is on.
+agent-platform-mcps:
+  agentgateway:
+    viaMuster: true
+
+# The bundled Kubernetes MCP server (registered with muster by
+# templates/mcp-kubernetes/mcpserver.yaml). The pinned Service name keeps the
+# in-cluster MCPServer URL stable regardless of the release name; the chart's
+# own defaults already run in-cluster with OAuth off, so muster connects
+# without an auth block.
+mcp-kubernetes:
+  fullnameOverride: mcp-kubernetes
 
 kagent:
   kagent:

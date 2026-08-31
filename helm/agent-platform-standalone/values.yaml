@@ -109,7 +109,7 @@ components:
   valkey:
     enabled: true
   kagent:
-    enabled: false
+    enabled: true
     # --- Routing (read by umbrella templates/kagent/, not passed to subchart) ---
     # Expose kagent controller API through agentgateway (JWT-validated).
     # Creates AgentgatewayBackend + HTTPRoute in the release namespace.
@@ -205,9 +205,9 @@ components:
     #   tokenSecret: ""   # optional: pre-existing Secret with key "token"
     #   description: "external MCP server"
   agentgateway:
-    enabled: false
+    enabled: true
   agent-platform-mcps:
-    enabled: false
+    enabled: true
   klaus-gateway:
     enabled: false
   dicebear:
@@ -233,8 +233,10 @@ components:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+  mcp-kubernetes:
+    enabled: true
   backstage:
-    enabled: false
+    enabled: true
     # Public hostname; empty derives backstage.<global.domain>.
     hostname: ""
     # Gateway of the Backstage route; empty follows the platform default.
@@ -289,7 +291,11 @@ components:
 #                        NOT YET SUPPORTED — install blocked (needs DCR-capable
 #                        IdP, RFC 7591/8707).
 ingress:
-  mode: muster-direct  # muster-direct | agentgateway-muster | agentgateway-direct
+  # The full-platform default topology: client -> agentgateway /mcp -> muster,
+  # matching the fleet (agentgateway is the observability choke point for
+  # every MCP call). muster-direct stays supported for trimmed installs that
+  # set components.agentgateway.enabled: false.
+  mode: agentgateway-muster
   parentRefs: []  # ALL modes: public Gateway, shared by both rendered routes
   hostnames: []  # ALL modes: muster public hostname(s)
   httpRoute:  # shared base, applied to both rendered HTTPRoutes
@@ -1061,13 +1067,7 @@ agent-platform-mcps:  # @schema skipProperties: true; additionalProperties: true
     # in front of muster as the observability choke point for every MCP call
     # (protocol=mcp, gen_ai.tool.name, session id, latency logged via OTLP).
     enabled: true
-    # viaMuster — when true, routes all MCP traffic through muster instead of
-    # having agentgateway connect to each server directly. muster keeps all
-    # per-server connection logic, OAuth, and RFC 8693 token exchange. The
-    # direct topology (false) needs a DCR-capable IdP, which is not yet
-    # available; when Zitadel or similar ships RFC 7591 + RFC 8707, muster's
-    # aggregator role can be retired.
-    viaMuster: false  # must match ingress.mode (guard-enforced): agentgateway-muster=>true, agentgateway-direct=>false
+    viaMuster: true
     # musterUrl — in-cluster address of the muster Service. Stable because
     # muster.fullnameOverride pins the Service name to `muster` regardless
     # of the umbrella release name. Override only if the namespace differs.
@@ -1222,6 +1222,16 @@ dicebear:  # @schema skipProperties: true; additionalProperties: true
     hostnames: []  # REQUIRED per cluster: e.g. [avatars.example.com]
 # Values forwarded to the agent-sandbox chart. The fleet ships no defaults for it.
 agent-sandbox: {}  # @schema skipProperties: true; additionalProperties: true
+# The bundled Kubernetes MCP server (registered with muster by
+# templates/mcp-kubernetes/mcpserver.yaml). The pinned Service name keeps the
+# in-cluster MCPServer URL stable regardless of the release name; the chart's
+# own defaults already run in-cluster with OAuth off, so muster connects
+# without an auth block.
+mcp-kubernetes:  # @schema skipProperties: true; additionalProperties: true
+  fullnameOverride: mcp-kubernetes
+  # The chart's own policy is on upstream; no Cilium on a vanilla cluster.
+  ciliumNetworkPolicy:
+    enabled: false
 # The Backstage chart's own Ingress is off; the umbrella renders the HTTPRoute
 # and the app-config ConfigMap (templates/backstage/) from global.*.
 backstage:  # @schema skipProperties: true; additionalProperties: true
