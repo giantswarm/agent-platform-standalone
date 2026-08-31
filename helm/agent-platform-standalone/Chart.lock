@@ -28,9 +28,9 @@ dependencies:
   version: 1.0.53
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.200.22
+  version: 0.200.26
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:e6025eb1d8ad49663d94718e7f16af789c4c6bf71d7a50085104af4e326d73ed
-generated: "2026-08-31T10:35:19.479057712+02:00"
+digest: sha256:fceeb5d888376a616ee3cd3f52bfb833e250608364ec6d2222efc765ccd0895d
+generated: "2026-08-31T12:30:14.489582308+02:00"
