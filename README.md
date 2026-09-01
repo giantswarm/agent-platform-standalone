@@ -111,6 +111,12 @@ to map to in the same first install. Install with the operator on, then
 `helm upgrade --set postgres.enabled=true`. The `Cluster` carries
 `helm.sh/resource-policy: keep`.
 
+Backstage keeps its catalog and sessions in in-memory SQLite by default, lost
+on every pod restart. With the CloudNativePG operator on the cluster, set
+`backstage.database.engine: postgresql`: the Backstage chart renders its own
+CNPG `Cluster` (`backstage-cnpg`) and this chart's app-config overlay points
+the backend at it (pg client, schema division mode).
+
 ## Install
 
 ```sh
