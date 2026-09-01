@@ -117,6 +117,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.backstage.disabledExtensions[10] | string | `"api:ai-chat/drawer"` |  |
 | components.backstage.disabledExtensions[11] | string | `"app-root-element:ai-chat/drawer"` |  |
 | components.backstage.skillsRepositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
+| components.backstage.catalogs.version | string | `"v0.6.0"` |  |
 | components.cloudnative-pg.enabled | bool | `false` |  |
 | ingress.mode | string | `"agentgateway-muster"` |  |
 | ingress.parentRefs | list | `[]` |  |
