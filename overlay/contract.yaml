@@ -103,6 +103,23 @@ components:
     catalogs:
       # repo: giantswarm/backstage-catalogs
       version: v0.6.0
+    # Roll the Backstage pod when the umbrella's app-config ConfigMap changes.
+    # The backstage sub-chart's own checksum annotations cover only its own
+    # templates, so an app-config change (templates/backstage/app-config.yaml)
+    # otherwise takes effect only on the next manual pod restart. A
+    # post-install/post-upgrade hook Job stamps the rendered app-config's
+    # checksum onto the Deployment's pod template — a no-op while it is
+    # unchanged, a rolling update when it differs. Disable for clusters where
+    # Helm hooks are unwelcome; config changes then need a manual
+    # `kubectl rollout restart deployment/backstage`.
+    configReload:
+      enabled: true
+      # kubectl runs the patch; override for mirrored registries.
+      image:
+        registry: gsoci.azurecr.io
+        name: giantswarm/kubectl
+        # registry: gsoci.azurecr.io/giantswarm/kubectl
+        version: "1.33.4"
 
 ingress:
   # The full-platform default topology: client -> agentgateway /mcp -> muster,

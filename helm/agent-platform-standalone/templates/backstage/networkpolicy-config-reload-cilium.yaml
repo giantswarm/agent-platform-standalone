@@ -1,0 +1,17 @@
+{{- if and .Values.components.backstage.enabled .Values.components.backstage.configReload.enabled .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "cilium") }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "agent-platform-standalone.name" . }}-backstage-config-reload
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  # The config-reload hook Job talks to the API server only (kubectl patch via
+  # the in-cluster service IP — no DNS lookup involved) and serves nothing.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: backstage-config-reload
+  egress:
+    - toEntities: ["kube-apiserver"]
+{{- end }}

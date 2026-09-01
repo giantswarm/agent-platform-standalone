@@ -1,0 +1,20 @@
+{{- if and .Values.components.backstage.enabled .Values.components.backstage.configReload.enabled .Values.global.networkPolicy.enabled (eq .Values.global.networkPolicy.flavor "kubernetes") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "agent-platform-standalone.name" . }}-backstage-config-reload
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+spec:
+  # The config-reload hook Job talks to the API server only (kubectl patch via
+  # the in-cluster service IP — no DNS lookup involved) and serves nothing.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backstage-config-reload
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.global.networkPolicy.kubernetes.apiServerCIDR | quote }}
+{{- end }}

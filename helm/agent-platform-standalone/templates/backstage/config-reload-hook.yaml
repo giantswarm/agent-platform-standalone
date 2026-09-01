@@ -1,0 +1,135 @@
+{{- if and .Values.components.backstage.enabled .Values.components.backstage.configReload.enabled }}
+{{- /* Roll the Backstage pod when the umbrella's app-config changes.
+
+The Backstage Deployment is rendered by the backstage sub-chart, whose pod
+checksum annotations cover only the sub-chart's own templates. The app-config
+ConfigMap next to this file is rendered by the umbrella, so a change to it
+never reaches those checksums and the pod keeps serving the old config until
+someone restarts it by hand. There is no values-level fix: Helm renders
+sub-chart templates with the sub-chart's values scope, so nothing evaluated
+inside the sub-chart — a value, a tpl string, an overridable named template —
+can render (and checksum) a parent template. Only a parent-rendered resource
+can carry that checksum, hence this hook: after every install/upgrade it
+stamps the checksum of the rendered app-config onto the Deployment's pod
+template. The patch is a no-op while the checksum is unchanged and a normal
+rolling update when it differs. Escape hatches: set
+components.backstage.configReload.enabled=false, or install with --no-hooks. */}}
+{{- $checksum := include (print $.Template.BasePath "/backstage/app-config.yaml") . | sha256sum }}
+{{- $deployment := dig "name" "backstage" (.Values.backstage | default dict) }}
+{{- $image := .Values.components.backstage.configReload.image }}
+{{- $name := printf "%s-backstage-config-reload" (include "agent-platform-standalone.name" .) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    app.kubernetes.io/component: backstage-config-reload
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    app.kubernetes.io/component: backstage-config-reload
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ $deployment | quote }}]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    app.kubernetes.io/component: backstage-config-reload
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-platform-standalone.labels.common" . | nindent 4 }}
+    app.kubernetes.io/component: backstage-config-reload
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "agent-platform-standalone.labels.common" . | nindent 8 }}
+        app.kubernetes.io/component: backstage-config-reload
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kubectl
+          image: "{{ $image.registry }}/{{ $image.name }}:{{ $image.version }}"
+          command: ["kubectl"]
+          args:
+            - patch
+            - deployment
+            - {{ $deployment | quote }}
+            - --namespace={{ .Release.Namespace }}
+            - --type=merge
+            - --patch={"spec":{"template":{"metadata":{"annotations":{"checksum/agent-platform-app-config":"{{ $checksum }}"}}}}}
+          env:
+            # kubectl keeps its discovery/http cache under $HOME; the root
+            # filesystem is read-only.
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

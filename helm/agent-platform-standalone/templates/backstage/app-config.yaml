@@ -19,7 +19,9 @@ overrides the route hostname. */}}
 # the muster installation, the pg database block when the Backstage chart's
 # postgresql engine is on, and app.extensions limited to the Agent Platform
 # pages. The backstage chart mounts it through backstage.extraAppConfig; the
-# ConfigMap name and the file name are fixed there.
+# ConfigMap name and the file name are fixed there. The sub-chart's pod
+# checksums never see this ConfigMap — changes here reach the running pod
+# through the config-reload hook (config-reload-hook.yaml).
 apiVersion: v1
 kind: ConfigMap
 metadata:
