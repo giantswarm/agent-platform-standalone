@@ -1,7 +1,7 @@
 dependencies:
 - name: muster
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 5.7.2
+  version: 5.7.3
 - name: valkey
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.1.4
@@ -10,19 +10,19 @@ dependencies:
   version: 0.1.37
 - name: agentgateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 2.0.3
+  version: 2.0.4
 - name: agent-platform-mcps
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.6.8
 - name: klaus-gateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.30.20
+  version: 0.37.0
 - name: dicebear
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.3.7
+  version: 0.3.8
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.24
+  version: 0.2.26
 - name: mcp-kubernetes
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 1.0.53
@@ -32,5 +32,5 @@ dependencies:
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
-digest: sha256:6f946c9e601849720fcff2735557c5d38d81b18f8709d50ec6c6c26d6183f5ae
-generated: "2026-09-01T09:37:02.713493471+02:00"
+digest: sha256:e101d934bcab194643e58f7bf91812f1e210b118405f8b249add5436438c7aa3
+generated: "2026-09-01T09:51:25.607125986+02:00"
