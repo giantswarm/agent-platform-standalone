@@ -16,7 +16,8 @@ overrides the route hostname. */}}
 # Backstage app-config layered on the image's own: the login provider from
 # global.identity, one installation named after the release, the matching
 # in-cluster Kubernetes entry (the frontend mints the kagent token from it),
-# the muster installation, and app.extensions limited to the Agent Platform
+# the muster installation, the pg database block when the Backstage chart's
+# postgresql engine is on, and app.extensions limited to the Agent Platform
 # pages. The backstage chart mounts it through backstage.extraAppConfig; the
 # ConfigMap name and the file name are fixed there.
 apiVersion: v1
@@ -53,6 +54,25 @@ data:
           - "'self'"
           - "data:"
           - https://avatars.{{ $domain }}
+      {{- if eq (dig "database" "engine" "" .Values.backstage) "postgresql" }}
+      {{- /* backstage.database.engine=postgresql makes the Backstage chart
+      deploy the CNPG Cluster, the POSTGRES_* env and the CA mount — but no
+      config file ever selects pg: the image's base config pins better-sqlite3
+      and its production config has no database block, so without this the
+      backend silently runs on in-memory sqlite ("Database is not PostgreSQL,
+      using memory store") and loses all catalog/session state on every pod
+      restart. Schema division mode, because CNPG's `app` role owns only the
+      `app` database and may not CREATE DATABASE, which the default database
+      division mode requires. */}}
+      database:
+        client: pg
+        pluginDivisionMode: schema
+        connection:
+          host: ${POSTGRES_HOST}
+          port: ${POSTGRES_PORT}
+          user: ${POSTGRES_USER}
+          password: ${POSTGRES_PASSWORD}
+      {{- end }}
     {{- with $backstage.catalogs.version }}
     {{- /* The agent create flow's deploy step runs the hidden agent-deployment
     scaffolder template; without this location the scaffolder answers 404
