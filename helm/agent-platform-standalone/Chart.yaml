@@ -29,7 +29,7 @@ annotations:
 # Chart.lock mirrors these pins; CI runs `helm dependency build` and fails on drift.
 dependencies:
   - name: muster
-    version: "5.7.2"  # range 5.x
+    version: "5.7.4"  # range 5.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.muster.enabled
   - name: valkey
@@ -41,7 +41,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kagent.enabled
   - name: agentgateway
-    version: "2.0.3"  # range 2.x
+    version: "2.0.4"  # range 2.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agentgateway.enabled
   - name: agent-platform-mcps
@@ -49,15 +49,15 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-platform-mcps.enabled
   - name: klaus-gateway
-    version: "0.30.20"  # range 0.x
+    version: "0.37.0"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.klaus-gateway.enabled
   - name: dicebear
-    version: "0.3.7"  # range 0.x
+    version: "0.3.8"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
-    version: "0.2.24"  # range 0.x
+    version: "0.2.26"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: mcp-kubernetes
@@ -65,7 +65,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.mcp-kubernetes.enabled
   - name: backstage
-    version: "0.202.0"  # range 0.x
+    version: "0.202.2"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg

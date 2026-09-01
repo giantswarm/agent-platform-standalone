@@ -69,7 +69,7 @@ dependencies:
   - name: muster
     range: "5.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/muster
-    version: "5.7.2"
+    version: "5.7.4"
   - name: valkey
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/valkey
@@ -83,7 +83,7 @@ dependencies:
     # forwards this block unnested. A 1.x chart would read none of it.
     range: "2.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agentgateway
-    version: "2.0.3"
+    version: "2.0.4"
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
@@ -91,15 +91,15 @@ dependencies:
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
-    version: "0.30.20"
+    version: "0.37.0"
   - name: dicebear
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
-    version: "0.3.7"
+    version: "0.3.8"
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
-    version: "0.2.24"
+    version: "0.2.26"
   - name: mcp-kubernetes
     range: "1.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
@@ -109,7 +109,7 @@ dependencies:
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.202.0"
+    version: "0.202.2"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: cloudnative-pg
