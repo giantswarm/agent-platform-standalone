@@ -1256,6 +1256,15 @@
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
+                        "catalogs": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "version": {
+                                    "type": "string"
+                                }
+                            }
+                        },
                         "disabledExtensions": {
                             "type": "array",
                             "items": {
