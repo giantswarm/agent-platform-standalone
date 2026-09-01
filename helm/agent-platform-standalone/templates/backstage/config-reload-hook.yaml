@@ -85,6 +85,9 @@ metadata:
 spec:
   backoffLimit: 2
   activeDeadlineSeconds: 300
+  # Success cleanup comes from the hook delete policy; the TTL only reaps a
+  # FAILED Job after its debugging window (and satisfies kube-linter).
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
