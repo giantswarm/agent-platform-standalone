@@ -202,6 +202,9 @@ annotations:
   components.kagent.uiRoute.parentRef: "additionalProperties: true"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
   global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
+  # Operator-set authorize-request parameters (e.g. Google's
+  # access_type/prompt): the schema generator would close the empty default.
+  components.backstage.startUrlSearchParams: "type: object; additionalProperties: true"
   # Operator-set label/annotation maps: the schema generator would close the
   # curated empty defaults, rejecting every key an operator adds.
   ingress.httpRoute.annotations: "type: object; additionalProperties: true"
