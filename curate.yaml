@@ -417,6 +417,13 @@ templates:
     - NOTES.txt
     - backstage/app-config.yaml
     - backstage/httproute.yaml
+    # Stamps the app-config's checksum onto the Backstage Deployment after
+    # install/upgrade: the backstage sub-chart's pod checksums cover only its
+    # own templates, and Helm's values scoping leaves no values-level way to
+    # pass a render-time checksum into a sub-chart.
+    - backstage/config-reload-hook.yaml
+    - backstage/networkpolicy-config-reload-cilium.yaml
+    - backstage/networkpolicy-config-reload-kubernetes.yaml
     # Guards the curated oauth2-proxy redirect-url (a values-level default the
     # connectivity chart does not know) against a diverging UI hostname.
     - kagent/ui-redirect-validate.yaml
