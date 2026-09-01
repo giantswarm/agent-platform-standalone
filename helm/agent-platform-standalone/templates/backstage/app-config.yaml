@@ -81,6 +81,16 @@ data:
             because the error redirect carries no RFC 9207 iss parameter and
             openid-client checks that first. auto lets the IdP decide. */}}
             prompt: auto
+            {{- with $backstage.startUrlSearchParams }}
+            {{- /* Extra authorize-request query parameters (see values.yaml).
+            Google needs access_type=offline + prompt=consent here to issue a
+            refresh token; without one, sessions cannot be restored and every
+            page reload forces a fresh login. A prompt in this map wins over
+            the auto above: the authenticator only applies its configured
+            prompt when it is not auto. */}}
+            startUrlSearchParams:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
     gs:
       authProvider: {{ $provider }}
       {{- with $backstage.extraScopes }}

@@ -1294,6 +1294,10 @@
                             "items": {
                                 "type": "string"
                             }
+                        },
+                        "startUrlSearchParams": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 },

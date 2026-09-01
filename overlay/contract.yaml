@@ -51,6 +51,19 @@ components:
     extraScopes:
       - federated:id
       - audience:server:client_id:dex-k8s-authenticator
+    # Extra query parameters on the login provider's authorize request
+    # (the oidc authenticator's startUrlSearchParams). Dex needs none.
+    # Google models offline access as authorize parameters, not as the
+    # offline_access scope (which it rejects), so a Google IdP needs
+    #   access_type: offline   # a refresh token is issued at all
+    #   prompt: consent        # ... on every login, not only the first
+    #                          # grant; without it a browser logging in
+    #                          # after the first grant gets no refresh
+    #                          # token and every page reload forces a
+    #                          # fresh login
+    # A `prompt` set here wins over the provider's default `prompt: auto`.
+    # Spec-conforming providers ignore parameters they don't know.
+    startUrlSearchParams: {}
     # Portal extensions to enable on top of the Agent Platform pages. Some
     # portal pages are off by default in the Backstage app itself (Deployments,
     # Clusters, Installations), so dropping them from disabledExtensions is not
