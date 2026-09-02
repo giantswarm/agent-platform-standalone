@@ -154,7 +154,11 @@ data:
     {{- if and (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent")) .Values.components.kagent.controllerRoute.enabled }}
     {{- $kagentRoute = .Values.components.kagent.controllerRoute }}
     {{- end }}
-    {{- if or $backstage.skillsRepositories $kagentRoute }}
+    {{- $modelManagerRoute := dict }}
+    {{- if and (include "agent-platform-standalone.modelManager.enabled" .) (index .Values.components "model-manager").route.enabled }}
+    {{- $modelManagerRoute = (index .Values.components "model-manager").route }}
+    {{- end }}
+    {{- if or $backstage.skillsRepositories $kagentRoute $modelManagerRoute }}
     agentPlatform:
       {{- with $backstage.skillsRepositories }}
       skills:
@@ -171,6 +175,17 @@ data:
         installations:
           {{ .Release.Name }}:
             apiBaseUrl: https://{{ include "agent-platform-standalone.hostname" (dict "ctx" . "prefix" "agentgateway" "override" $kagentRoute.hostname "key" "components.kagent.controllerRoute.hostname") }}{{ $kagentRoute.pathPrefix }}/api
+      {{- end }}
+      {{- if $modelManagerRoute }}
+      {{- /* The model-manager API of this installation, through the
+      agentgateway route (templates/model-manager/route.yaml): the prefix is
+      stripped before model-manager, so its REST API sits at
+      <hostname><pathPrefix>/api/v1. The portal backend forwards the user's
+      Dex ID token; the route's JWT policy is the identity boundary. */}}
+      modelManager:
+        installations:
+          {{ .Release.Name }}:
+            apiBaseUrl: https://{{ include "agent-platform-standalone.modelManager.hostname" . }}{{ $modelManagerRoute.pathPrefix }}
       {{- end }}
     {{- end }}
 {{- end }}

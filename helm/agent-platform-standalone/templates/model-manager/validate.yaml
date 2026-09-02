@@ -1,0 +1,140 @@
+{{- /*
+Render-time guards of the model-manager component. They fail `helm template`
+(and therefore CI lint + install) with an actionable message instead of
+shipping a service that cannot reach its backend, a route the API server
+rejects, or an MCPServer CR without its CRD.
+*/ -}}
+{{- if (include "agent-platform-standalone.modelManager.enabled" .) }}
+  {{- $mm := index .Values.components "model-manager" }}
+  {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson }}
+  {{- $backend := include "agent-platform-standalone.modelManager.backend" . }}
+  {{- $_ := include "agent-platform-standalone.modelManager.fullname" . }}
+
+  {{- /* The chart's schema types `backend` as a free string; a typo would
+         start the service with a driver it does not have. */ -}}
+  {{- if not (or (eq $backend "ollama") (eq $backend "kserve")) }}
+    {{- fail (printf "model-manager.backend=%q is invalid; must be one of: ollama, kserve" $backend) }}
+  {{- end }}
+
+  {{- /* The ollama backend proxies a host Ollama: the endpoint is the one
+         input an install must provide (the chart's own default,
+         host.docker.internal, is a Docker Desktop guess). */ -}}
+  {{- if eq $backend "ollama" }}
+    {{- $endpoint := include "agent-platform-standalone.modelManager.ollamaEndpoint" . }}
+    {{- if not $endpoint }}
+      {{- fail "model-manager.backend is ollama but model-manager.ollama.endpoint is empty: set the Ollama API base URL as reached from pods (on kind the docker network gateway, e.g. http://172.21.0.1:11434; the ollama backend ADR)" }}
+    {{- end }}
+    {{- if not (regexMatch "^https?://[^/]+" $endpoint) }}
+      {{- fail (printf "model-manager.ollama.endpoint (%q) must be an http(s) URL with a host, e.g. http://172.21.0.1:11434" $endpoint) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The kserve backend manages InferenceServices: it needs KServe on the
+         cluster, which the modelServing component guards the same way. */ -}}
+  {{- if eq $backend "kserve" }}
+    {{- $modelServingOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing") }}
+    {{- if and $mm.kserve.requireApi (not $modelServingOn) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+      {{- fail "model-manager.backend is kserve but neither the modelServing component is on nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. KServe is a prerequisite this chart does not install: turn on components.modelServing (README, section Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
+    {{- end }}
+    {{- if $modelServingOn }}
+      {{- /* The two components describe one serving layer: model-manager
+             reads the runtime, GPU resource name, cache claim and preset
+             selector from the modelServing discovery ConfigMap at run time,
+             so only what must be static (the serving namespace, the
+             discovery ConfigMap's name and namespace) and explicit
+             overrides are checked here. */ -}}
+      {{- $ms := .Values.components.modelServing }}
+      {{- $servingNs := include "agent-platform-standalone.modelServing.namespace" . }}
+      {{- $kserve := dig "kserve" dict $chart }}
+      {{- $mmNs := dig "namespace" "" $kserve | default .Release.Namespace }}
+      {{- if ne $servingNs $mmNs }}
+        {{- fail (printf "model-manager.kserve.namespace (%s) must equal components.modelServing.namespace.name (%s): model-manager manages the InferenceServices the modelServing component's runtime, presets and cache target" $mmNs $servingNs) }}
+      {{- end }}
+      {{- $discovery := dig "discovery" dict $kserve }}
+      {{- if ne (dig "configMap" "" $discovery) "agent-platform-model-serving" }}
+        {{- fail (printf "model-manager.kserve.discovery.configMap (%q) must name the modelServing component's discovery ConfigMap, agent-platform-model-serving" (dig "configMap" "" $discovery)) }}
+      {{- end }}
+      {{- $discoveryNs := dig "namespace" "" $discovery }}
+      {{- if and $discoveryNs (ne $discoveryNs .Release.Namespace) }}
+        {{- fail (printf "model-manager.kserve.discovery.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its discovery ConfigMap" $discoveryNs .Release.Namespace) }}
+      {{- end }}
+      {{- $runtime := dig "runtime" "" $kserve }}
+      {{- if and $runtime (ne $runtime $ms.runtime.name) }}
+        {{- fail (printf "model-manager.kserve.runtime (%s) differs from components.modelServing.runtime.name (%s); leave it empty to follow the discovery ConfigMap" $runtime $ms.runtime.name) }}
+      {{- end }}
+      {{- $gpu := dig "gpuResourceName" "" $kserve }}
+      {{- if and $gpu (ne $gpu $ms.serving.gpuResourceName) }}
+        {{- fail (printf "model-manager.kserve.gpuResourceName (%s) differs from components.modelServing.serving.gpuResourceName (%s); leave it empty to follow the discovery ConfigMap" $gpu $ms.serving.gpuResourceName) }}
+      {{- end }}
+      {{- $claim := dig "cache" "claimName" "" $kserve }}
+      {{- if and $claim $ms.cache.enabled (ne $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
+        {{- fail (printf "model-manager.kserve.cache.claimName (%s) differs from the modelServing cache claim (%s); leave it empty to follow the discovery ConfigMap" $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
+      {{- end }}
+      {{- $presetsNs := dig "presets" "namespace" "" $kserve }}
+      {{- if and $presetsNs (ne $presetsNs .Release.Namespace) }}
+        {{- fail (printf "model-manager.kserve.presets.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its presets" $presetsNs .Release.Namespace) }}
+      {{- end }}
+      {{- $selector := dig "presets" "labelSelector" "" $kserve }}
+      {{- if and $selector (ne $selector "agent-platform.giantswarm.io/serving-preset=true") }}
+        {{- fail (printf "model-manager.kserve.presets.labelSelector (%q) differs from the modelServing preset label agent-platform.giantswarm.io/serving-preset=true; leave it empty to follow the discovery ConfigMap" $selector) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* ModelConfig wiring lands in the kagent namespace: the chart's Role is
+         rendered there, so the namespace must exist and be kagent's. */ -}}
+  {{- if not (dig "kagent" "disableWiring" false $chart) }}
+    {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
+    {{- if not $kagentOn }}
+      {{- fail "model-manager wires kagent ModelConfigs but components.kagent.enabled is false: turn on kagent, or set model-manager.kagent.disableWiring: true (inventory, pull, load/unload and delete keep working; the wire capability reports false)" }}
+    {{- end }}
+    {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
+    {{- $mmKagentNs := include "agent-platform-standalone.modelManager.kagentNamespace" . }}
+    {{- if ne $kagentNs $mmKagentNs }}
+      {{- fail (printf "model-manager.kagent.namespace (%s) must equal the kagent component's namespace (%s, kagent.kagent.namespaceOverride): the ModelConfigs model-manager creates must land where the kagent controller reads them" $mmKagentNs $kagentNs) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The MCPServer CRD ships with the muster sub-chart. */ -}}
+  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not .Values.components.muster.enabled) }}
+    {{- fail "model-manager.muster.mcpServer.enabled is true but components.muster.enabled is false: the MCPServer CRD ships with muster, so the CR has no API to map to. Turn on muster or set model-manager.muster.mcpServer.enabled: false" }}
+  {{- end }}
+
+  {{- if $mm.route.enabled }}
+    {{- /* The route renders agentgateway.dev resources on the agentgateway
+           Gateway. */ -}}
+    {{- if not (include "agent-platform-standalone.ingress.agentgateway" .) }}
+      {{- fail "components.model-manager.route renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" }}
+    {{- end }}
+    {{- if not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "agentgateway")) }}
+      {{- fail "components.model-manager.route.enabled is true but components.agentgateway.enabled is false: the route attaches to the agentgateway data plane" }}
+    {{- end }}
+    {{- if not (hasPrefix "/" $mm.route.pathPrefix) }}
+      {{- fail (printf "components.model-manager.route.pathPrefix (%q) must start with /" $mm.route.pathPrefix) }}
+    {{- end }}
+    {{- /* An HTTPRoute with no hostname on the shared public Gateway matches
+           ALL traffic to that Gateway. The hostname helper derives
+           agentgateway.<global.domain> when the override is empty, and fails
+           the render when neither is set. */ -}}
+    {{- $_ := include "agent-platform-standalone.modelManager.hostname" . }}
+    {{- /* A parentRef override needs both halves: a route with namespace ""
+           is rejected by the Gateway API CRD, silently breaking the install. */ -}}
+    {{- if and $mm.route.parentRef.name (not $mm.route.parentRef.namespace) }}
+      {{- fail "components.model-manager.route.parentRef.name is set but .namespace is empty. Set both (the Gateway API CRD rejects an empty namespace), or clear .name to fall back to the chart-owned edge / global.gatewayApi.parentRefs." }}
+    {{- end }}
+    {{- if ($mm.route.jwtAuthentication).enabled }}
+      {{- /* A JWT policy without an issuer validates nothing dex-shaped. The
+             issuer defaults from global.identity.issuerUrl; the helper fails
+             the render when both are empty. */ -}}
+      {{- if not $mm.route.jwtAuthentication.issuer }}
+        {{- $_ := include "agent-platform-standalone.issuerUrl" (dict "ctx" . "for" "components.model-manager.route.jwtAuthentication (or set its .issuer)") }}
+      {{- end }}
+      {{- /* The data plane can only fetch the JWKS from the issuer when
+             jwksEgress is on; without it Strict/Optional validation fails
+             closed on every token. */ -}}
+      {{- if not .Values.gateway.jwksEgress.enabled }}
+        {{- fail "components.model-manager.route.jwtAuthentication.enabled is true but gateway.jwksEgress.enabled is false. The agentgateway data plane cannot reach the issuer's JWKS endpoint, so signature validation fails closed. Set gateway.jwksEgress.enabled: true (and its namespace/port to the issuer's)." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

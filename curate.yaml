@@ -118,6 +118,17 @@ dependencies:
     version: "0.29.0"
     repository: oci://ghcr.io/cloudnative-pg/charts
     enabled: false
+  # The model-manager service (Model Manager PDR phase 3, Ollama backend ADR):
+  # backend-abstracted model inventory, pull, load/unload, delete and kagent
+  # ModelConfig wiring, as REST and MCP. Off by default; the umbrella renders
+  # its agentgateway route, JWT policy, network policies and the Backstage
+  # app-config entry (templates/model-manager/, templates/backstage/).
+  - name: model-manager
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
+    version: "0.3.1"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    enabled: false
 
 # Components the umbrella renders itself, with no Helm dependency behind them.
 # Their templates are hand-authored (templates.extra below) and read
@@ -212,6 +223,9 @@ annotations:
   gateway.parameters.dataPlaneEnv: "itemRef: $k8s/envvar.json"
   components.kagent.controllerRoute.parentRef: "additionalProperties: true"
   components.kagent.uiRoute.parentRef: "additionalProperties: true"
+  components.model-manager.route.parentRef: "additionalProperties: true"
+  # A typo in the validation mode would silently render an invalid policy.
+  components.model-manager.route.jwtAuthentication.mode: "enum:[Strict,Optional,Permissive]"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
   global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
   # Operator-set authorize-request parameters (e.g. Google's
@@ -456,3 +470,12 @@ templates:
     - model-serving/presets.yaml
     - model-serving/cache-pvc.yaml
     - model-serving/policies.yaml
+    # The model-manager dependency's umbrella wiring (components.model-manager):
+    # the agentgateway route + JWT policy that expose its API per installation
+    # (mirrors the kagent controllerRoute), the network policies its backend
+    # needs, and the render-time guards on the backend configuration.
+    - model-manager/_helpers.tpl
+    - model-manager/validate.yaml
+    - model-manager/route.yaml
+    - model-manager/jwt-policy.yaml
+    - model-manager/netpol.yaml

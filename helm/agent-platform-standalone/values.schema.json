@@ -1782,6 +1782,98 @@
                         }
                     }
                 },
+                "model-manager": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "kserve": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "requireApi": {
+                                    "type": "boolean"
+                                }
+                            }
+                        },
+                        "route": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "hostname": {
+                                    "type": "string"
+                                },
+                                "jwtAuthentication": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "issuer": {
+                                            "type": "string"
+                                        },
+                                        "jwks": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "host": {
+                                                    "type": "string"
+                                                },
+                                                "path": {
+                                                    "type": "string"
+                                                },
+                                                "port": {
+                                                    "type": "integer"
+                                                },
+                                                "tls": {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "caSecretName": {
+                                                            "type": "string"
+                                                        },
+                                                        "enabled": {
+                                                            "type": "boolean"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "mode": {
+                                            "type": "string",
+                                            "enum": [
+                                                "Strict",
+                                                "Optional",
+                                                "Permissive"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "parentRef": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "namespace": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "pathPrefix": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
                 "modelServing": {
                     "type": "object",
                     "additionalProperties": false,
@@ -2603,6 +2695,10 @@
             }
         },
         "mcp-kubernetes": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "model-manager": {
             "type": "object",
             "additionalProperties": true
         },

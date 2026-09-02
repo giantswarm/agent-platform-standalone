@@ -21,6 +21,7 @@ its exact chart name:
 | `agent-sandbox` | off | Sandbox runtime for agents |
 | `backstage` | off | Developer portal |
 | `cloudnative-pg` | off | PostgreSQL operator |
+| `model-manager` | off | Model management service (inventory, pull, load/unload, delete, kagent wiring), see [Model manager](#model-manager) |
 
 One component has no dependency behind it: `modelServing` (off) renders the
 KServe/vLLM model-serving layer itself, see [Model serving](#model-serving).
@@ -277,6 +278,106 @@ or namespace preparation. Without Kyverno the PVC is still created and published
 (model-manager's pre-warm downloads and `pvc://` presets use it), but `hf://`
 presets download on every start.
 
+### Model manager
+
+`components.model-manager.enabled: true` installs
+[model-manager](https://github.com/giantswarm/model-manager), the service
+behind the portal's model management: model inventory (downloaded and
+loaded), pull with progress, load/unload, delete and automatic kagent
+`ModelConfig` wiring, as one REST API and as MCP tools. Off by default and
+inert while off. It is a Helm dependency (chart `model-manager`, pinned in
+`curate.yaml`); the umbrella renders the wiring around it from
+`templates/model-manager/`.
+
+The service's own configuration is the model-manager chart's, under the
+`model-manager:` block — the umbrella cannot compute a dependency's values at
+render time, so the backend is selected there, like every other component's
+values:
+
+```yaml
+components:
+  model-manager:
+    enabled: true
+    route:                       # the API on the agentgateway data plane
+      enabled: true
+      pathPrefix: /model-manager # https://agentgateway.<domain>/model-manager
+      jwtAuthentication:
+        enabled: true            # no Dex token, no API (401 at the gateway)
+model-manager:
+  backend: ollama                # ollama | kserve
+  ollama:
+    endpoint: http://172.21.0.1:11434   # REQUIRED for ollama: Ollama as pods reach it
+gateway:
+  jwksEgress:
+    enabled: true                # the data plane fetches the JWKS from Dex
+```
+
+- **Backends.** `ollama` proxies a host Ollama — the laptop / agentlab dev
+  loop (the Ollama backend ADR); `ollama.endpoint` is required (on kind the
+  docker network gateway; `ollama.agentHost` when agent pods dial a different
+  address). `kserve` manages `InferenceService`s on the
+  [Model serving](#model-serving) component's KServe: pull = a pre-warm
+  download Job into the HF cache, load = an `InferenceService` from a
+  serving preset, plus fit checks, node inventory and Hugging Face search.
+  The render fails without the `serving.kserve.io/v1beta1` API unless
+  `components.modelServing` is on (or
+  `components.model-manager.kserve.requireApi: false`). The two components
+  describe one serving layer without duplicate config: model-manager reads
+  the runtime, GPU resource name, cache claim and preset selector from the
+  modelServing **discovery ConfigMap** at run time
+  (`model-manager.kserve.discovery.configMap: agent-platform-model-serving`,
+  the chart default); only `model-manager.kserve.namespace` is static and
+  must equal `components.modelServing.namespace.name` (both default
+  `model-serving`). A `kserve.*` override that disagrees with
+  `components.modelServing` (runtime, GPU resource, cache claim, preset
+  namespace or selector, discovery ConfigMap) fails the render. An unknown
+  backend fails the render.
+- **Route.** `components.model-manager.route` mirrors the kagent
+  `controllerRoute`: an `AgentgatewayBackend` for the Service, an `HTTPRoute`
+  at `pathPrefix` on the agentgateway Gateway with the prefix stripped
+  (model-manager sees `/api/v1/...`), and the public `HTTPRoute` on the outer
+  Gateway when the chart-owned edge is not the data plane. The hostname is
+  `agentgateway.<global.domain>` (`route.hostname` overrides). Requires an
+  `agentgateway-*` `ingress.mode`.
+- **Identity boundary.** `route.jwtAuthentication` renders the
+  `AgentgatewayPolicy` that validates the bearer JWT (signature, issuer,
+  expiry) against `global.identity.issuerUrl` before forwarding — without a
+  token the gateway answers 401. model-manager checks no identity itself;
+  the gateway policy is the boundary, the same trust model as the kagent
+  controller route. The JWKS is fetched through a static
+  `AgentgatewayBackend` (`jwks.host/port/path`, the in-cluster Dex by
+  default; `gateway.jwksEgress` must be on). An issuer that serves its JWKS
+  over TLS (a Dex with `web.https`, e.g. the lab's) sets `jwks.tls.enabled`
+  — the data plane then verifies against `jwks.tls.caSecretName` (key
+  `ca.crt`), defaulting to `global.identity.ca.secretName`.
+- **Portal.** With the route on, the Backstage app-config gets
+  `agentPlatform.modelManager.installations.<release>.apiBaseUrl:
+  https://<hostname><pathPrefix>` next to the kagent entry; the portal
+  backend forwards the user's Dex ID token to it.
+- **MCP.** The model-manager chart registers its MCP endpoint with muster
+  through its own `MCPServer` CR (`model-manager.muster.mcpServer.enabled`,
+  on by default; the muster component must be on): tools appear as
+  `x_model-manager_<tool>` (`list_models`, `pull_model`, `load_model`,
+  `unload_model`, `delete_model`, `wire_model`, `get_job`, and on the
+  kserve backend `list_presets`, `search_models`, `check_fit`,
+  `list_nodes`). muster reaches it in-cluster, not through the route.
+- **Wiring.** ModelConfigs land in `model-manager.kagent.namespace`, which
+  must be the kagent component's namespace (`kagent.kagent.namespaceOverride`,
+  `kagent` by default); an install without kagent sets
+  `model-manager.kagent.disableWiring: true`. The Ollama backend wires
+  models with kagent's native keyless `Ollama` provider.
+- **Network policies** (`global.networkPolicy`, both flavors): ingress to
+  model-manager from the agentgateway data plane, muster and Backstage on the
+  Service port; egress to DNS, the Kubernetes API and — for the ollama
+  backend — the endpoint (an IP endpoint gets a `/32`; a hostname opens the
+  port to every destination, since neither flavor resolves names here); the
+  data plane's and muster's egress to model-manager. The model-manager
+  chart's own NetworkPolicy stays off.
+
+`make verify-model-manager` renders the component off (nothing), on (the
+service, MCPServer, route, JWT policy, app-config entry, both network-policy
+flavors) and checks every guard above.
+
 ## Install
 
 ```sh
@@ -389,15 +490,16 @@ and the release candidate (`tests/ats/upgrade-hook.sh`).
 `Chart.yaml`, `Chart.lock`, `values.yaml`, `examples/giantswarm.yaml` and
 everything under `templates/` except the files `curate.yaml` lists in
 `templates.extra` (`NOTES.txt`, `templates/backstage/`,
-`templates/model-serving/`, a few single files) are generated. Do not edit
-them. `files/` (the shipped serving presets, chat templates and the preset
+`templates/model-serving/`, `templates/model-manager/`, a few single files)
+are generated. Do not edit them. `files/` (the shipped serving presets, chat templates and the preset
 schema) is hand-authored.
 The generator `hack/curate.sh` reads the fleet meta-package
 `giantswarm/agent-platform` and the `agent-platform-connectivity` chart at the
 version pinned in `curate.yaml`, and:
 
 1. builds the dependency list from the fleet chart's component list, plus the
-   extra dependencies declared in `curate.yaml` (`backstage`, `cloudnative-pg`);
+   extra dependencies declared in `curate.yaml` (`backstage`, `cloudnative-pg`,
+   `model-manager`);
 2. resolves each major-bounded range (`5.x`) to the newest published version and
    writes that exact pin into `Chart.yaml`;
 3. transforms the fleet values into the layout above: fleet-only keys dropped,
@@ -444,7 +546,7 @@ is strict for the umbrella-owned keys only.
 ```sh
 make curate                  # regenerate Chart.yaml, values.yaml, Chart.lock, templates, examples/giantswarm.yaml
 pre-commit run --all-files   # regenerate values.schema.json and the chart README
-make verify                  # what CI runs: go test, curate --check, render every example, schema, decision and model-serving checks
+make verify                  # what CI runs: go test, curate --check, render every example, schema, decision, model-serving and model-manager checks
 ```
 
 Requirements: Go 1.26, Helm 3.8 or newer. No registry login is needed; the
@@ -465,6 +567,9 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   on (runtime, presets, cache, policies) and validates every published preset
   against `files/model-serving/serving-preset.schema.json` with
   `hack/presets`; `go test ./hack/presets` validates the shipped preset files.
+  `verify-model-manager` renders the model-manager component off (nothing) and
+  on (service, MCPServer, route, JWT policy, app-config entry, network
+  policies) and checks its render-time guards.
 - `execute-chart-tests` (generated, app-test-suite on kind): the install and
   auth smoke plus the upgrade test (`tests/ats/test_smoke.py`, configured by
   `.ats/main.yaml`). The smoke applies the Gateway API CRDs and
