@@ -1599,8 +1599,14 @@ cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true
 # REQUIRED — on kind the docker network gateway, e.g.
 # http://172.21.0.1:11434 — and `ollama.agentHost` is what agent pods dial
 # when it differs), `kserve` manages InferenceServices on the modelServing
-# component's KServe (kserve.namespace must equal
-# components.modelServing.namespace.name; the render checks). ModelConfigs are
+# component's KServe: kserve.namespace must equal
+# components.modelServing.namespace.name, and the runtime, GPU resource
+# name, cache claim and preset selector are read at run time from the
+# modelServing discovery ConfigMap (kserve.discovery.configMap, the umbrella's
+# agent-platform-model-serving in the release namespace) — an install that
+# turns on both components configures the serving layer once; a kserve.*
+# override that disagrees with components.modelServing fails the render.
+# ModelConfigs are
 # wired into kagent.kagent.namespace, which must be the kagent component's namespace
 # (kagent.kagent.kagent.namespaceOverride); an install without the kagent component
 # sets kagent.kagent.disableWiring: true. The MCP endpoint is registered with muster
@@ -1619,6 +1625,9 @@ model-manager:  # @schema skipProperties: true; additionalProperties: true
     disableWiring: false
   kserve:
     namespace: model-serving
+    discovery:
+      configMap: agent-platform-model-serving
+      namespace: ""
   mcp:
     enabled: true
   muster:

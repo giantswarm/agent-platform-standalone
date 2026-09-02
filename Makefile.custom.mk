@@ -206,6 +206,16 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@$(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' >/dev/null
 	@if $(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.namespace=other' >/dev/null 2>&1; then \
 		echo "FAIL: kserve namespace differing from modelServing accepted"; exit 1; fi
+	@if $(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.discovery.configMap=other' >/dev/null 2>&1; then \
+		echo "FAIL: kserve discovery ConfigMap differing from modelServing accepted"; exit 1; fi
+	@if $(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.runtime=other' >/dev/null 2>&1; then \
+		echo "FAIL: kserve runtime differing from modelServing accepted"; exit 1; fi
+	@$(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.runtime=kserve-vllm' --set 'model-manager.kserve.cache.claimName=hf-cache' >/dev/null
+	@echo "--> kserve backend: the chart renders the serving-namespace Role and the nodes ClusterRole"
+	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve'); \
+	printf '%s' "$$out" | grep -q 'name: model-manager-kserve$$' || { echo "FAIL: kserve Role missing"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'name: model-manager-nodes$$' || { echo "FAIL: nodes ClusterRole missing"; exit 1; }; \
+	printf '%s' "$$out" | grep -q -e '--backend=kserve' || { echo "FAIL: kserve backend arg missing"; exit 1; }
 	@if $(MODEL_MANAGER) --set ingress.mode=muster-direct --set components.agentgateway.enabled=false --set 'agent-platform-mcps.agentgateway.viaMuster=false' >/dev/null 2>&1; then \
 		echo "FAIL: model-manager route in muster-direct mode accepted"; exit 1; fi
 	@if $(MODEL_MANAGER) --set gateway.jwksEgress.enabled=false >/dev/null 2>&1; then \

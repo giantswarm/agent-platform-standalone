@@ -316,12 +316,22 @@ gateway:
   loop (the Ollama backend ADR); `ollama.endpoint` is required (on kind the
   docker network gateway; `ollama.agentHost` when agent pods dial a different
   address). `kserve` manages `InferenceService`s on the
-  [Model serving](#model-serving) component's KServe; the render fails
-  without the `serving.kserve.io/v1beta1` API unless `components.modelServing`
-  is on (or `components.model-manager.kserve.requireApi: false`), and
-  `model-manager.kserve.namespace` must equal
-  `components.modelServing.namespace.name`. An unknown backend fails the
-  render.
+  [Model serving](#model-serving) component's KServe: pull = a pre-warm
+  download Job into the HF cache, load = an `InferenceService` from a
+  serving preset, plus fit checks, node inventory and Hugging Face search.
+  The render fails without the `serving.kserve.io/v1beta1` API unless
+  `components.modelServing` is on (or
+  `components.model-manager.kserve.requireApi: false`). The two components
+  describe one serving layer without duplicate config: model-manager reads
+  the runtime, GPU resource name, cache claim and preset selector from the
+  modelServing **discovery ConfigMap** at run time
+  (`model-manager.kserve.discovery.configMap: agent-platform-model-serving`,
+  the chart default); only `model-manager.kserve.namespace` is static and
+  must equal `components.modelServing.namespace.name` (both default
+  `model-serving`). A `kserve.*` override that disagrees with
+  `components.modelServing` (runtime, GPU resource, cache claim, preset
+  namespace or selector, discovery ConfigMap) fails the render. An unknown
+  backend fails the render.
 - **Route.** `components.model-manager.route` mirrors the kagent
   `controllerRoute`: an `AgentgatewayBackend` for the Service, an `HTTPRoute`
   at `pathPrefix` on the agentgateway Gateway with the prefix stripped
@@ -348,8 +358,9 @@ gateway:
   through its own `MCPServer` CR (`model-manager.muster.mcpServer.enabled`,
   on by default; the muster component must be on): tools appear as
   `x_model-manager_<tool>` (`list_models`, `pull_model`, `load_model`,
-  `unload_model`, `delete_model`, `wire_model`, `get_job`, ...). muster
-  reaches it in-cluster, not through the route.
+  `unload_model`, `delete_model`, `wire_model`, `get_job`, and on the
+  kserve backend `list_presets`, `search_models`, `check_fit`,
+  `list_nodes`). muster reaches it in-cluster, not through the route.
 - **Wiring.** ModelConfigs land in `model-manager.kagent.namespace`, which
   must be the kagent component's namespace (`kagent.kagent.namespaceOverride`,
   `kagent` by default); an install without kagent sets

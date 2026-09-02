@@ -27,7 +27,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.40 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
-| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.2.2 |
+| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.3.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
@@ -523,6 +523,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.kagent.namespace | string | `"kagent"` |  |
 | model-manager.kagent.disableWiring | bool | `false` |  |
 | model-manager.kserve.namespace | string | `"model-serving"` |  |
+| model-manager.kserve.discovery.configMap | string | `"agent-platform-model-serving"` |  |
+| model-manager.kserve.discovery.namespace | string | `""` |  |
 | model-manager.mcp.enabled | bool | `true` |  |
 | model-manager.muster.mcpServer.enabled | bool | `true` |  |
 | model-manager.networkPolicy.enabled | bool | `false` |  |

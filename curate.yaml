@@ -126,7 +126,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.2.2"
+    version: "0.3.1"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
 
