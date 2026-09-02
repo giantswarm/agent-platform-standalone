@@ -56,7 +56,8 @@ spec:
               protocol: TCP
 ---
 # Egress from model-manager: DNS, the Kubernetes API (ModelConfig wiring,
-# InferenceServices) and, for the ollama backend, the host Ollama endpoint.
+# InferenceServices), for the ollama backend the host Ollama endpoint and
+# for the kserve backend the Hugging Face Hub.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -69,9 +70,21 @@ spec:
     matchLabels:
       {{- include "agent-platform-standalone.modelManager.podSelector" . | nindent 6 }}
   egress:
+    {{- if eq $backend "kserve" }}
+    {{- /* The DNS rule with Cilium's proxy clause: the Hugging Face FQDN
+           selectors below resolve through it. */ -}}
+    {{- include "agent-platform-standalone.modelServing.dnsEgress" . | nindent 4 }}
+    {{- else }}
     {{- include "agent-platform-standalone.dnsEgress" . | nindent 4 }}
+    {{- end }}
     - toEntities:
         - kube-apiserver
+    {{- if eq $backend "kserve" }}
+    # The kserve backend calls the Hugging Face Hub itself (search, fit
+    # checks, revision lookups); the endpoint list is the modelServing
+    # component's (components.modelServing.networkPolicy.huggingFace).
+    {{- include "agent-platform-standalone.modelServing.huggingFaceEgress.cilium" . | trim | nindent 4 }}
+    {{- end }}
     {{- if eq $backend "ollama" }}
     {{- if $ollama.isIP }}
     # The host Ollama, an IP endpoint: exactly that address and port.
@@ -191,7 +204,8 @@ spec:
           protocol: TCP
 ---
 # Egress from model-manager: DNS, the Kubernetes API (ModelConfig wiring,
-# InferenceServices) and, for the ollama backend, the host Ollama endpoint.
+# InferenceServices), for the ollama backend the host Ollama endpoint and
+# for the kserve backend the Hugging Face Hub.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -231,6 +245,12 @@ spec:
           protocol: TCP
         - port: 6443
           protocol: TCP
+    {{- if eq $backend "kserve" }}
+    # The kserve backend calls the Hugging Face Hub itself (search, fit
+    # checks, revision lookups); the endpoint list is the modelServing
+    # component's (components.modelServing.networkPolicy.huggingFace).
+    {{- include "agent-platform-standalone.modelServing.huggingFaceEgress.kubernetes" . | trim | nindent 4 }}
+    {{- end }}
     {{- if eq $backend "ollama" }}
     {{- if $ollama.isIP }}
     # The host Ollama, an IP endpoint: exactly that address and port.

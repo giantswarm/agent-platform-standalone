@@ -200,6 +200,13 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.modelServing.policies.cacheInit.resources.limits.memory | string | `"64Mi"` |  |
 | components.modelServing.policies.storageInitializerMemoryLimit | string | `"4Gi"` |  |
 | components.modelServing.policies.progressDeadlineSeconds | int | `3600` |  |
+| components.modelServing.networkPolicy.predictor.port | int | `8080` |  |
+| components.modelServing.networkPolicy.predictor.additionalIngressNamespaces | list | `[]` |  |
+| components.modelServing.networkPolicy.huggingFace.fqdns[0].matchName | string | `"huggingface.co"` |  |
+| components.modelServing.networkPolicy.huggingFace.fqdns[1].matchPattern | string | `"*.huggingface.co"` |  |
+| components.modelServing.networkPolicy.huggingFace.fqdns[2].matchPattern | string | `"*.hf.co"` |  |
+| components.modelServing.networkPolicy.huggingFace.fqdns[3].matchPattern | string | `"*.*.hf.co"` |  |
+| components.modelServing.networkPolicy.huggingFace.cidrs | list | `[]` |  |
 | ingress.mode | string | `"agentgateway-muster"` |  |
 | ingress.parentRefs | list | `[]` |  |
 | ingress.hostnames | list | `[]` |  |

@@ -159,6 +159,7 @@ What the component renders, all under `components.modelServing`:
 | discovery `ConfigMap` `agent-platform-model-serving` | release namespace | `serving.*` defaults (GPU resource name, RuntimeClass, node selector, deployment strategy, route timeout) |
 | HF cache `PersistentVolumeClaim` | serving namespace | `cache.pvc.*` (name, size, class, existing claim, static PV); kept on uninstall |
 | Kyverno `ClusterPolicy` x2 | cluster | `policies.*`; needs Kyverno, off by default |
+| network policies (`NetworkPolicy` or `CiliumNetworkPolicy`) | serving namespace, plus the kagent namespace (cilium) | `networkPolicy.*`, rendered under `global.networkPolicy` — see [Network policies](#network-policies-1) |
 
 The chart creates no `InferenceService`: the portal's serve flow (and
 model-manager) do, from a preset. The `ClusterServingRuntime` and the presets
@@ -278,6 +279,62 @@ or namespace preparation. Without Kyverno the PVC is still created and published
 (model-manager's pre-warm downloads and `pvc://` presets use it), but `hf://`
 presets download on every start.
 
+#### Network policies
+
+With `global.networkPolicy.enabled: true` the component renders the policies
+of the serving namespace in the selected flavor, so a served model needs no
+hand-written rule; the discovery ConfigMap publishes
+`spec.networkPolicy.{enabled,flavor}` so the portal can say what the
+installation has. Both flavors:
+
+- **Ingress to the predictor pods** (every pod KServe runs for an
+  InferenceService, label `serving.kserve.io/inferenceservice`) on the
+  runtime port (`networkPolicy.predictor.port`, 8080) from the kagent agent
+  pods (`app: kagent` in the kagent namespace — the auto-created ModelConfig
+  dials the predictor Service, translated to the pod port before policy
+  evaluation), from the release namespace (Backstage, model-manager, the
+  agentgateway data plane) and from
+  `networkPolicy.predictor.additionalIngressNamespaces` (the KServe ingress
+  Gateway's namespace when InferenceServices are exposed through it,
+  Prometheus' for KServe's scrape annotations).
+- **Egress to the model download endpoints** on 443, plus DNS, from the
+  predictor pods (the storage-initializer's `hf://` download and the
+  runtime) and from model-manager's pre-warm download Jobs
+  (`model-manager.giantswarm.io/component=download`); on the `kserve`
+  backend model-manager's own Hub calls get the same egress
+  (`templates/model-manager/netpol.yaml`).
+
+The download endpoints are where the flavors differ; the values comments
+carry the same trade-off:
+
+- **cilium**: `networkPolicy.huggingFace.fqdns` are Cilium FQDN selectors
+  (`matchName` / `matchPattern`; the defaults cover `huggingface.co` and the
+  LFS / Xet download fronts under `hf.co`), enforced through the DNS proxy
+  clause (`rules.dns`) the policies carry on their DNS egress — without it
+  Cilium never learns the resolved addresses and a `toFQDNs` rule matches
+  nothing, which is why hand-written policies used to fall back to
+  `world:443`. Needs Cilium's L7 proxy (on by default). The cilium flavor
+  also admits the kubelet's probes on the runtime port from the `host` and
+  `remote-node` entities — under `policyEnforcementMode: always` an
+  egress-only policy default-denies them and the predictor is killed before
+  it turns Ready — and renders the agent-side egress from `app: kagent` pods
+  to the predictor pods (the chart's agent egress covers 443 only).
+- **kubernetes**: vanilla NetworkPolicy selects IP blocks, never names. With
+  `networkPolicy.huggingFace.cidrs` empty (the default) the egress admits
+  every public destination on 443 (`0.0.0.0/0` minus
+  `global.networkPolicy.kubernetes.worldExcludedCIDRs`, the data plane's own
+  rule), because Hugging Face's download fronts are CDNs whose addresses
+  change and a static list would break downloads silently; a CIDR list
+  narrows it to a mirror or proxy. The kubelet's probes are not subject to
+  NetworkPolicy, and the agents' egress is unrestricted in this flavor (the
+  chart renders no egress policy for agent pods), so no agent-side rule is
+  rendered.
+
+`global.networkPolicy.additionalEgressCIDRs` / `additionalEgressFQDNs` apply
+to both (an S3 endpoint for `s3://` presets). The render fails on an FQDN
+entry that is not exactly one of `matchName` / `matchPattern`, a value that
+is not a CIDR, a namespace that is not a DNS label, or a port out of range.
+
 ### Model manager
 
 `components.model-manager.enabled: true` installs
@@ -371,8 +428,10 @@ gateway:
   Service port; egress to DNS, the Kubernetes API and — for the ollama
   backend — the endpoint (an IP endpoint gets a `/32`; a hostname opens the
   port to every destination, since neither flavor resolves names here); the
-  data plane's and muster's egress to model-manager. The model-manager
-  chart's own NetworkPolicy stays off.
+  data plane's and muster's egress to model-manager; on the `kserve`
+  backend, egress to the Hugging Face Hub from the modelServing component's
+  endpoint list (`components.modelServing.networkPolicy.huggingFace`). The
+  model-manager chart's own NetworkPolicy stays off.
 
 `make verify-model-manager` renders the component off (nothing), on (the
 service, MCPServer, route, JWT policy, app-config entry, both network-policy
@@ -564,7 +623,8 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   `helm dependency build`, never `update`; a `Chart.yaml` that no longer matches
   `Chart.lock` fails the build. `verify-render` renders every `examples/*.yaml`.
   `verify-model-serving` renders the modelServing component off (nothing) and
-  on (runtime, presets, cache, policies) and validates every published preset
+  on (runtime, presets, cache, policies, the network policies in both
+  flavors and their guards) and validates every published preset
   against `files/model-serving/serving-preset.schema.json` with
   `hack/presets`; `go test ./hack/presets` validates the shipped preset files.
   `verify-model-manager` renders the model-manager component off (nothing) and

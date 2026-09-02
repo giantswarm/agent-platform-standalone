@@ -33,6 +33,11 @@ data:
         {{- end }}
       deploymentStrategyType: {{ $ms.serving.deploymentStrategyType }}
       timeoutSeconds: {{ $ms.serving.timeoutSeconds }}
+      # Whether this chart renders network policies for the serving namespace
+      # (global.networkPolicy), and in which flavor (kubernetes | cilium).
+      networkPolicy:
+        enabled: {{ .Values.global.networkPolicy.enabled }}
+        flavor: {{ .Values.global.networkPolicy.flavor }}
       cache:
         enabled: {{ $ms.cache.enabled }}
         {{- if $ms.cache.enabled }}

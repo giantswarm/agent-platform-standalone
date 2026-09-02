@@ -470,6 +470,7 @@ templates:
     - model-serving/presets.yaml
     - model-serving/cache-pvc.yaml
     - model-serving/policies.yaml
+    - model-serving/netpol.yaml
     # The model-manager dependency's umbrella wiring (components.model-manager):
     # the agentgateway route + JWT policy that expose its API per installation
     # (mirrors the kagent controllerRoute), the network policies its backend
