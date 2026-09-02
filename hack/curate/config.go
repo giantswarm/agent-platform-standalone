@@ -124,6 +124,13 @@ type Config struct {
 	// curated defaults alone would get wrong (frozen array-item shapes,
 	// missing enums). A path the generated values do not carry fails the run.
 	Annotations map[string]string `yaml:"annotations"`
+	// UmbrellaComponents names the components this chart renders itself, with
+	// no Helm dependency behind them: hand-authored templates (Templates.Extra)
+	// read components.<name>, and overlay/contract.yaml defines the whole
+	// block, the `enabled` default included. The generator admits the name
+	// into the components map (an overlay entry for any other non-dependency
+	// name fails) and requires the toggle; it derives nothing else.
+	UmbrellaComponents []string `yaml:"umbrellaComponents"`
 }
 
 // ChartName is the umbrella chart's name, the prefix of every copied helper.
@@ -138,6 +145,11 @@ func (c *Config) ChartName() string {
 var (
 	exactVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	majorRangeRe   = regexp.MustCompile(`^(\d+)\.x$`)
+	// An umbrella component is addressed as .Values.components.<name> by the
+	// hand-authored templates, so the name must be a plain Go template
+	// identifier (a dependency name may carry hyphens; it is reached through
+	// index).
+	identifierNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
 )
 
 func LoadConfig(path string) (*Config, error) {
@@ -268,7 +280,26 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("annotations.%s: the annotation must not be empty", path)
 		}
 	}
+	seenComponents := map[string]bool{}
+	for _, name := range c.UmbrellaComponents {
+		if !identifierNameRe.MatchString(name) {
+			return fmt.Errorf("umbrellaComponents: %q must be a plain identifier (letters and digits, the templates read .Values.components.<name>)", name)
+		}
+		if seenComponents[name] {
+			return fmt.Errorf("umbrellaComponents: %q listed twice", name)
+		}
+		seenComponents[name] = true
+		if _, isDependency := c.Dependency(name); isDependency {
+			return fmt.Errorf("umbrellaComponents: %q is a dependency; a dependency's components entry is generated, not overlay-defined", name)
+		}
+	}
 	return nil
+}
+
+// IsUmbrellaComponent reports whether name is a component the umbrella
+// renders itself (curate.yaml umbrellaComponents), with no dependency.
+func (c *Config) IsUmbrellaComponent(name string) bool {
+	return slices.Contains(c.UmbrellaComponents, name)
 }
 
 // UmbrellaOwned reports whether key is a top-level key the umbrella owns: the

@@ -1,0 +1,41 @@
+# Render check of `make verify-model-serving`, applied on top of
+# ci/ci-values.yaml: a values preset that replaces a shipped one (same name)
+# with an inline chat template, and a second preset that serves pre-warmed
+# weights from the cache claim with a pre-created chat template ConfigMap.
+# Not an install example.
+components:
+  modelServing:
+    enabled: true
+    presets:
+      - apiVersion: agent-platform.giantswarm.io/v1alpha1
+        kind: ServingPreset
+        metadata:
+          name: qwen3-14b
+        spec:
+          displayName: Overridden
+          model:
+            id: Qwen/Qwen3-14B
+            storageUri: hf://Qwen/Qwen3-14B
+          args:
+            - --max-model-len=4096
+          chatTemplate:
+            content: "{{ messages }}"
+          requirements:
+            weightsGiB: 28
+      - apiVersion: agent-platform.giantswarm.io/v1alpha1
+        kind: ServingPreset
+        metadata:
+          name: prewarmed
+        spec:
+          displayName: Pre-warmed weights from the cache claim
+          model:
+            id: org/model
+            storageUri: pvc://hf-cache/org-model
+          chatTemplate:
+            existingConfigMap: my-chat-template
+            key: template.jinja
+          resources:
+            gpus: 2
+          requirements:
+            weightsGiB: 40
+            overheadGiB: 20

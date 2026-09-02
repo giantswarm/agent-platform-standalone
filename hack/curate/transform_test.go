@@ -257,6 +257,63 @@ func TestTransformOverlay(t *testing.T) {
 	})
 }
 
+// An umbrella component (curate.yaml umbrellaComponents) has no dependency:
+// the contract defines its whole components.<name> block, toggle included, and
+// the generator admits exactly that name into the components map.
+func TestTransformUmbrellaComponent(t *testing.T) {
+	config := fixtureConfig + "umbrellaComponents: [serving]\n"
+	contract := fixtureContract + "components:\n  serving:\n    # rendered by the umbrella itself\n    enabled: false\n    replicas: 1\n"
+
+	t.Run("contract defines the block", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, contract)
+		result, err := Transform(in)
+		require.NoError(t, err)
+		require.Equal(t, []string{"muster", "kagent", "agent-platform-mcps", "agent-sandbox", "backstage", "serving"},
+			mappingKeys(mustGet(t, rootMapping(result.Document), "components")), "dependencies first, then the umbrella's own components")
+		serving := asMap(t, asMap(t, decodeValues(t, result.Document)["components"])["serving"])
+		require.Equal(t, false, serving["enabled"])
+		require.Equal(t, 1, serving["replicas"])
+		out, err := encodeYAML(result.Document)
+		require.NoError(t, err)
+		require.Contains(t, string(out), "# rendered by the umbrella itself", "contract comments survive")
+	})
+	// Transform consumes its fleet document (lifted keys are removed), so
+	// every call below starts from fresh inputs.
+	inputs := func(t *testing.T, contractDoc, overlayDoc string) Inputs {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, contractDoc)
+		in.Overlay = parseDocument(t, overlayDoc)
+		return in
+	}
+	t.Run("the vanilla overlay flips its leaves", func(t *testing.T) {
+		result, err := Transform(inputs(t, contract, fixtureOverlay+"components:\n  serving:\n    replicas: 2\n"))
+		require.NoError(t, err)
+		require.Equal(t, 2, asMap(t, asMap(t, decodeValues(t, result.Document)["components"])["serving"])["replicas"])
+
+		_, err = Transform(inputs(t, contract, fixtureOverlay+"components:\n  serving:\n    ghost: true\n"))
+		require.ErrorContains(t, err, `overlay path "components.serving.ghost" does not exist`)
+	})
+	t.Run("the toggle is required", func(t *testing.T) {
+		_, err := Transform(inputs(t, fixtureContract, fixtureOverlay))
+		require.ErrorContains(t, err, "components.serving must be defined as a mapping by overlay/contract.yaml")
+
+		_, err = Transform(inputs(t, fixtureContract+"components:\n  serving:\n    replicas: 1\n", fixtureOverlay))
+		require.ErrorContains(t, err, "components.serving.enabled must be defined by overlay/contract.yaml")
+
+		_, err = Transform(inputs(t, fixtureContract+"components:\n  serving:\n    enabled: maybe\n", fixtureOverlay))
+		require.ErrorContains(t, err, "components.serving.enabled is not a bool")
+	})
+	t.Run("an undeclared name still fails", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Contract = parseDocument(t, contract)
+		_, err := Transform(in)
+		require.ErrorContains(t, err, "contract components.serving is not a dependency")
+	})
+}
+
 // The vanilla overlay only flips defaults the fleet-derived values (contract
 // included) already carry: a fleet rename must orphan the override loudly, not
 // silently turn the default back on. Dependency blocks are exempt — they are

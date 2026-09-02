@@ -1,0 +1,32 @@
+{{- /*
+Render-time guards of the modelServing component. They fail `helm template`
+(and therefore CI lint + install) with an actionable message instead of
+shipping objects the API server rejects or a preset the portal cannot use.
+*/ -}}
+{{- if (include "agent-platform-standalone.modelServing.enabled" .) }}
+  {{- $ms := .Values.components.modelServing }}
+  {{- /* KServe is a prerequisite this chart does not install. Helm fills
+         .Capabilities.APIVersions from the cluster on install/upgrade, so a
+         missing serving.kserve.io API is a missing KServe; an offline
+         `helm template` has to be told with --api-versions. */ -}}
+  {{- if $ms.kserve.requireApi }}
+    {{- if not (and (.Capabilities.APIVersions.Has "serving.kserve.io/v1alpha1") (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+      {{- fail "components.modelServing.enabled is true but the KServe CRDs (serving.kserve.io/v1alpha1 ClusterServingRuntime, serving.kserve.io/v1beta1 InferenceService) are not on the cluster. KServe is a prerequisite this chart does not install: install it first (README, section Model serving). For an offline render pass --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1, or set components.modelServing.kserve.requireApi=false to skip this check." }}
+    {{- end }}
+  {{- end }}
+  {{- if not $ms.runtime.name }}
+    {{- fail "components.modelServing.runtime.name is empty: the ClusterServingRuntime needs a name, and every preset without a runtime of its own runs on it" }}
+  {{- end }}
+  {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $ms.runtime.name) }}
+    {{- fail (printf "components.modelServing.runtime.name (%q) must be a lowercase DNS-1123 label" $ms.runtime.name) }}
+  {{- end }}
+  {{- if and $ms.cache.enabled (not $ms.cache.pvc.existingClaim) (not $ms.cache.pvc.name) }}
+    {{- fail "components.modelServing.cache.pvc.name is empty: name the cache claim, or set cache.pvc.existingClaim" }}
+  {{- end }}
+  {{- /* Every preset in effect must resolve: the helpers fail on a bad name,
+         a missing required field or an unresolvable chat template. */ -}}
+  {{- $presets := include "agent-platform-standalone.modelServing.presets" . | fromJson }}
+  {{- range $name, $entry := $presets }}
+    {{- $_ := include "agent-platform-standalone.modelServing.resolvePreset" (dict "root" $ "name" $name "entry" $entry) }}
+  {{- end }}
+{{- end }}

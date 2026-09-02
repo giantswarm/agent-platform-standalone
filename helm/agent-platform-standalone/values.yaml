@@ -99,8 +99,10 @@ global:
         - 172.16.0.0/12
         - 192.168.0.0/16
         - 169.254.0.0/16
-# Umbrella-owned map: one entry per dependency, keyed by chart name.
-# `enabled` is the Helm dependency condition. The other keys are wiring the
+# Umbrella-owned map: one entry per dependency, keyed by chart name, plus
+# the components the umbrella renders itself (no dependency; their whole
+# block comes from overlay/contract.yaml). `enabled` is the Helm dependency
+# condition, or the component's own switch. The other keys are wiring the
 # umbrella templates render for that component; they are never forwarded to
 # the component chart.
 components:
@@ -319,6 +321,220 @@ components:
         version: "1.33.4"
   cloudnative-pg:
     enabled: false
+  # Model serving on KServe with vLLM, for installs that run local models
+  # (Model Manager PDR, decision D1: integrate KServe, do not bundle it). Off
+  # by default and inert while off: nothing below renders. The umbrella
+  # renders this component itself (no Helm dependency), from
+  # templates/model-serving/ and the chart files under files/model-serving/.
+  # KServe (its CRDs and controller) is a cluster prerequisite like the
+  # Gateway API CRDs; the render fails while the component is on and the
+  # serving.kserve.io API is missing (kserve.requireApi). On, the chart
+  # renders: the vLLM ClusterServingRuntime every preset runs on; the curated
+  # serving presets the portal's serve flow offers (one ConfigMap per preset
+  # in the release namespace, label
+  # agent-platform.giantswarm.io/serving-preset=true, schema in
+  # files/model-serving/serving-preset.schema.json); the discovery ConfigMap
+  # agent-platform-model-serving (label
+  # agent-platform.giantswarm.io/model-serving-config=true) that tells the
+  # portal and model-manager where InferenceServices go and how; the Hugging
+  # Face cache PVC; and, with Kyverno, the admission policies that wire every
+  # InferenceService pod in the serving namespace to that cache. See the
+  # README section "Model serving".
+  modelServing:
+    enabled: false
+    kserve:
+      # Fail the render when the KServe CRDs (serving.kserve.io/v1alpha1
+      # ClusterServingRuntime, v1beta1 InferenceService) are not on the
+      # cluster, instead of shipping objects the API server rejects. An
+      # offline `helm template` passes the check with
+      # --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1;
+      # false skips it.
+      requireApi: true
+    # The namespace InferenceServices run in. The runtime is cluster-scoped;
+    # the cache PVC, the chat-template ConfigMaps and the Kyverno policies
+    # target this namespace, and the portal creates InferenceServices here.
+    # Created by the chart (Helm-owned) when create is true and the name
+    # differs from the release namespace. labels: e.g. a Pod Security
+    # admission level — the upstream vLLM image runs as root, and the cache
+    # init container needs root to create the per-model directory.
+    namespace:
+      name: model-serving
+      create: true
+      labels: {}  # @schema type: object; additionalProperties: true
+    # The vLLM ClusterServingRuntime (serving.kserve.io/v1alpha1,
+    # cluster-scoped). Every shipped preset runs on it; a preset may name
+    # another runtime.
+    runtime:
+      name: kserve-vllm
+      # The upstream x86-64 CUDA image. An install with special hardware
+      # (ARM64, Blackwell sm_121) points registry/name/version at its own
+      # build; the presets do not change.
+      image:
+        registry: docker.io
+        name: vllm/vllm-openai
+        # registry: docker.io/vllm/vllm-openai
+        version: "v0.28.0"
+      # Server arguments common to every model. KServe expands {{.Name}} to
+      # the InferenceService name; a preset's args are appended by KServe.
+      # The port must stay 8080 (the probe, the metrics annotations and
+      # KServe's predictor Service assume it).
+      args:
+        - --model
+        - /mnt/models
+        - --port
+        - "8080"
+        - --served-model-name
+        - "{{.Name}}"
+      # Environment of the runtime container; a preset's env is merged on
+      # top by KServe. VLLM_CONFIG_ROOT keeps vLLM's config writable when
+      # /mnt/models is a read-only mount.
+      env:  # @schema itemRef: $k8s/envvar.json
+        - name: HF_HUB_ENABLE_HF_TRANSFER
+          value: "1"
+        - name: VLLM_CONFIG_ROOT
+          value: /tmp
+      # Resource envelope of the runtime container. A preset's resources win
+      # field by field (KServe merges the InferenceService over the runtime);
+      # the GPU count always comes from the preset.
+      resources:
+        requests:  # @schema type: object; additionalProperties: true
+          cpu: "2"
+          memory: 16Gi
+        limits:  # @schema type: object; additionalProperties: true
+          cpu: "8"
+          memory: 64Gi
+      # /dev/shm (memory-backed emptyDir) for vLLM's worker IPC.
+      shmSize: 16Gi
+      # Startup budget of the runtime container: loading a large model after
+      # the download takes many minutes; 360 x 30s = 3 hours before KServe
+      # gives up on the pod.
+      startupProbe:
+        initialDelaySeconds: 300
+        periodSeconds: 30
+        failureThreshold: 360
+      # Pod annotations KServe copies onto every predictor pod of this
+      # runtime; the defaults let KServe's Prometheus scraping find vLLM's
+      # /metrics.
+      annotations:  # @schema type: object; additionalProperties: true
+        prometheus.kserve.io/path: /metrics
+        prometheus.kserve.io/port: "8080"
+      # Model formats this runtime serves. KServe matches an InferenceService
+      # whose modelFormat.name is listed here (autoSelect) or that names the
+      # runtime explicitly.
+      supportedModelFormats:  # @schema item: object; itemProperties: {name: {type: string}, version: {type: string}, autoSelect: {type: boolean}, priority: {type: integer}}
+        - name: vLLM
+          version: "1"
+          autoSelect: true
+          priority: 1
+      # Scheduling of every predictor pod of this runtime (the GPU nodes).
+      nodeSelector: {}  # @schema type: object; additionalProperties: true
+      tolerations: []  # @schema itemRef: $k8s/toleration.json
+    # Defaults for every InferenceService the portal (backstage#2193) or
+    # model-manager creates from a preset. Published in the discovery
+    # ConfigMap; the chart itself creates no InferenceService.
+    serving:
+      # The extended resource a GPU is requested as (NVIDIA device plugin).
+      gpuResourceName: nvidia.com/gpu
+      # RuntimeClass of the predictor pods, e.g. nvidia for the NVIDIA
+      # container toolkit; empty leaves the cluster default.
+      runtimeClassName: ""
+      # Node selector of every predictor pod, e.g. the GPU node pool; a
+      # preset's scheduling.nodeSelector is merged on top.
+      nodeSelector: {}  # @schema type: object; additionalProperties: true
+      # Deployment strategy of the predictor: Recreate frees the GPU memory
+      # of the old pod before the new one loads the model, which a node
+      # whose memory is shared between GPU and CPU (unified memory) needs.
+      deploymentStrategyType: Recreate  # @schema enum:[Recreate,RollingUpdate]
+      # Request timeout KServe writes into the predictor's route. Long
+      # reasoning turns stream for minutes; the KServe default of 60s cuts
+      # them mid-response.
+      timeoutSeconds: 1800
+    # Serving presets an install adds (ServingPreset documents, see
+    # files/model-serving/serving-preset.schema.json and the README). A
+    # preset with the name of a shipped one replaces it. Example:
+    #   presets:
+    #     - apiVersion: agent-platform.giantswarm.io/v1alpha1
+    #       kind: ServingPreset
+    #       metadata:
+    #         name: my-model
+    #       spec:
+    #         displayName: My model
+    #         model:
+    #           id: org/My-Model
+    #           storageUri: hf://org/My-Model
+    #         args: [--max-model-len=8192]
+    #         resources:
+    #           gpus: 1
+    #         requirements:
+    #           weightsGiB: 16
+    presets: []  # @schema itemRef: files/model-serving/serving-preset.schema.json
+    # The presets shipped with the chart (files/model-serving/presets/).
+    # enabled: false drops the whole set; exclude drops single ones by name.
+    shippedPresets:
+      enabled: true
+      exclude: []  # @schema item: string
+    # Hugging Face model cache: one PVC in the serving namespace with one
+    # subdirectory per InferenceService, so a model downloads once and every
+    # restart finds it (hours to seconds). The PVC is kept on uninstall
+    # (helm.sh/resource-policy: keep). Without the Kyverno policies below the
+    # PVC is still created and published for model-manager's pre-warm
+    # downloads, but the KServe storage-initializer downloads into its
+    # ephemeral volume on every start.
+    cache:
+      enabled: true
+      pvc:
+        # Claim name, also the name published to the portal and
+        # model-manager.
+        name: hf-cache
+        # A pre-existing claim in the serving namespace to use instead;
+        # set, no PVC is rendered.
+        existingClaim: ""
+        size: 500Gi
+        # Empty uses the cluster's default StorageClass; "-" sets an empty
+        # class (static binding to a pre-provisioned PersistentVolume, e.g.
+        # local NVMe on the GPU node).
+        storageClassName: ""
+        # Bind this claim to a specific pre-provisioned PersistentVolume.
+        volumeName: ""
+        accessModes:  # @schema item: string
+          - ReadWriteOnce
+    # Kyverno ClusterPolicies for the InferenceService pods and Deployments
+    # in the serving namespace. Needs Kyverno on the cluster; off by default
+    # because Kyverno is not a chart prerequisite. On, every predictor pod
+    # gets: an init container that creates the pod's cache subdirectory
+    # (<claim>/<inferenceservice>) world-writable before the KServe
+    # storage-initializer runs (the kubelet creates a missing subPath
+    # directory root-owned 0750, which the storage-initializer's uid cannot
+    # write), the storage-initializer's and the runtime's /mnt/models
+    # redirected into that subdirectory, and a storage-initializer memory
+    # limit that survives multi-GB downloads; the Deployment gets a
+    # progressDeadlineSeconds long enough for a first download. Nothing to
+    # do on the node by hand.
+    policies:
+      enabled: false
+      # The init container that prepares the cache subdirectory (runs as
+      # root: the PVC root is root-owned).
+      cacheInit:
+        image:
+          registry: gsoci.azurecr.io
+          name: giantswarm/alpine
+          # registry: gsoci.azurecr.io/giantswarm/alpine
+          version: "3.22.1"
+        resources:
+          requests:  # @schema type: object; additionalProperties: true
+            cpu: 10m
+            memory: 16Mi
+          limits:  # @schema type: object; additionalProperties: true
+            cpu: 100m
+            memory: 64Mi
+      # Memory limit of the KServe storage-initializer init container. The
+      # KServe default (1Gi) is OOM-killed by the Hugging Face download of a
+      # large model. Empty leaves KServe's default.
+      storageInitializerMemoryLimit: 4Gi
+      # progressDeadlineSeconds of every InferenceService Deployment. The
+      # Kubernetes default (600) is shorter than a first model download and
+      # fires rollout-stuck alerts; 0 leaves the default.
+      progressDeadlineSeconds: 3600
 # === Ingress topology ===
 # mode selects the whole request topology. What each mode renders/consumes:
 #   muster-direct        client -> muster. Only ingress.parentRefs/hostnames used.
