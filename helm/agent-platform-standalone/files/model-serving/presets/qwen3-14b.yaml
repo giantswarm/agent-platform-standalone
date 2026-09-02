@@ -8,8 +8,9 @@ spec:
   displayName: Qwen3 14B
   description: |
     Dense 14B general model at BF16 (~28 GiB of weights), thinking disabled
-    by default. Tuned on a single-GPU 128 GB unified-memory node
-    (--gpu-memory-utilization=0.50).
+    by default, tool calling on (hermes parser — agents always send tools,
+    and vLLM answers 400 without --enable-auto-tool-choice). Tuned on a
+    single-GPU 128 GB unified-memory node (--gpu-memory-utilization=0.50).
   model:
     id: Qwen/Qwen3-14B
     storageUri: hf://Qwen/Qwen3-14B
@@ -24,6 +25,10 @@ spec:
     - --no-enable-log-requests
     - --default-chat-template-kwargs
     - '{"enable_thinking": false}'
+    # kagent agents call /v1/chat/completions with tools and tool_choice auto;
+    # without a parser vLLM rejects every agent request (400).
+    - --enable-auto-tool-choice
+    - --tool-call-parser=hermes
   resources:
     gpus: 1
     requests:
