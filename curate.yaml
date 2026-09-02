@@ -133,11 +133,15 @@ dependencies:
   # revising decision D1 of the Model Manager PDR): the CRD chart and the
   # controller chart of giantswarm/kserve, switched together by the umbrella
   # component components.kserve (its contract block in overlay/contract.yaml),
-  # and the llm-d control plane — the LLMInferenceService CRDs and controller
-  # — by components.kserve.llmisvc.enabled. All four pins move together (one
-  # upstream repo, giantswarm/kserve). A CRD chart rendered from templates is
-  # part of the release manifest: `helm upgrade` upgrades the CRDs, and the
-  # charts annotate them helm.sh/resource-policy: keep (kserve ≥ 0.2.0).
+  # and the llm-d control plane — the LLMInferenceService controller — by
+  # components.kserve.llmisvc.enabled. The LLMInferenceService CRDs
+  # (kserve-llmisvc-crd) stay a prerequisite, installed into the release
+  # namespace: 4.5 MB of CRD YAML added 372 KiB to the release Secret in the
+  # lab (881 KiB of the 1 MiB cap with everything else on), while the KServe
+  # CRDs + controller add 203 KiB. All pins move together (one upstream repo,
+  # giantswarm/kserve). A CRD chart rendered from templates is part of the
+  # release manifest: `helm upgrade` upgrades the CRDs, and the charts
+  # annotate them helm.sh/resource-policy: keep (kserve ≥ 0.2.0).
   - name: kserve-crd
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-crd
@@ -150,12 +154,6 @@ dependencies:
     version: "0.2.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
-  - name: kserve-llmisvc-crd
-    range: "0.x"
-    # registry: gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-crd
-    version: "0.2.0"
-    repository: oci://gsoci.azurecr.io/charts/giantswarm
-    condition: components.kserve.llmisvc.enabled
   - name: kserve-llmisvc-resources
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-resources
@@ -175,9 +173,9 @@ umbrellaComponents:
   # cluster already has.
   - modelServing
   # The KServe control plane switch: its dependencies (kserve-crd,
-  # kserve-resources, kserve-llmisvc-crd, kserve-llmisvc-resources) hang off
-  # this block through their `condition`; the umbrella's own templates are the
-  # render-time guards and the controller network policies (templates/kserve/).
+  # kserve-resources, kserve-llmisvc-resources) hang off this block through
+  # their `condition`; the umbrella's own templates are the render-time
+  # guards and the controller network policies (templates/kserve/).
   - kserve
 
 # Rule per top-level key of the fleet and connectivity values.

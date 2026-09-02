@@ -16,10 +16,11 @@ MODEL_SERVING := $(VANILLA) --set components.modelServing.enabled=true $(KSERVE_
 # prerequisite): the first-install shape, no serving API yet.
 CERT_MANAGER_API := --api-versions cert-manager.io/v1
 KSERVE := $(VANILLA) --set components.kserve.enabled=true $(CERT_MANAGER_API)
-# The llm-d control plane on top (its CRDs and controller come with the
-# release), against a cluster with no inference gateway (the controller ships
-# the GIE CRDs).
-LLMISVC := $(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true
+# The llm-d control plane on top, against a cluster that has the
+# LLMInferenceService CRDs (the prerequisite chart) and no inference gateway
+# (the controller ships the GIE CRDs).
+LLMISVC_API := --api-versions serving.kserve.io/v1alpha2/LLMInferenceService
+LLMISVC := $(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true $(LLMISVC_API)
 # The model-manager component on with the ollama backend, its route and JWT
 # policy (the shape the lab and the portal run).
 MODEL_MANAGER := $(VANILLA) --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
@@ -297,11 +298,14 @@ verify-kserve: deps ## The kserve component renders nothing while off, the KServ
 	@out=$$($(KSERVE) $(KSERVE_API) --set components.modelServing.enabled=true); \
 	printf '%s' "$$out" | grep -q 'name: kserve-vllm' || { echo "FAIL: modelServing did not render next to the kserve component with the serving API present"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'name: kserve-controller-manager' || { echo "FAIL: kserve controller missing in the second-phase render"; exit 1; }
-	@echo "--> llmisvc: needs the kserve component; renders the LLMInferenceService CRDs (conversion webhook in the release namespace) and controller with the GIE CRDs and without the shared objects; createGIECRDs=false needs the GIE API; createSharedResources=true fails"
+	@echo "--> llmisvc: needs the kserve component and the LLMInferenceService CRDs; renders the llmisvc controller with the GIE CRDs, no LLMInferenceService CRD and no shared objects; createGIECRDs=false needs the GIE API; createSharedResources=true fails"
 	@out=$$($(VANILLA) $(CERT_MANAGER_API) --set components.kserve.llmisvc.enabled=true 2>&1) && { echo "FAIL: llmisvc accepted without the kserve component"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'components.kserve.enabled is false' || { echo "FAIL: render failed for another reason than the llmisvc-needs-kserve guard"; exit 1; }
+	@out=$$($(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true 2>&1) && { echo "FAIL: llmisvc accepted without the LLMInferenceService CRDs"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'LLMInferenceService CRDs are not on the cluster' || { echo "FAIL: render failed for another reason than the llmisvc CRD guard"; exit 1; }
 	@out=$$($(LLMISVC)); \
-	for pattern in 'name: llmisvc-controller-manager' 'name: llminferenceservices.serving.kserve.io' 'name: llminferenceserviceconfigs.serving.kserve.io' 'name: inferencepools.inference.networking.k8s.io' 'name: kserve-controller-manager'; do \
+	printf '%s' "$$out" | grep -q 'name: llminferenceservices.serving.kserve.io' && { echo "FAIL: the LLMInferenceService CRDs must not ship with the release (release-Secret budget)"; exit 1; }; \
+	for pattern in 'name: llmisvc-controller-manager' 'name: inferencepools.inference.networking.k8s.io' 'name: kserve-controller-manager'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: llmisvc render lacks $$pattern"; exit 1; }; \
 	done; \
 	[ "$$(printf '%s' "$$out" | grep -c 'name: inferenceservice-config')" = "1" ] || { echo "FAIL: the shared inferenceservice-config must render exactly once"; exit 1; }; \

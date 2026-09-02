@@ -23,11 +23,11 @@ its exact chart name:
 | `cloudnative-pg` | off | PostgreSQL operator |
 | `model-manager` | off | Model management service (inventory, pull, load/unload, delete, kagent wiring), see [Model manager](#model-manager) |
 | `kserve-crd`, `kserve-resources` | off | The KServe control plane (CRDs, controller, admission webhooks), switched together by `components.kserve.enabled`, see [KServe control plane](#kserve-control-plane) |
-| `kserve-llmisvc-crd`, `kserve-llmisvc-resources` | off | The llm-d control plane (`LLMInferenceService` CRDs and controller), switched together by `components.kserve.llmisvc.enabled` |
+| `kserve-llmisvc-resources` | off | The llm-d control plane (`LLMInferenceService` controller; its CRDs are a prerequisite), switched by `components.kserve.llmisvc.enabled` |
 
 Two components have no dependency of their own: `modelServing` (off) renders
 the KServe/vLLM model-serving layer itself, see [Model serving](#model-serving);
-`kserve` (off) is the switch of the four KServe dependencies above plus their
+`kserve` (off) is the switch of the three KServe dependencies above plus their
 render-time guards and network policies.
 
 The templates in `helm/agent-platform-standalone/templates/` render the wiring
@@ -168,16 +168,28 @@ they carry `helm.sh/resource-policy: keep`, so `helm uninstall` or a later
 `kubectl delete crd`.
 
 **llm-d.** `components.kserve.llmisvc.enabled: true` adds the llm-d control
-plane on top: the `LLMInferenceService` / `LLMInferenceServiceConfig` CRDs
-(`kserve-llmisvc-crd`, their conversion webhook pointing at the controller in
-the release namespace) and the llmisvc controller (`kserve-llmisvc-resources`,
-values block of the same name; `kserve.createSharedResources` stays `false`,
-the KServe chart renders the shared objects). The controller needs the
-Gateway API Inference Extension CRDs (`InferencePool`): it ships them
+plane on top: the llmisvc controller (`kserve-llmisvc-resources`, values
+block of the same name; `kserve.createSharedResources` stays `false`, the
+KServe chart renders the shared objects). Its `LLMInferenceService` /
+`LLMInferenceServiceConfig` CRDs are a prerequisite the chart does not
+install — install `kserve-llmisvc-crd` **into the release namespace**, where
+the controller and the conversion webhook the CRDs point at run:
+
+```sh
+helm install kserve-llmisvc-crd oci://gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-crd \
+  --version 0.2.0 -n agent-platform
+```
+
+Bundling them was measured and rejected: the 4.5 MB of CRD YAML added
+372 KiB to the platform's Helm release Secret (881 KiB of its 1 MiB cap in
+the lab with everything else on), where the KServe CRDs plus controller add
+203 KiB. The controller also needs the Gateway API Inference Extension CRDs
+(`InferencePool`): it ships them
 (`kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs: true`) unless the
 cluster has them already — an inference gateway installed them — in which
-case set it `false`, because Helm cannot adopt them. The render checks the
-combination (`components.kserve.llmisvc.requireApi`; offline with
+case set it `false`, because Helm cannot adopt them. The render checks both
+prerequisites (`components.kserve.llmisvc.requireApi`; offline with
+`--api-versions serving.kserve.io/v1alpha2/LLMInferenceService`, plus
 `--api-versions inference.networking.k8s.io/v1` when `createGIECRDs` is
 false). Multi-node and disaggregated serving through `LLMInferenceService`
 also needs the runtimes the llm-d guides describe; nothing in this chart

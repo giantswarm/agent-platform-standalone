@@ -21,7 +21,7 @@ func TestLoadConfigRepoFile(t *testing.T) {
 		"muster", "kagent", "agentgateway", "valkey", "dicebear", "klaus-gateway",
 		"agent-platform-mcps", "mcp-kubernetes", "backstage", "agent-sandbox",
 		"cloudnative-pg", "model-manager",
-		"kserve-crd", "kserve-resources", "kserve-llmisvc-crd", "kserve-llmisvc-resources",
+		"kserve-crd", "kserve-resources", "kserve-llmisvc-resources",
 	}, names)
 	require.Equal(t, []string{"modelServing", "kserve"}, config.UmbrellaComponents, "components the umbrella renders itself, without a dependency of their own")
 	for _, name := range []string{"kserve-crd", "kserve-resources"} {
@@ -29,7 +29,7 @@ func TestLoadConfigRepoFile(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, "components.kserve.enabled", dependency.Condition, name)
 	}
-	for _, name := range []string{"kserve-llmisvc-crd", "kserve-llmisvc-resources"} {
+	for _, name := range []string{"kserve-llmisvc-resources"} {
 		dependency, ok := config.Dependency(name)
 		require.True(t, ok)
 		require.Equal(t, "components.kserve.llmisvc.enabled", dependency.Condition, name)

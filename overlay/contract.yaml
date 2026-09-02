@@ -482,24 +482,32 @@ components:
       # `helm template` passes with --api-versions cert-manager.io/v1);
       # false skips the check.
       requireApi: true
-    # The llm-d control plane: the LLMInferenceService CRDs
-    # (kserve-llmisvc-crd) and controller (kserve-llmisvc-resources), two
-    # dependencies switched together, for multi-node and disaggregated
-    # serving through KServe's LLMInferenceService CRD (inference-direction
-    # PDR 2026-09-02). Needs the kserve component: the controller reads its
-    # inferenceservice-config and shares its certificate Issuer. The CRDs'
-    # conversion webhook points at the controller in the release namespace.
-    # Controller values: the dependency block kserve-llmisvc-resources below.
+    # The llm-d control plane: the LLMInferenceService controller
+    # (kserve-llmisvc-resources), for multi-node and disaggregated serving
+    # through KServe's LLMInferenceService CRD (inference-direction PDR
+    # 2026-09-02). Needs the kserve component: the controller reads its
+    # inferenceservice-config and shares its certificate Issuer. Controller
+    # values: the dependency block kserve-llmisvc-resources below.
+    #
+    # The LLMInferenceService CRDs are a prerequisite this chart does not
+    # install — chart kserve-llmisvc-crd, into the RELEASE namespace, where
+    # the controller and the conversion webhook the CRDs point at run:
+    #   helm install kserve-llmisvc-crd oci://gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-crd -n <release namespace>
+    # Bundling them was measured and rejected: 4.5 MB of CRD YAML adds
+    # ~370 KiB to the Helm release Secret, which then sits at ~880 KiB of
+    # its 1 MiB cap with the rest of the platform.
     llmisvc:
       enabled: false
-      # The Gateway API Inference Extension CRDs (InferencePool, ...) the
-      # controller needs: shipped by the controller chart when
+      # Fail the render while the prerequisites are missing: the
+      # LLMInferenceService CRDs (above), and the Gateway API Inference
+      # Extension CRDs (InferencePool, ...) the controller needs — shipped by
+      # the controller chart when
       # kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs is true, which
       # Helm cannot do when a cluster has them already (an inference gateway
-      # installed them) — set it false then. The render checks the
-      # combination while this is true; an offline `helm template` passes
-      # with --api-versions inference.networking.k8s.io/v1 when createGIECRDs
-      # is false. false skips the check.
+      # installed them; set it false then). An offline `helm template` passes
+      # with --api-versions serving.kserve.io/v1alpha2/LLMInferenceService
+      # (and --api-versions inference.networking.k8s.io/v1 when createGIECRDs
+      # is false); false skips the checks.
       requireApi: true
 
 ingress:

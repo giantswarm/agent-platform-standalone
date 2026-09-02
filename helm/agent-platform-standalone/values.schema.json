@@ -2742,10 +2742,6 @@
             "type": "object",
             "additionalProperties": true
         },
-        "kserve-llmisvc-crd": {
-            "type": "object",
-            "additionalProperties": true
-        },
         "kserve-llmisvc-resources": {
             "type": "object",
             "additionalProperties": true

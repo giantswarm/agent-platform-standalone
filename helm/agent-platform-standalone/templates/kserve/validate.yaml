@@ -45,6 +45,9 @@ wrong order, or a CRD Helm cannot own.
       {{- fail "kserve-llmisvc-resources.kserve.createSharedResources must stay false: kserve-resources renders the shared inferenceservice-config ConfigMap, the self-signed Issuer and the default ClusterStorageContainer, and a second copy in the same release conflicts" }}
     {{- end }}
     {{- if $k.llmisvc.requireApi }}
+      {{- if not (or (.Capabilities.APIVersions.Has "serving.kserve.io/v1alpha2/LLMInferenceService") (.Capabilities.APIVersions.Has "serving.kserve.io/v1alpha1/LLMInferenceService")) }}
+        {{- fail (printf "components.kserve.llmisvc.enabled is true but the LLMInferenceService CRDs are not on the cluster. They are a prerequisite this chart does not install (4.5 MB of CRD YAML would push the platform's Helm release Secret to its 1 MiB cap): helm install kserve-llmisvc-crd oci://gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-crd -n %s — into the release namespace, where the llmisvc controller and the conversion webhook the CRDs point at run. For an offline render pass --api-versions serving.kserve.io/v1alpha2/LLMInferenceService, or set components.kserve.llmisvc.requireApi=false to skip this check." .Release.Namespace) }}
+      {{- end }}
       {{- $createGIE := dig "kserve" "llmisvc" "createGIECRDs" true $llmisvc }}
       {{- $gieApi := .Capabilities.APIVersions.Has "inference.networking.k8s.io/v1" }}
       {{- if and $createGIE $gieApi }}

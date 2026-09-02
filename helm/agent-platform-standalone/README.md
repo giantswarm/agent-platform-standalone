@@ -27,7 +27,6 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.40 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-crd | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
@@ -546,6 +545,5 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | kserve-crd | object | `{}` |  |
 | kserve-resources.kserve.controller.deploymentMode | string | `"Standard"` |  |
 | kserve-resources.kserve.controller.gateway.disableIngressCreation | bool | `true` |  |
-| kserve-llmisvc-crd | object | `{}` |  |
 | kserve-llmisvc-resources.kserve.createSharedResources | bool | `false` |  |
 | kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs | bool | `true` |  |
