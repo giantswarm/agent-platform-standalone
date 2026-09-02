@@ -5,13 +5,15 @@ shipping objects the API server rejects or a preset the portal cannot use.
 */ -}}
 {{- if (include "agent-platform-standalone.modelServing.enabled" .) }}
   {{- $ms := .Values.components.modelServing }}
-  {{- /* KServe is a prerequisite this chart does not install. Helm fills
-         .Capabilities.APIVersions from the cluster on install/upgrade, so a
-         missing serving.kserve.io API is a missing KServe; an offline
-         `helm template` has to be told with --api-versions. */ -}}
-  {{- if $ms.kserve.requireApi }}
-    {{- if not (and (.Capabilities.APIVersions.Has "serving.kserve.io/v1alpha1") (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
-      {{- fail "components.modelServing.enabled is true but the KServe CRDs (serving.kserve.io/v1alpha1 ClusterServingRuntime, serving.kserve.io/v1beta1 InferenceService) are not on the cluster. KServe is a prerequisite this chart does not install: install it first (README, section Model serving). For an offline render pass --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1, or set components.modelServing.kserve.requireApi=false to skip this check." }}
+  {{- /* KServe comes from the kserve component or from the cluster. Helm
+         fills .Capabilities.APIVersions from the cluster on install/upgrade,
+         so a missing serving.kserve.io API is a missing KServe; an offline
+         `helm template` has to be told with --api-versions. With the kserve
+         component on, templates/kserve/validate.yaml owns this check (a
+         missing API is then the two-phase first install). */ -}}
+  {{- if and $ms.kserve.requireApi (not (include "agent-platform-standalone.kserve.enabled" .)) }}
+    {{- if not (include "agent-platform-standalone.kserve.apiPresent" .) }}
+      {{- fail "components.modelServing.enabled is true but the KServe CRDs (serving.kserve.io/v1alpha1 ClusterServingRuntime, serving.kserve.io/v1beta1 InferenceService) are not on the cluster. Turn on components.kserve (the chart's KServe control plane; README, section KServe control plane) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1, or set components.modelServing.kserve.requireApi=false to skip this check." }}
     {{- end }}
   {{- end }}
   {{- if not $ms.runtime.name }}

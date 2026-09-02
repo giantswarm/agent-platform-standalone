@@ -26,6 +26,9 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.40 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
 | oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.6.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.4 |
@@ -207,6 +210,10 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.modelServing.networkPolicy.huggingFace.fqdns[2].matchPattern | string | `"*.hf.co"` |  |
 | components.modelServing.networkPolicy.huggingFace.fqdns[3].matchPattern | string | `"*.*.hf.co"` |  |
 | components.modelServing.networkPolicy.huggingFace.cidrs | list | `[]` |  |
+| components.kserve.enabled | bool | `false` |  |
+| components.kserve.certManager.requireApi | bool | `true` |  |
+| components.kserve.llmisvc.enabled | bool | `false` |  |
+| components.kserve.llmisvc.requireApi | bool | `true` |  |
 | ingress.mode | string | `"agentgateway-muster"` |  |
 | ingress.parentRefs | list | `[]` |  |
 | ingress.hostnames | list | `[]` |  |
@@ -535,3 +542,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.mcp.enabled | bool | `true` |  |
 | model-manager.muster.mcpServer.enabled | bool | `true` |  |
 | model-manager.networkPolicy.enabled | bool | `false` |  |
+| kserve-crd | object | `{}` |  |
+| kserve-resources.kserve.controller.deploymentMode | string | `"Standard"` |  |
+| kserve-resources.kserve.controller.gateway.disableIngressCreation | bool | `true` |  |
+| kserve-llmisvc-resources.kserve.createSharedResources | bool | `false` |  |
+| kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs | bool | `true` |  |

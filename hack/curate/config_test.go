@@ -21,8 +21,19 @@ func TestLoadConfigRepoFile(t *testing.T) {
 		"muster", "kagent", "agentgateway", "valkey", "dicebear", "klaus-gateway",
 		"agent-platform-mcps", "mcp-kubernetes", "backstage", "agent-sandbox",
 		"cloudnative-pg", "model-manager",
+		"kserve-crd", "kserve-resources", "kserve-llmisvc-resources",
 	}, names)
-	require.Equal(t, []string{"modelServing"}, config.UmbrellaComponents, "components the umbrella renders itself, without a dependency")
+	require.Equal(t, []string{"modelServing", "kserve"}, config.UmbrellaComponents, "components the umbrella renders itself, without a dependency of their own")
+	for _, name := range []string{"kserve-crd", "kserve-resources"} {
+		dependency, ok := config.Dependency(name)
+		require.True(t, ok)
+		require.Equal(t, "components.kserve.enabled", dependency.Condition, name)
+	}
+	for _, name := range []string{"kserve-llmisvc-resources"} {
+		dependency, ok := config.Dependency(name)
+		require.True(t, ok)
+		require.Equal(t, "components.kserve.llmisvc.enabled", dependency.Condition, name)
+	}
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -100,6 +111,63 @@ func TestConfigValidate(t *testing.T) {
 			var config Config
 			require.NoError(t, yaml.Unmarshal([]byte(testCase.mutate), &config))
 			require.ErrorContains(t, config.Validate(), testCase.want)
+		})
+	}
+}
+
+// A condition override ties an extra dependency to an umbrella component's
+// switch (a control plane split into a CRD chart and a controller chart).
+func TestConfigValidateDependencyCondition(t *testing.T) {
+	base := fixtureConfig + "umbrellaComponents: [serving]\n"
+	extra := func(fields string) string {
+		return strings.Replace(base, "    repository: oci://example/extra\n    enabled: false\n",
+			"    repository: oci://example/extra\n"+fields, 1)
+	}
+	cases := map[string]struct {
+		config string
+		want   string
+	}{
+		"valid": {
+			config: extra("    condition: components.serving.enabled\n"),
+		},
+		"valid nested": {
+			config: extra("    condition: components.serving.controller.enabled\n"),
+		},
+		"enabled and condition are exclusive": {
+			config: extra("    enabled: false\n    condition: components.serving.enabled\n"),
+			want:   `dependency "backstage": enabled and condition are exclusive`,
+		},
+		"shape": {
+			config: extra("    condition: serving.enabled\n"),
+			want:   `must have the form components.<umbrellaComponent>[.<key>...].enabled`,
+		},
+		"must end in enabled": {
+			config: extra("    condition: components.serving.on\n"),
+			want:   `must have the form components.<umbrellaComponent>[.<key>...].enabled`,
+		},
+		"unknown umbrella component": {
+			config: extra("    condition: components.other.enabled\n"),
+			want:   `points at components.other, which is not declared in umbrellaComponents`,
+		},
+		"fleet dependency": {
+			config: strings.Replace(base, "    version: \"5.5.3\"\n", "    version: \"5.5.3\"\n    condition: components.serving.enabled\n", 1),
+			want:   `dependency "muster": condition is only valid on an extra dependency`,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var config Config
+			require.NoError(t, yaml.Unmarshal([]byte(tc.config), &config))
+			err := config.Validate()
+			if tc.want == "" {
+				require.NoError(t, err)
+				dependency, ok := config.Dependency("backstage")
+				require.True(t, ok)
+				require.False(t, dependency.HasOwnToggle())
+				require.Equal(t, "serving", dependency.ConditionComponent())
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
 		})
 	}
 }

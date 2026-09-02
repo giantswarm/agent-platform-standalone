@@ -430,3 +430,59 @@ func keysOf(mapping map[string]any) []string {
 	}
 	return keys
 }
+
+// An extra dependency with a condition override is switched by an umbrella
+// component's contract block: it gets no components entry of its own, its
+// Chart.yaml condition is the override, and the override must resolve to a
+// boolean the contract defines.
+func TestTransformDependencyCondition(t *testing.T) {
+	config := strings.Replace(fixtureConfig, "    repository: oci://example/extra\n    enabled: false\n",
+		"    repository: oci://example/extra\n    condition: components.serving.controller.enabled\n", 1) +
+		"umbrellaComponents: [serving]\n"
+	contract := fixtureContract + "components:\n  serving:\n    enabled: false\n    controller:\n      enabled: false\n"
+
+	t.Run("no components entry, condition in Chart.yaml", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, contract)
+		result, err := Transform(in)
+		require.NoError(t, err)
+		components := mustGet(t, rootMapping(result.Document), "components")
+		require.NotContains(t, mappingKeys(components), "backstage", "the dependency has no components entry of its own")
+		require.Contains(t, mappingKeys(components), "serving")
+		require.Contains(t, mappingKeys(rootMapping(result.Document)), "backstage", "the dependency's own values block is still generated")
+
+		document, err := BuildChartYAML(in.Config, result.Components, map[string]string{
+			"muster": "5.5.3", "kagent": "0.1.37", "agent-platform-mcps": "0.6.7", "agent-sandbox": "0.2.23", "backstage": "0.195.2",
+		})
+		require.NoError(t, err)
+		out, err := encodeYAML(document)
+		require.NoError(t, err)
+		require.Contains(t, string(out), "condition: components.serving.controller.enabled")
+		require.NotContains(t, string(out), "condition: components.backstage.enabled")
+	})
+
+	t.Run("the contract must define the condition path", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, fixtureContract+"components:\n  serving:\n    enabled: false\n")
+		_, err := Transform(in)
+		require.ErrorContains(t, err, `dependency "backstage": condition components.serving.controller.enabled is not defined by overlay/contract.yaml`)
+	})
+
+	t.Run("the condition path must be a boolean", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, fixtureContract+"components:\n  serving:\n    enabled: false\n    controller:\n      enabled: [true]\n")
+		_, err := Transform(in)
+		require.ErrorContains(t, err, `dependency "backstage": condition components.serving.controller.enabled is not a scalar`)
+	})
+
+	t.Run("an overlay entry under the dependency name fails", func(t *testing.T) {
+		in := fixtureInputs(t)
+		in.Config = parseConfig(t, config)
+		in.Contract = parseDocument(t, contract+"  backstage:\n    enabled: true\n")
+		_, err := Transform(in)
+		require.ErrorContains(t, err, "contract components.backstage: the dependency is switched by components.serving.controller.enabled")
+	})
+}

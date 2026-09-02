@@ -33,8 +33,9 @@ rejects, or an MCPServer CR without its CRD.
          cluster, which the modelServing component guards the same way. */ -}}
   {{- if eq $backend "kserve" }}
     {{- $modelServingOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing") }}
-    {{- if and $mm.kserve.requireApi (not $modelServingOn) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
-      {{- fail "model-manager.backend is kserve but neither the modelServing component is on nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. KServe is a prerequisite this chart does not install: turn on components.modelServing (README, section Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
+    {{- $kserveOn := include "agent-platform-standalone.kserve.enabled" . }}
+    {{- if and $mm.kserve.requireApi (not $modelServingOn) (not $kserveOn) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+      {{- fail "model-manager.backend is kserve but neither the modelServing nor the kserve component is on, nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. Turn on components.kserve and components.modelServing (README, sections KServe control plane and Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
     {{- end }}
     {{- if $modelServingOn }}
       {{- /* The two components describe one serving layer: model-manager

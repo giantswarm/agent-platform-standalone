@@ -12,6 +12,15 @@ VANILLA := $(TEMPLATE) -f $(CHART_DIR)/ci/ci-values.yaml --set 'components.klaus
 # template learns the cluster's APIs only from --api-versions.
 KSERVE_API := --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1
 MODEL_SERVING := $(VANILLA) --set components.modelServing.enabled=true $(KSERVE_API)
+# The kserve component on, against a cluster that has cert-manager (its one
+# prerequisite): the first-install shape, no serving API yet.
+CERT_MANAGER_API := --api-versions cert-manager.io/v1
+KSERVE := $(VANILLA) --set components.kserve.enabled=true $(CERT_MANAGER_API)
+# The llm-d control plane on top, against a cluster that has the
+# LLMInferenceService CRDs (the prerequisite chart) and no inference gateway
+# (the controller ships the GIE CRDs).
+LLMISVC_API := --api-versions serving.kserve.io/v1alpha2/LLMInferenceService
+LLMISVC := $(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true $(LLMISVC_API)
 # The model-manager component on with the ollama backend, its route and JWT
 # policy (the shape the lab and the portal run).
 MODEL_MANAGER := $(VANILLA) --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
@@ -31,7 +40,7 @@ deps: ## Pull the pinned dependencies (helm dependency build, never update).
 ##@ Verification
 
 .PHONY: verify
-verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager ## Everything CI runs.
+verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager verify-kserve ## Everything CI runs.
 
 .PHONY: test
 test: ## Unit tests of the generator.
@@ -260,3 +269,60 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'toFQDNs:' || { echo "FAIL: cilium-flavor model-manager egress lacks the Hugging Face FQDN rule"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'Hugging Face' && { echo "FAIL: ollama backend got the Hugging Face egress"; exit 1; }; true
+
+.PHONY: verify-kserve
+verify-kserve: deps ## The kserve component renders nothing while off, the KServe CRDs + controller while on (llmisvc on top), and its guards fail the missing prerequisites and the one-pass first install.
+	@echo "--> kserve off (the default): the render carries no KServe control-plane object"
+	@out=$$($(VANILLA)); \
+	for pattern in 'kind: CustomResourceDefinition' 'kserve-controller-manager' 'llmisvc-controller-manager' 'inferenceservice-config'; do \
+		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: default render contains $$pattern"; exit 1; fi; \
+	done
+	@echo "--> kserve on: the six KServe CRDs, the controller in Standard mode with no per-model ingress, the webhooks, the cert-manager Issuer; no llmisvc, no network policy without global.networkPolicy"
+	@out=$$($(KSERVE)); \
+	for pattern in 'name: inferenceservices.serving.kserve.io' 'name: clusterservingruntimes.serving.kserve.io' 'name: servingruntimes.serving.kserve.io' 'name: trainedmodels.serving.kserve.io' 'name: inferencegraphs.serving.kserve.io' 'name: clusterstoragecontainers.serving.kserve.io' 'name: kserve-controller-manager' '"defaultDeploymentMode": "Standard"' '"disableIngressCreation": true' 'kind: MutatingWebhookConfiguration' 'kind: Issuer' 'name: inferenceservice-config'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kserve render lacks $$pattern"; exit 1; }; \
+	done; \
+	for pattern in 'llmisvc-controller-manager' 'kind: CiliumNetworkPolicy' 'kind: NetworkPolicy' 'kserve-huggingfaceserver'; do \
+		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: kserve render contains $$pattern"; exit 1; fi; \
+	done
+	@echo "--> guards: cert-manager missing fails (requireApi=false passes); Knative mode fails; modelServing or a kserve-backend model-manager on the first install fails, and passes once the serving API exists"
+	@out=$$($(VANILLA) --set components.kserve.enabled=true 2>&1) && { echo "FAIL: kserve rendered without the cert-manager API"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'cert-manager.io/v1 API is not on the cluster' || { echo "FAIL: render failed for another reason than the cert-manager guard"; exit 1; }
+	@$(VANILLA) --set components.kserve.enabled=true --set components.kserve.certManager.requireApi=false >/dev/null
+	@out=$$($(KSERVE) --set kserve-resources.kserve.controller.deploymentMode=Knative 2>&1) && { echo "FAIL: Knative mode accepted"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'must be Standard' || { echo "FAIL: render failed for another reason than the deployment-mode guard"; exit 1; }
+	@out=$$($(KSERVE) --set components.modelServing.enabled=true 2>&1) && { echo "FAIL: modelServing accepted on the first install of the kserve component"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'first install of the KServe control plane' || { echo "FAIL: render failed for another reason than the two-phase guard"; exit 1; }
+	@out=$$($(KSERVE) --set 'components.model-manager.enabled=true' --set model-manager.backend=kserve --set model-manager.kserve.namespace=model-serving 2>&1) && { echo "FAIL: kserve-backend model-manager accepted on the first install of the kserve component"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'first install of the KServe control plane' || { echo "FAIL: render failed for another reason than the two-phase guard"; exit 1; }
+	@out=$$($(KSERVE) $(KSERVE_API) --set components.modelServing.enabled=true); \
+	printf '%s' "$$out" | grep -q 'name: kserve-vllm' || { echo "FAIL: modelServing did not render next to the kserve component with the serving API present"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'name: kserve-controller-manager' || { echo "FAIL: kserve controller missing in the second-phase render"; exit 1; }
+	@echo "--> llmisvc: needs the kserve component and the LLMInferenceService CRDs; renders the llmisvc controller with the GIE CRDs, no LLMInferenceService CRD and no shared objects; createGIECRDs=false needs the GIE API; createSharedResources=true fails"
+	@out=$$($(VANILLA) $(CERT_MANAGER_API) --set components.kserve.llmisvc.enabled=true 2>&1) && { echo "FAIL: llmisvc accepted without the kserve component"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'components.kserve.enabled is false' || { echo "FAIL: render failed for another reason than the llmisvc-needs-kserve guard"; exit 1; }
+	@out=$$($(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true 2>&1) && { echo "FAIL: llmisvc accepted without the LLMInferenceService CRDs"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'LLMInferenceService CRDs are not on the cluster' || { echo "FAIL: render failed for another reason than the llmisvc CRD guard"; exit 1; }
+	@out=$$($(LLMISVC)); \
+	printf '%s' "$$out" | grep -q 'name: llminferenceservices.serving.kserve.io' && { echo "FAIL: the LLMInferenceService CRDs must not ship with the release (release-Secret budget)"; exit 1; }; \
+	for pattern in 'name: llmisvc-controller-manager' 'name: inferencepools.inference.networking.k8s.io' 'name: kserve-controller-manager'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: llmisvc render lacks $$pattern"; exit 1; }; \
+	done; \
+	[ "$$(printf '%s' "$$out" | grep -c 'name: inferenceservice-config')" = "1" ] || { echo "FAIL: the shared inferenceservice-config must render exactly once"; exit 1; }; \
+	[ "$$(printf '%s' "$$out" | grep -c '^kind: Issuer')" = "1" ] || { echo "FAIL: the shared Issuer must render exactly once"; exit 1; }
+	@out=$$($(LLMISVC) --set kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs=false 2>&1) && { echo "FAIL: createGIECRDs=false accepted without the GIE API"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'createGIECRDs is false but' || { echo "FAIL: render failed for another reason than the GIE guard"; exit 1; }
+	@out=$$($(LLMISVC) --set kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs=false --api-versions inference.networking.k8s.io/v1); \
+	printf '%s' "$$out" | grep -q 'name: inferencepools.inference.networking.k8s.io' && { echo "FAIL: GIE CRDs rendered with createGIECRDs=false"; exit 1; }; true
+	@out=$$($(LLMISVC) --set kserve-llmisvc-resources.kserve.createSharedResources=true 2>&1) && { echo "FAIL: createSharedResources=true accepted"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'createSharedResources must stay false' || { echo "FAIL: render failed for another reason than the shared-resources guard"; exit 1; }
+	@echo "--> network policies: both flavors render the controller policies; llmisvc adds its own"
+	@out=$$($(KSERVE) --set global.networkPolicy.enabled=true); \
+	printf '%s' "$$out" | grep -q 'name: agent-platform-standalone-kserve-controller' || { echo "FAIL: kubernetes-flavor kserve controller policy missing"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'control-plane: kserve-controller-manager' || { echo "FAIL: controller selector missing"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' && { echo "FAIL: CiliumNetworkPolicy under kubernetes flavor"; exit 1; }; true
+	@out=$$($(LLMISVC) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	for pattern in 'name: agent-platform-standalone-kserve-controller' 'name: agent-platform-standalone-llmisvc-controller' '- kube-apiserver' 'control-plane: llmisvc-controller-manager'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: cilium-flavor kserve render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy under cilium flavor"; exit 1; }; true
