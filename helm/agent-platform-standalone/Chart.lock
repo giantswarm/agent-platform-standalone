@@ -34,6 +34,6 @@ dependencies:
   version: 0.29.0
 - name: model-manager
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.3.1
-digest: sha256:b14506f006a9c335c93b1fc898daec27154a8bcf77da2bedd72507e8915052ea
-generated: "2026-09-02T17:15:23.528920564+02:00"
+  version: 0.6.0
+digest: sha256:b3f07f854d3a3fa8984494f240d5deb5115181e77bbffa5f509f3743e65642cb
+generated: "2026-09-02T18:48:38.995404115+02:00"
