@@ -7,11 +7,16 @@ RENDER_FILES := $(wildcard examples/*.yaml) $(wildcard $(CHART_DIR)/ci/*.yaml)
 TEMPLATE := helm template agent-platform $(CHART_DIR) --kube-version $(KUBE_VERSION)
 # The vanilla defaults plus the inputs every install needs (a domain, an IdP,
 # a public Gateway); everything else stays at its default.
-VANILLA := $(TEMPLATE) -f $(CHART_DIR)/ci/ci-values.yaml --set 'components.klaus-gateway.enabled=false' --set 'components.dicebear.enabled=false' --set 'components.agent-sandbox.enabled=false'
+VANILLA := $(TEMPLATE) -f $(CHART_DIR)/ci/ci-values.yaml --set 'components.klaus-gateway.enabled=false' --set 'components.dicebear.enabled=false' --set 'components.agent-sandbox.enabled=false' --set 'components.model-manager.enabled=false'
 # The modelServing component on, against a cluster that has KServe: helm
 # template learns the cluster's APIs only from --api-versions.
 KSERVE_API := --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1
 MODEL_SERVING := $(VANILLA) --set components.modelServing.enabled=true $(KSERVE_API)
+# The model-manager component on with the ollama backend, its route and JWT
+# policy (the shape the lab and the portal run).
+MODEL_MANAGER := $(VANILLA) --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
+	--set 'components.model-manager.route.jwtAuthentication.enabled=true' --set gateway.jwksEgress.enabled=true \
+	--set 'model-manager.ollama.endpoint=http://192.0.2.10:11434'
 
 ##@ Curation
 
@@ -26,7 +31,7 @@ deps: ## Pull the pinned dependencies (helm dependency build, never update).
 ##@ Verification
 
 .PHONY: verify
-verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving ## Everything CI runs.
+verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager ## Everything CI runs.
 
 .PHONY: test
 test: ## Unit tests of the generator.
@@ -154,3 +159,59 @@ verify-model-serving: deps ## The modelServing component renders nothing while o
 		echo "FAIL: a preset without spec accepted"; exit 1; fi
 	@echo "--> the shipped preset files validate against the schema (also run by go test)"
 	@go run ./hack/presets >/dev/null
+
+.PHONY: verify-model-manager
+verify-model-manager: deps ## The model-manager component renders nothing while off, the service + route + JWT policy + app-config entry while on, and its guards fail inconsistent configs.
+	@echo "--> model-manager off (the default): the render carries no model-manager object"
+	@out=$$($(VANILLA)); \
+	for pattern in 'model-manager' 'modelManager'; do \
+		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: default render contains $$pattern"; exit 1; fi; \
+	done
+	@echo "--> model-manager on (ollama backend, route, JWT): Deployment, Service, MCPServer, backends, routes, policy, app-config entry"
+	@out=$$($(MODEL_MANAGER)); \
+	for pattern in 'kind: Deployment' 'name: model-manager$$' '--backend=ollama' '--ollama-endpoint=http://192.0.2.10:11434' 'kind: MCPServer' 'url: http://model-manager\..*\.svc\.cluster\.local:8080/mcp' \
+		'host: model-manager\..*\.svc\.cluster\.local' 'name: model-manager-public' 'name: model-manager-jwks' 'name: model-manager-jwt' 'replacePrefixMatch: /' \
+		'apiBaseUrl: https://agentgateway.ci.example.com/model-manager$$' 'name: model-manager-kagent$$'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: model-manager render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy rendered without global.networkPolicy.enabled"; exit 1; }; true
+	@echo "--> the edge as data plane drops the public route; the JWKS TLS option renders the CA reference"
+	@out=$$($(TEMPLATE) -f examples/kind-lab-dex.yaml --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
+		--set 'components.model-manager.route.jwtAuthentication.enabled=true' --set 'components.model-manager.route.jwtAuthentication.jwks.tls.enabled=true' \
+		--set gateway.jwksEgress.enabled=true --set 'model-manager.ollama.endpoint=http://172.21.0.1:11434'); \
+	printf '%s' "$$out" | grep -q 'name: model-manager-public' && { echo "FAIL: layer-1 model-manager route rendered with the edge as data plane"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'apiBaseUrl: https://agentgateway.127.0.0.1.nip.io/model-manager$$' || { echo "FAIL: lab apiBaseUrl not rendered"; exit 1; }; \
+	printf '%s' "$$out" | grep -A3 'caCertificateRefs:' | grep -q 'name: agent-platform-idp-ca' || { echo "FAIL: JWKS TLS CA reference not rendered from global.identity.ca"; exit 1; }
+	@echo "--> network policies: both flavors render the ingress/egress pair and the Ollama /32; a hostname endpoint opens the port"
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
+	for pattern in 'name: agent-platform-standalone-model-manager-ingress' 'name: agent-platform-standalone-model-manager-egress' 'name: agent-platform-standalone-dataplane-to-model-manager' 'name: agent-platform-standalone-muster-to-model-manager' 'cidr: 192.0.2.10/32'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kubernetes-flavor render lacks $$pattern"; exit 1; }; \
+	done
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' || { echo "FAIL: no CiliumNetworkPolicy"; exit 1; }; \
+	printf '%s' "$$out" | grep -q -- '- 192.0.2.10/32' || { echo "FAIL: cilium toCIDR missing"; exit 1; }
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set 'model-manager.ollama.endpoint=http://ollama.example.internal:11434'); \
+	printf '%s' "$$out" | grep -q 'cidr: 0.0.0.0/0' || { echo "FAIL: hostname endpoint did not open the port"; exit 1; }
+	@echo "--> guards: ollama without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
+	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=' >/dev/null 2>&1; then \
+		echo "FAIL: ollama backend without an endpoint accepted"; exit 1; fi
+	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=ollama:11434' >/dev/null 2>&1; then \
+		echo "FAIL: ollama endpoint without a scheme accepted"; exit 1; fi
+	@if $(MODEL_MANAGER) --set 'model-manager.backend=vllm' >/dev/null 2>&1; then \
+		echo "FAIL: unknown backend accepted"; exit 1; fi
+	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' 2>&1) && { \
+		echo "FAIL: kserve backend without KServe accepted"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'serving.kserve.io/v1beta1' || { echo "FAIL: render failed for another reason than the KServe guard"; exit 1; }
+	@$(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --api-versions serving.kserve.io/v1beta1 >/dev/null
+	@$(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' >/dev/null
+	@if $(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.namespace=other' >/dev/null 2>&1; then \
+		echo "FAIL: kserve namespace differing from modelServing accepted"; exit 1; fi
+	@if $(MODEL_MANAGER) --set ingress.mode=muster-direct --set components.agentgateway.enabled=false --set 'agent-platform-mcps.agentgateway.viaMuster=false' >/dev/null 2>&1; then \
+		echo "FAIL: model-manager route in muster-direct mode accepted"; exit 1; fi
+	@if $(MODEL_MANAGER) --set gateway.jwksEgress.enabled=false >/dev/null 2>&1; then \
+		echo "FAIL: JWT policy without jwksEgress accepted"; exit 1; fi
+	@if $(MODEL_MANAGER) --set components.kagent.enabled=false >/dev/null 2>&1; then \
+		echo "FAIL: ModelConfig wiring without the kagent component accepted"; exit 1; fi
+	@$(MODEL_MANAGER) --set components.kagent.enabled=false --set 'model-manager.kagent.disableWiring=true' >/dev/null
+	@if $(MODEL_MANAGER) --set components.muster.enabled=false --set components.valkey.enabled=false >/dev/null 2>&1; then \
+		echo "FAIL: MCPServer CR without the muster component accepted"; exit 1; fi

@@ -20,7 +20,7 @@ func TestLoadConfigRepoFile(t *testing.T) {
 	require.ElementsMatch(t, []string{
 		"muster", "kagent", "agentgateway", "valkey", "dicebear", "klaus-gateway",
 		"agent-platform-mcps", "mcp-kubernetes", "backstage", "agent-sandbox",
-		"cloudnative-pg",
+		"cloudnative-pg", "model-manager",
 	}, names)
 	require.Equal(t, []string{"modelServing"}, config.UmbrellaComponents, "components the umbrella renders itself, without a dependency")
 }

@@ -39,9 +39,20 @@ components:
     enabled: true
   cloudnative-pg:
     enabled: false
+  model-manager:
+    enabled: true
+    route:
+      enabled: true
+      jwtAuthentication:
+        enabled: true
 
 ingress:
   mode: agentgateway-muster
+
+gateway:
+  # The model-manager route's JWT policy fetches the JWKS from dex on 5556.
+  jwksEgress:
+    enabled: true
 
 muster:
   muster:
@@ -71,3 +82,9 @@ dicebear:
 agent-platform-mcps:
   agentgateway:
     viaMuster: true
+
+# The model-manager service with the ollama backend: a host Ollama, as pods
+# reach it (render-valid example address).
+model-manager:
+  ollama:
+    endpoint: http://192.0.2.10:11434

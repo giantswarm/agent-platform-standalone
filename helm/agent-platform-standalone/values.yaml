@@ -321,6 +321,53 @@ components:
         version: "1.33.4"
   cloudnative-pg:
     enabled: false
+  model-manager:
+    enabled: false
+    # Expose the model-manager API on the agentgateway data plane at
+    # https://agentgateway.<global.domain><pathPrefix>: an AgentgatewayBackend
+    # for the Service, an HTTPRoute that strips the prefix (model-manager
+    # then sees /api/v1/...), and — when the chart-owned edge is not the data
+    # plane — the public HTTPRoute on the outer Gateway. Requires an
+    # agentgateway-* ingress.mode.
+    route:
+      enabled: false
+      pathPrefix: /model-manager
+      # Public hostname; empty derives agentgateway.<global.domain> (the
+      # same hostname as the kagent controller route).
+      hostname: ""
+      # Gateway of the public route (outer edge). Both halves or neither:
+      # empty follows the chart-owned edge, else global.gatewayApi.parentRefs.
+      parentRef:  # @schema additionalProperties: true
+        name: ""
+        namespace: ""
+      # Validate the bearer JWT (signature, issuer, expiry) at the gateway
+      # before forwarding: no token, no API. The issuer defaults to
+      # global.identity.issuerUrl; the JWKS is fetched from the issuer's
+      # in-cluster endpoint through a static AgentgatewayBackend (needs
+      # gateway.jwksEgress when network policies are on).
+      jwtAuthentication:
+        enabled: false
+        mode: Strict  # @schema enum:[Strict,Optional,Permissive]
+        issuer: ""
+        jwks:
+          host: dex.giantswarm.svc.cluster.local
+          port: 5556
+          path: /keys
+          # The issuer serves its JWKS over TLS (a Dex with `web.https`):
+          # originate TLS to it, verifying against the CA Secret (key
+          # ca.crt); empty caSecretName uses global.identity.ca.secretName,
+          # and with both empty the data plane's system trust. Off: plain
+          # HTTP, the in-cluster Dex default.
+          tls:
+            enabled: false
+            caSecretName: ""
+    # The kserve backend (model-manager.backend: kserve) manages
+    # InferenceServices; the render fails while the serving.kserve.io API
+    # is missing and the modelServing component is off, unless this is
+    # false (an offline `helm template` passes with --api-versions
+    # serving.kserve.io/v1beta1).
+    kserve:
+      requireApi: true
   # Model serving on KServe with vLLM, for installs that run local models
   # (Model Manager PDR, decision D1: integrate KServe, do not bundle it). Off
   # by default and inert while off: nothing below renders. The umbrella
@@ -1542,3 +1589,43 @@ backstage:  # @schema skipProperties: true; additionalProperties: true
         readOnly: true
 # Values forwarded to the cloudnative-pg chart. The fleet ships no defaults for it.
 cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true
+# The model-manager dependency's own values (components.model-manager turns
+# it on; the umbrella wiring — route, JWT policy, network policies — is under
+# components.model-manager). The pinned Service name keeps the in-cluster
+# MCPServer URL and the AgentgatewayBackend host stable regardless of the
+# release name (the umbrella templates read it, like muster.fullnameOverride).
+# `backend` selects the serving driver: `ollama` proxies a host Ollama (the
+# laptop / agentlab dev loop; `ollama.endpoint` as reached from pods is
+# REQUIRED — on kind the docker network gateway, e.g.
+# http://172.21.0.1:11434 — and `ollama.agentHost` is what agent pods dial
+# when it differs), `kserve` manages InferenceServices on the modelServing
+# component's KServe (kserve.namespace must equal
+# components.modelServing.namespace.name; the render checks). ModelConfigs are
+# wired into kagent.kagent.namespace, which must be the kagent component's namespace
+# (kagent.kagent.kagent.namespaceOverride); an install without the kagent component
+# sets kagent.kagent.disableWiring: true. The MCP endpoint is registered with muster
+# through the chart's own MCPServer CR (muster.mcpServer.enabled — the muster
+# component must be on for the CRD to exist), tools appear as
+# x_model-manager_<tool>. Image, resources and the rest are the chart's
+# defaults (see its README).
+model-manager:  # @schema skipProperties: true; additionalProperties: true
+  fullnameOverride: model-manager
+  backend: ollama
+  ollama:
+    endpoint: ""
+    agentHost: ""
+  kagent:
+    namespace: kagent
+    disableWiring: false
+  kserve:
+    namespace: model-serving
+  mcp:
+    enabled: true
+  muster:
+    mcpServer:
+      enabled: true
+  # The umbrella renders the network policies for this component under
+  # global.networkPolicy (templates/model-manager/netpol.yaml), in both
+  # flavors; the chart's own NetworkPolicy stays off.
+  networkPolicy:
+    enabled: false

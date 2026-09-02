@@ -72,3 +72,7 @@ dependencies:
     version: "0.29.0"  # range 0.x
     repository: oci://ghcr.io/cloudnative-pg/charts
     condition: components.cloudnative-pg.enabled
+  - name: model-manager
+    version: "0.2.2"  # range 0.x
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    condition: components.model-manager.enabled

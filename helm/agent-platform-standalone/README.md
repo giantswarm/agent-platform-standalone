@@ -27,6 +27,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.40 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
+| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
@@ -124,6 +125,21 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.backstage.configReload.image.name | string | `"giantswarm/kubectl"` |  |
 | components.backstage.configReload.image.version | string | `"1.33.4"` |  |
 | components.cloudnative-pg.enabled | bool | `false` |  |
+| components.model-manager.enabled | bool | `false` |  |
+| components.model-manager.route.enabled | bool | `false` |  |
+| components.model-manager.route.pathPrefix | string | `"/model-manager"` |  |
+| components.model-manager.route.hostname | string | `""` |  |
+| components.model-manager.route.parentRef.name | string | `""` |  |
+| components.model-manager.route.parentRef.namespace | string | `""` |  |
+| components.model-manager.route.jwtAuthentication.enabled | bool | `false` |  |
+| components.model-manager.route.jwtAuthentication.mode | string | `"Strict"` |  |
+| components.model-manager.route.jwtAuthentication.issuer | string | `""` |  |
+| components.model-manager.route.jwtAuthentication.jwks.host | string | `"dex.giantswarm.svc.cluster.local"` |  |
+| components.model-manager.route.jwtAuthentication.jwks.port | int | `5556` |  |
+| components.model-manager.route.jwtAuthentication.jwks.path | string | `"/keys"` |  |
+| components.model-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
+| components.model-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
+| components.model-manager.kserve.requireApi | bool | `true` |  |
 | components.modelServing.enabled | bool | `false` |  |
 | components.modelServing.kserve.requireApi | bool | `true` |  |
 | components.modelServing.namespace.name | string | `"model-serving"` |  |
@@ -500,3 +516,13 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | backstage.backstage.extraVolumeMounts[0].mountPath | string | `"/etc/agent-platform/idp-ca"` |  |
 | backstage.backstage.extraVolumeMounts[0].readOnly | bool | `true` |  |
 | cloudnative-pg | object | `{}` |  |
+| model-manager.fullnameOverride | string | `"model-manager"` |  |
+| model-manager.backend | string | `"ollama"` |  |
+| model-manager.ollama.endpoint | string | `""` |  |
+| model-manager.ollama.agentHost | string | `""` |  |
+| model-manager.kagent.namespace | string | `"kagent"` |  |
+| model-manager.kagent.disableWiring | bool | `false` |  |
+| model-manager.kserve.namespace | string | `"model-serving"` |  |
+| model-manager.mcp.enabled | bool | `true` |  |
+| model-manager.muster.mcpServer.enabled | bool | `true` |  |
+| model-manager.networkPolicy.enabled | bool | `false` |  |
