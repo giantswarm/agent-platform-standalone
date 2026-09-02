@@ -22,10 +22,13 @@ its exact chart name:
 | `backstage` | off | Developer portal |
 | `cloudnative-pg` | off | PostgreSQL operator |
 
+One component has no dependency behind it: `modelServing` (off) renders the
+KServe/vLLM model-serving layer itself, see [Model serving](#model-serving).
+
 The templates in `helm/agent-platform-standalone/templates/` render the wiring
 between the components: the public routes, the agentgateway data-plane
-`Gateway`, network policies, the kagent routes and CRs, and the optional
-CloudNativePG `Cluster`.
+`Gateway`, network policies, the kagent routes and CRs, the optional
+CloudNativePG `Cluster`, and the model-serving layer.
 
 ## Values layout
 
@@ -116,6 +119,163 @@ on every pod restart. With the CloudNativePG operator on the cluster, set
 `backstage.database.engine: postgresql`: the Backstage chart renders its own
 CNPG `Cluster` (`backstage-cnpg`) and this chart's app-config overlay points
 the backend at it (pg client, schema division mode).
+
+### Model serving
+
+`components.modelServing.enabled: true` adds the layer that serves local
+models on [KServe](https://kserve.github.io/website/) with
+[vLLM](https://docs.vllm.ai/), for installs with GPU nodes. Off by default and
+inert while off. The component is rendered by the umbrella itself (no Helm
+dependency; `templates/model-serving/`, `files/model-serving/`), and follows
+decision D1 of the Model Manager design: integrate KServe, do not bundle it.
+
+**Prerequisite: KServe.** The chart installs neither the KServe CRDs nor the
+controller. With the component on, the render fails until the
+`serving.kserve.io/v1alpha1` and `v1beta1` APIs exist on the cluster
+(`components.modelServing.kserve.requireApi`); an offline `helm template`
+passes the check with `--api-versions serving.kserve.io/v1alpha1
+--api-versions serving.kserve.io/v1beta1`. Install KServe first, for example
+in raw-deployment mode (no Knative, no Istio), which is what the GPU
+reference install runs:
+
+```sh
+helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v0.20.0 -n kserve --create-namespace
+helm install kserve oci://ghcr.io/kserve/charts/kserve --version v0.20.0 -n kserve \
+  --set kserve.controller.deploymentMode=RawDeployment
+```
+
+plus the NVIDIA device plugin (or GPU operator) so nodes expose
+`nvidia.com/gpu`. The portal's Serving view lights up on the CRDs; the chart's
+own state check is the API guard above.
+
+What the component renders, all under `components.modelServing`:
+
+| Object | Where | Key |
+|---|---|---|
+| `ClusterServingRuntime` (vLLM) | cluster | `runtime.*`: image (`docker.io/vllm/vllm-openai`, pinned; installs with other hardware point it at their own build), common args, env, resource envelope, `/dev/shm` size, startup budget, node selector, supported model formats |
+| `Namespace` | `namespace.name` (`model-serving`) | `namespace.create`, `namespace.labels` (e.g. a Pod Security level: the upstream vLLM image runs as root) |
+| serving presets (`ConfigMap` per preset) | release namespace | `presets`, `shippedPresets` — see below |
+| discovery `ConfigMap` `agent-platform-model-serving` | release namespace | `serving.*` defaults (GPU resource name, RuntimeClass, node selector, deployment strategy, route timeout) |
+| HF cache `PersistentVolumeClaim` | serving namespace | `cache.pvc.*` (name, size, class, existing claim, static PV); kept on uninstall |
+| Kyverno `ClusterPolicy` x2 | cluster | `policies.*`; needs Kyverno, off by default |
+
+The chart creates no `InferenceService`: the portal's serve flow (and
+model-manager) do, from a preset. The `ClusterServingRuntime` and the presets
+are what makes a served model a platform artifact instead of a hand-written
+manifest.
+
+#### Serving presets
+
+A preset is a reviewed recipe for one model — the flags, template and memory
+numbers that took someone a night to get right. The chart ships a set under
+`files/model-serving/presets/` (seeded from the GPU reference install:
+Qwen3.8 27B with speculative decoding and a patched chat template, Qwen3.5
+27B and 35B-A3B, Qwen3 14B, Qwen3 Coder Next, Devstral Small 2, Nemotron 3
+Super) and publishes every preset in effect as a `ConfigMap` in the release
+namespace:
+
+```sh
+kubectl -n agent-platform get configmap -l agent-platform.giantswarm.io/serving-preset=true
+kubectl -n agent-platform get configmap agent-platform-serving-preset-qwen3-14b -o jsonpath='{.data.preset\.yaml}'
+```
+
+This is the contract the portal codes against (giantswarm/backstage#2193):
+
+- **Selector**: label `agent-platform.giantswarm.io/serving-preset=true`,
+  release namespace. Each ConfigMap is named `agent-platform-serving-preset-<name>`
+  and also carries `agent-platform.giantswarm.io/preset: <name>` and
+  `agent-platform.giantswarm.io/preset-source: shipped|values`.
+- **Payload**: key `preset.yaml`, one `ServingPreset` document
+  (`apiVersion: agent-platform.giantswarm.io/v1alpha1`). The JSON schema is
+  `helm/agent-platform-standalone/files/model-serving/serving-preset.schema.json`
+  — also the schema of `components.modelServing.presets[]` in
+  `values.schema.json`, and what `go test ./hack/presets` and
+  `make verify-model-serving` validate every shipped and published preset
+  against.
+- **Discovery**: ConfigMap `agent-platform-model-serving` (label
+  `agent-platform.giantswarm.io/model-serving-config=true`, key
+  `config.yaml`, kind `ModelServingConfig`): the serving namespace, the
+  default runtime, `gpuResourceName`, `runtimeClassName`, `nodeSelector`,
+  `deploymentStrategyType`, `timeoutSeconds`, the cache claim (`cache.claimName`,
+  `cache.mountPath`, whether the Kyverno redirect is on) and the preset
+  selector plus names.
+
+```yaml
+apiVersion: agent-platform.giantswarm.io/v1alpha1
+kind: ServingPreset
+metadata:
+  name: qwen3-14b                 # DNS-1123 label, <= 30 chars; default InferenceService name
+spec:
+  displayName: Qwen3 14B          # required
+  description: |                  # notes for the operator (hardware the recipe was tuned on, limits)
+  model:
+    id: Qwen/Qwen3-14B            # required: Hugging Face repository
+    storageUri: hf://Qwen/Qwen3-14B   # required: predictor.model.storageUri (hf://, pvc://, s3://, ...)
+    format: vLLM                  # modelFormat.name; published presets always carry it
+    contextLength: 8192           # informational
+    capabilities: [chat, tools]   # informational tags
+    license: apache-2.0
+  runtime: kserve-vllm            # ClusterServingRuntime; empty = components.modelServing.runtime.name
+  args: [--max-model-len=8192]    # vLLM flags, complete and literal (never --chat-template)
+  env: []                         # extra EnvVars of the runtime container
+  chatTemplate:                   # optional; authoring: one of file | content | existingConfigMap
+    configMap: agent-platform-chat-template-qwen3-14b   # published: the ConfigMap in the serving namespace
+    key: chat-template.jinja
+    mountPath: /mnt/chat-template # args then end with --chat-template=<mountPath>/<key>
+  resources:
+    gpus: 1                       # requested as serving.gpuResourceName
+    requests: {cpu: "4", memory: 48Gi}
+    limits: {cpu: "8", memory: 64Gi}
+  requirements:
+    weightsGiB: 28                # required
+    overheadGiB: 30               # KV cache, activations, runtime; fit check = weights + overhead
+  scheduling:
+    nodeSelector: {}              # merged over serving.nodeSelector
+  predictor: {}                   # extra InferenceService predictor fields, verbatim
+```
+
+Composing the `InferenceService` from a published preset is mechanical:
+`metadata.name` from the preset (or the user's choice), the discovery
+ConfigMap's namespace, `spec.predictor.model` = `{modelFormat: {name:
+spec.model.format}, runtime: spec.runtime, storageUri: spec.model.storageUri,
+args: spec.args, env: spec.env, resources: spec.resources with
+<gpuResourceName>: gpus in requests and limits}`, `nodeSelector` =
+discovery default merged with `spec.scheduling.nodeSelector`,
+`runtimeClassName`, `deploymentStrategy.type` and `timeout` from discovery,
+`spec.predictor` copied on top, and — when `spec.chatTemplate` is set — the
+ConfigMap mounted as a volume at `mountPath`. Label the InferenceService
+`agent-platform.giantswarm.io/preset: <name>` so the view can show where it
+came from.
+
+Installs add presets under `components.modelServing.presets` (same document
+shape; a chat template as inline `content` or a pre-created
+`existingConfigMap`), replace a shipped one by reusing its name, drop the
+shipped set with `shippedPresets.enabled: false` or single ones with
+`shippedPresets.exclude`. The render fails on a preset with a bad name,
+without `displayName`, `model.id`, `model.storageUri` or
+`requirements.weightsGiB`, or with an unresolvable chat template.
+
+#### Model cache
+
+Every preset's `hf://` download goes through the KServe storage-initializer
+into an ephemeral volume — on every restart, hours for a large model. The
+component renders one `PersistentVolumeClaim` (`cache.pvc`, default 500 Gi;
+`existingClaim` for a pre-provisioned one, `storageClassName: "-"` plus
+`volumeName` for a static local PV on the GPU node) with one subdirectory per
+InferenceService. With Kyverno on the cluster and
+`components.modelServing.policies.enabled: true`, two `ClusterPolicy` objects
+wire every predictor pod in the serving namespace to it at admission: an init
+container ahead of the storage-initializer creates the pod's subdirectory
+world-writable (the kubelet would create a missing subPath directory root-owned
+`0750`, which the storage-initializer's uid cannot write — the step that used
+to need someone with node access), the storage-initializer's and the runtime's
+`/mnt/models` are redirected into it, the storage-initializer gets a memory
+limit that survives multi-GB downloads (`policies.storageInitializerMemoryLimit`),
+and the Deployment a `progressDeadlineSeconds` long enough for a first download
+(`policies.progressDeadlineSeconds`). No InferenceService change, no manual node
+or namespace preparation. Without Kyverno the PVC is still created and published
+(model-manager's pre-warm downloads and `pvc://` presets use it), but `hf://`
+presets download on every start.
 
 ## Install
 
@@ -227,8 +387,11 @@ and the release candidate (`tests/ats/upgrade-hook.sh`).
 ## The chart is generated
 
 `Chart.yaml`, `Chart.lock`, `values.yaml`, `examples/giantswarm.yaml` and
-everything under `templates/` except `NOTES.txt` and `templates/backstage/`
-are generated. Do not edit them.
+everything under `templates/` except the files `curate.yaml` lists in
+`templates.extra` (`NOTES.txt`, `templates/backstage/`,
+`templates/model-serving/`, a few single files) are generated. Do not edit
+them. `files/` (the shipped serving presets, chat templates and the preset
+schema) is hand-authored.
 The generator `hack/curate.sh` reads the fleet meta-package
 `giantswarm/agent-platform` and the `agent-platform-connectivity` chart at the
 version pinned in `curate.yaml`, and:
@@ -256,7 +419,11 @@ version pinned in `curate.yaml`, and:
    same rules (`.Values.networkPolicy` becomes `.Values.global.networkPolicy`).
    A template the connectivity chart drops is deleted here; `templates.extra`
    in `curate.yaml` names the files this chart owns itself (`NOTES.txt`, the
-   Backstage app-config and route);
+   Backstage app-config and route, the model-serving templates). A component
+   without a dependency (`umbrellaComponents`, today `modelServing`) gets its
+   whole `components.<name>` block from `overlay/contract.yaml`, `enabled`
+   included; the generator admits the name into the components map and
+   requires the toggle;
 7. runs `helm dependency update` to refresh `Chart.lock`, and keeps the committed
    file when the pins did not change.
 
@@ -277,7 +444,7 @@ is strict for the umbrella-owned keys only.
 ```sh
 make curate                  # regenerate Chart.yaml, values.yaml, Chart.lock, templates, examples/giantswarm.yaml
 pre-commit run --all-files   # regenerate values.schema.json and the chart README
-make verify                  # what CI runs: go test, curate --check, render every example, schema and decision checks
+make verify                  # what CI runs: go test, curate --check, render every example, schema, decision and model-serving checks
 ```
 
 Requirements: Go 1.26, Helm 3.8 or newer. No registry login is needed; the
@@ -294,6 +461,10 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   so a component release does not fail an unrelated PR. CI runs
   `helm dependency build`, never `update`; a `Chart.yaml` that no longer matches
   `Chart.lock` fails the build. `verify-render` renders every `examples/*.yaml`.
+  `verify-model-serving` renders the modelServing component off (nothing) and
+  on (runtime, presets, cache, policies) and validates every published preset
+  against `files/model-serving/serving-preset.schema.json` with
+  `hack/presets`; `go test ./hack/presets` validates the shipped preset files.
 - `execute-chart-tests` (generated, app-test-suite on kind): the install and
   auth smoke plus the upgrade test (`tests/ats/test_smoke.py`, configured by
   `.ats/main.yaml`). The smoke applies the Gateway API CRDs and

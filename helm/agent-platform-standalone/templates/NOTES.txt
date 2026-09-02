@@ -36,6 +36,22 @@ kyvernoPolicies.enabled is true. On a cluster whose Kyverno admission fails
 closed, a first `helm install` can be rejected before Kyverno has loaded the
 policies this release ships; run `helm upgrade` once more.
 {{- end }}
+{{- if (include "agent-platform-standalone.modelServing.enabled" .) }}
+{{- $ms := .Values.components.modelServing }}
+
+Model serving (components.modelServing) is on. KServe is a prerequisite the
+chart does not install; the render checked the serving.kserve.io API. Runtime
+{{ $ms.runtime.name }} (ClusterServingRuntime), InferenceServices in namespace
+{{ include "agent-platform-standalone.modelServing.namespace" . }}. Presets and the discovery ConfigMap:
+  kubectl -n {{ .Release.Namespace }} get configmap -l agent-platform.giantswarm.io/serving-preset=true
+  kubectl -n {{ .Release.Namespace }} get configmap agent-platform-model-serving -o jsonpath='{.data.config\.yaml}'
+{{- if and $ms.cache.enabled (not $ms.policies.enabled) }}
+The cache claim {{ include "agent-platform-standalone.modelServing.claimName" . }} is rendered but
+components.modelServing.policies.enabled is false: without the Kyverno
+policies every hf:// preset downloads its model on every start. Enable them
+on a cluster with Kyverno.
+{{- end }}
+{{- end }}
 {{- if and (index .Values.components "cloudnative-pg").enabled (not .Values.postgres.enabled) }}
 
 components.cloudnative-pg.enabled is true and postgres.enabled is false: the

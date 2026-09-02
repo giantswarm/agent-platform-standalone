@@ -119,6 +119,18 @@ dependencies:
     repository: oci://ghcr.io/cloudnative-pg/charts
     enabled: false
 
+# Components the umbrella renders itself, with no Helm dependency behind them.
+# Their templates are hand-authored (templates.extra below) and read
+# components.<name>; overlay/contract.yaml defines the whole block, `enabled`
+# default included, so the component has the same switch a dependency has.
+# The generator admits exactly these names into the components map: an
+# overlay entry for any other non-dependency name still fails the run.
+umbrellaComponents:
+  # KServe/vLLM model serving: runtime, serving presets, HF cache. KServe
+  # itself is a cluster prerequisite, never a dependency (decision D1 of the
+  # Model Manager PDR).
+  - modelServing
+
 # Rule per top-level key of the fleet and connectivity values.
 #   keep          copy the fleet block under the same key
 #   drop          fleet-only mechanics, not part of the umbrella
@@ -431,3 +443,16 @@ templates:
     # deploys mcp-kubernetes per-MC outside the meta-package, so the
     # connectivity chart has no template for it.
     - mcp-kubernetes/mcpserver.yaml
+    # The modelServing umbrella component (umbrellaComponents above): vLLM
+    # ClusterServingRuntime, serving presets, discovery ConfigMap, HF cache
+    # PVC and the Kyverno cache policies. Reads components.modelServing and
+    # the chart files under files/model-serving/ (shipped presets, chat
+    # templates, the preset JSON schema).
+    - model-serving/_helpers.tpl
+    - model-serving/validate.yaml
+    - model-serving/namespace.yaml
+    - model-serving/clusterservingruntime.yaml
+    - model-serving/config.yaml
+    - model-serving/presets.yaml
+    - model-serving/cache-pvc.yaml
+    - model-serving/policies.yaml

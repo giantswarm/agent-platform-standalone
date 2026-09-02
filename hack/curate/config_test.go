@@ -22,6 +22,7 @@ func TestLoadConfigRepoFile(t *testing.T) {
 		"agent-platform-mcps", "mcp-kubernetes", "backstage", "agent-sandbox",
 		"cloudnative-pg",
 	}, names)
+	require.Equal(t, []string{"modelServing"}, config.UmbrellaComponents, "components the umbrella renders itself, without a dependency")
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -80,6 +81,18 @@ func TestConfigValidate(t *testing.T) {
 		"annotation must not be empty": {
 			mutate: fixtureConfig + "annotations:\n  ingress.parentRefs: \"\"\n",
 			want:   "annotations.ingress.parentRefs",
+		},
+		"umbrella component must not be a dependency": {
+			mutate: fixtureConfig + "umbrellaComponents: [kagent]\n",
+			want:   `umbrellaComponents: "kagent" is a dependency`,
+		},
+		"umbrella component listed twice": {
+			mutate: fixtureConfig + "umbrellaComponents: [serving, serving]\n",
+			want:   `umbrellaComponents: "serving" listed twice`,
+		},
+		"umbrella component must be an identifier": {
+			mutate: fixtureConfig + "umbrellaComponents: [model-serving]\n",
+			want:   `umbrellaComponents: "model-serving" must be a plain identifier`,
 		},
 	}
 	for name, testCase := range cases {

@@ -172,8 +172,10 @@ func Transform(in Inputs) (*Result, error) {
 		mappingSet(out, node.key, node.value)
 	}
 	componentsKey := newScalar("components")
-	componentsKey.HeadComment = "Umbrella-owned map: one entry per dependency, keyed by chart name.\n" +
-		"`enabled` is the Helm dependency condition. The other keys are wiring the\n" +
+	componentsKey.HeadComment = "Umbrella-owned map: one entry per dependency, keyed by chart name, plus\n" +
+		"the components the umbrella renders itself (no dependency; their whole\n" +
+		"block comes from overlay/contract.yaml). `enabled` is the Helm dependency\n" +
+		"condition, or the component's own switch. The other keys are wiring the\n" +
 		"umbrella templates render for that component; they are never forwarded to\n" +
 		"the component chart."
 	mappingSet(out, componentsKey, buildComponents(config, entries))
@@ -430,8 +432,8 @@ func validateOverlay(config *Config, overlay *yaml.Node, what string, keepEnable
 			return fmt.Errorf("%s components must be a mapping", what)
 		}
 		for _, name := range mappingKeys(components) {
-			if _, ok := config.Dependency(name); !ok {
-				return fmt.Errorf("%s components.%s is not a dependency", what, name)
+			if _, ok := config.Dependency(name); !ok && !config.IsUmbrellaComponent(name) {
+				return fmt.Errorf("%s components.%s is not a dependency (nor an umbrella component declared in curate.yaml umbrellaComponents)", what, name)
 			}
 		}
 	}
@@ -460,7 +462,7 @@ func checkVanillaPaths(config *Config, out *yaml.Node, overlay *yaml.Node) error
 			_, existing := mappingGet(out, "components")
 			for j := 0; j+1 < len(value.Content); j += 2 {
 				name, block := value.Content[j], value.Content[j+1]
-				if _, isDependency := config.Dependency(name.Value); !isDependency {
+				if _, isDependency := config.Dependency(name.Value); !isDependency && !config.IsUmbrellaComponent(name.Value) {
 					continue
 				}
 				_, existingEntry := mappingGet(existing, name.Value)
@@ -502,8 +504,9 @@ func checkOverlayLeaves(path string, value, existing *yaml.Node) error {
 // finishOverlays runs after the overlays merged: every umbrella-only key
 // (action umbrella) must have been defined by one of them — the source charts
 // are forbidden from defining it, so presence in the output is presence in an
-// overlay — and the output keeps the order kept keys, components, wiring,
-// umbrella keys, dependency blocks.
+// overlay — every umbrella component must carry its toggle, and the output
+// keeps the order kept keys, components, wiring, umbrella keys, dependency
+// blocks.
 func finishOverlays(config *Config, out *yaml.Node) error {
 	var umbrellaKeys []string
 	for _, key := range config.SortedKeys() {
@@ -515,7 +518,32 @@ func finishOverlays(config *Config, out *yaml.Node) error {
 		}
 		umbrellaKeys = append(umbrellaKeys, key)
 	}
+	if err := checkUmbrellaComponents(config, out); err != nil {
+		return err
+	}
 	reorderTopLevel(config, out, umbrellaKeys)
+	return nil
+}
+
+// checkUmbrellaComponents fails when an umbrella component (curate.yaml
+// umbrellaComponents) has no components.<name> block with a boolean `enabled`:
+// the block is the overlays' to define, and a component without its switch
+// would be read by templates that can never turn it off.
+func checkUmbrellaComponents(config *Config, out *yaml.Node) error {
+	_, components := mappingGet(out, "components")
+	for _, name := range config.UmbrellaComponents {
+		_, block := mappingGet(components, name)
+		if block == nil || block.Kind != yaml.MappingNode {
+			return fmt.Errorf("umbrellaComponents: components.%s must be defined as a mapping by overlay/contract.yaml", name)
+		}
+		_, enabled := mappingGet(block, "enabled")
+		if enabled == nil {
+			return fmt.Errorf("umbrellaComponents: components.%s.enabled must be defined by overlay/contract.yaml (the switch of a component without a dependency)", name)
+		}
+		if _, err := scalarBool(enabled, fmt.Sprintf("components.%s.enabled", name)); err != nil {
+			return fmt.Errorf("umbrellaComponents: %w", err)
+		}
+	}
 	return nil
 }
 
