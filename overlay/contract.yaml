@@ -397,6 +397,60 @@ components:
       # Kubernetes default (600) is shorter than a first model download and
       # fires rollout-stuck alerts; 0 leaves the default.
       progressDeadlineSeconds: 3600
+    # Network policies of the serving namespace, rendered under
+    # global.networkPolicy (enabled + flavor) like every other component's
+    # wiring: nothing renders while global.networkPolicy.enabled is false.
+    # On, both flavors get: ingress to the predictor pods (every pod KServe
+    # runs for an InferenceService, label serving.kserve.io/inferenceservice)
+    # on the runtime port from the kagent agent pods, the release namespace
+    # and predictor.additionalIngressNamespaces; egress from the predictor
+    # pods (the storage-initializer download, the runtime) and from
+    # model-manager's pre-warm download Jobs to DNS and the Hugging Face
+    # endpoints below. The cilium flavor also admits the kubelet's probes
+    # (host entity) — under policyEnforcementMode always a policy without
+    # that rule kills the predictor before it turns Ready — and adds the
+    # agent-side egress to the predictor pods (the chart's agent egress
+    # covers 443 only). See the README, "Model serving" → "Network policies".
+    networkPolicy:
+      predictor:
+        # The port the runtime container listens on (the
+        # ClusterServingRuntime above: 8080); a preset that names another
+        # runtime with another port changes it here.
+        port: 8080
+        # Namespaces whose pods may reach the predictor pods on that port,
+        # besides the kagent agent pods and the release namespace: e.g. the
+        # namespace of the KServe ingress Gateway (envoy-gateway-system) or
+        # of Prometheus (KServe's scrape annotations point at the same port).
+        additionalIngressNamespaces: []  # @schema item: string
+      # Where the weights come from, TCP 443: the KServe storage-initializer
+      # (hf:// presets), the runtime's own Hub lookups, model-manager's
+      # pre-warm download Jobs and — on the kserve backend — model-manager
+      # itself (Hub search, fit checks).
+      huggingFace:
+        # cilium flavor: Cilium FQDN selectors (matchName, matchPattern),
+        # enforced through the DNS proxy rule the policies render on their
+        # DNS egress; the defaults cover huggingface.co, its API redirects
+        # and the LFS / Xet download fronts under hf.co (Cilium's * matches
+        # one label, hence the two-level pattern for cas-bridge.xethub.hf.co).
+        # A mirror (HF_ENDPOINT) or an internal proxy replaces the list.
+        # Ignored by the kubernetes flavor, which cannot select names (see
+        # cidrs).
+        fqdns:  # @schema item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}
+          - matchName: huggingface.co
+          - matchPattern: "*.huggingface.co"
+          - matchPattern: "*.hf.co"
+          - matchPattern: "*.*.hf.co"
+        # IP blocks of the download endpoints. kubernetes flavor: vanilla
+        # NetworkPolicy selects addresses, never names, so an empty list (the
+        # default) opens 443 to every public destination — 0.0.0.0/0 minus
+        # global.networkPolicy.kubernetes.worldExcludedCIDRs, the data
+        # plane's own rule — because Hugging Face's download fronts are CDNs
+        # whose addresses change and a static list would break downloads
+        # silently. A list here narrows the egress to exactly these blocks
+        # (a mirror, a proxy, an S3 endpoint). The cilium flavor adds them
+        # next to the FQDNs. global.networkPolicy.additionalEgressCIDRs and
+        # additionalEgressFQDNs apply to both flavors as well.
+        cidrs: []  # @schema item: string
 
 ingress:
   # The full-platform default topology: client -> agentgateway /mcp -> muster,

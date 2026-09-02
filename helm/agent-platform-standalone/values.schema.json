@@ -1943,6 +1943,54 @@
                                 }
                             }
                         },
+                        "networkPolicy": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "huggingFace": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cidrs": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "fqdns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                    "matchName": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchPattern": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "predictor": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "additionalIngressNamespaces": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "port": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         "policies": {
                             "type": "object",
                             "additionalProperties": false,

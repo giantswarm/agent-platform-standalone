@@ -193,3 +193,155 @@ Usage: include "agent-platform-standalone.modelServing.resolvePreset" (dict "roo
 {{- $_ := set $doc "spec" $spec -}}
 {{- dict "preset" $doc "chatTemplate" $render | toJson -}}
 {{- end -}}
+
+{{/*
+Cilium DNS egress of the serving namespace's policies: the platform's DNS
+rule (kube-dns / coredns / node-local cache on 53 and 1053) plus the DNS
+proxy clause (rules.dns matchPattern "*"). A toFQDNs selector in the same
+policy is enforced through that proxy: without the clause Cilium never learns
+which addresses a name resolved to, and the FQDN rule matches nothing (the
+reason hand-written policies fell back to world:443 so far). Needs Cilium's
+L7 proxy (enable-l7-proxy, the default).
+*/}}
+{{- define "agent-platform-standalone.modelServing.dnsEgress" -}}
+- toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: coredns
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: k8s-dns-node-cache
+  toPorts:
+    - ports:
+        - port: "1053"
+          protocol: UDP
+        - port: "1053"
+          protocol: TCP
+        - port: "53"
+          protocol: UDP
+        - port: "53"
+          protocol: TCP
+      rules:
+        dns:
+          - matchPattern: "*"
+{{- end -}}
+
+{{/*
+Cilium egress rules to the model download endpoints on TCP 443: the Hugging
+Face FQDN selectors (components.modelServing.networkPolicy.huggingFace.fqdns),
+the CIDR list (huggingFace.cidrs) and global.networkPolicy's
+additionalEgressCIDRs / additionalEgressFQDNs. Shared by the predictor and
+download-Job policies and by model-manager's kserve-backend egress. The
+caller pipes the output through trim and nindent.
+*/}}
+{{- define "agent-platform-standalone.modelServing.huggingFaceEgress.cilium" -}}
+{{- $hf := .Values.components.modelServing.networkPolicy.huggingFace -}}
+{{- $global := .Values.global.networkPolicy -}}
+{{- with $hf.fqdns }}
+# Hugging Face by name (resolved through the DNS proxy rule above).
+- toFQDNs:
+    {{- toYaml . | nindent 4 }}
+  toPorts:
+    - ports:
+        - port: "443"
+          protocol: TCP
+{{- end }}
+{{- with $hf.cidrs }}
+# Hugging Face by address (a mirror, a proxy, an S3 endpoint).
+- toCIDR:
+    {{- toYaml . | nindent 4 }}
+  toPorts:
+    - ports:
+        - port: "443"
+          protocol: TCP
+{{- end }}
+{{- with $global.additionalEgressCIDRs }}
+- toCIDR:
+    {{- toYaml . | nindent 4 }}
+  toPorts:
+    - ports:
+        - port: "443"
+          protocol: TCP
+{{- end }}
+{{- with $global.additionalEgressFQDNs }}
+- toFQDNs:
+    {{- toYaml . | nindent 4 }}
+  toPorts:
+    - ports:
+        - port: "443"
+          protocol: TCP
+{{- end }}
+{{- end -}}
+
+{{/*
+Kubernetes NetworkPolicy egress rules to the model download endpoints on TCP
+443 (the kubernetes flavor of huggingFaceEgress.cilium). Vanilla
+NetworkPolicy selects IP blocks, never names: with huggingFace.cidrs empty,
+every public destination is admitted on 443 (0.0.0.0/0 minus
+global.networkPolicy.kubernetes.worldExcludedCIDRs, the data plane's own
+rule); a CIDR list replaces that with exactly those blocks. The caller pipes
+the output through trim and nindent.
+*/}}
+{{- define "agent-platform-standalone.modelServing.huggingFaceEgress.kubernetes" -}}
+{{- $hf := .Values.components.modelServing.networkPolicy.huggingFace -}}
+{{- $global := .Values.global.networkPolicy -}}
+{{- if $hf.cidrs }}
+# Hugging Face by address (huggingFace.cidrs): these blocks only.
+- to:
+    {{- range $hf.cidrs }}
+    - ipBlock:
+        cidr: {{ . | quote }}
+    {{- end }}
+  ports:
+    - port: 443
+      protocol: TCP
+{{- else }}
+# Hugging Face: vanilla NetworkPolicy has no FQDN selector, so every public
+# destination on 443 (huggingFace.cidrs narrows it to a mirror or proxy).
+- to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except: {{ toYaml $global.kubernetes.worldExcludedCIDRs | nindent 10 }}
+  ports:
+    - port: 443
+      protocol: TCP
+{{- end }}
+{{- with $global.additionalEgressCIDRs }}
+- to:
+    {{- range . }}
+    - ipBlock:
+        cidr: {{ . | quote }}
+    {{- end }}
+  ports:
+    - port: 443
+      protocol: TCP
+{{- end }}
+{{- end -}}
+
+{{/*
+Kubernetes NetworkPolicy DNS egress rule (kube-dns / coredns / node-local
+cache in kube-system on 53 and 1053), the kubernetes flavor of dnsEgress.
+*/}}
+{{- define "agent-platform-standalone.modelServing.dnsEgress.kubernetes" -}}
+- to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+          - key: k8s-app
+            operator: In
+            values: [kube-dns, coredns, k8s-dns-node-cache]
+  ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    - port: 1053
+      protocol: UDP
+    - port: 1053
+      protocol: TCP
+{{- end -}}

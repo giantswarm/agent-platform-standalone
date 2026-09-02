@@ -160,6 +160,34 @@ verify-model-serving: deps ## The modelServing component renders nothing while o
 	@echo "--> the shipped preset files validate against the schema (also run by go test)"
 	@go run ./hack/presets >/dev/null
 
+	@echo "--> network policies: none without global.networkPolicy; the kubernetes flavor renders the predictor ingress/egress and the download-Job egress; cilium renders toFQDNs behind the DNS proxy rule, the probe allowance and the agent egress"
+	@out=$$($(MODEL_SERVING)); \
+	printf '%s' "$$out" | grep -q 'model-serving-predictor' && { echo "FAIL: serving network policy rendered without global.networkPolicy.enabled"; exit 1; }; true
+	@out=$$($(MODEL_SERVING) --set global.networkPolicy.enabled=true); \
+	for pattern in 'name: agent-platform-standalone-model-serving-predictor-ingress' 'name: agent-platform-standalone-model-serving-predictor-egress' 'name: agent-platform-standalone-model-serving-download-egress' 'key: serving.kserve.io/inferenceservice' 'kubernetes.io/metadata.name: kagent' 'model-manager.giantswarm.io/component: download' 'Hugging Face: vanilla NetworkPolicy has no FQDN selector' 'networkPolicy:' 'flavor: kubernetes'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kubernetes-flavor serving render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' && { echo "FAIL: CiliumNetworkPolicy under kubernetes flavor"; exit 1; }; true
+	@out=$$($(MODEL_SERVING) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	for pattern in 'name: agent-platform-standalone-model-serving-predictor$$' 'name: agent-platform-standalone-model-serving-download$$' 'name: agent-platform-standalone-kagent-agents-to-model-serving' 'toFQDNs:' 'matchName: huggingface.co' 'matchPattern: .\*.hf.co' 'matchPattern: "\*"' '- remote-node'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: cilium-flavor serving render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy under cilium flavor"; exit 1; }; true
+	@echo "--> huggingFace.cidrs replaces the public-destination rule; additionalIngressNamespaces and predictor.port reach the policies; the guards reject a bad FQDN entry, CIDR, namespace and port"
+	@out=$$($(MODEL_SERVING) --set global.networkPolicy.enabled=true --set 'components.modelServing.networkPolicy.huggingFace.cidrs={203.0.113.0/24}' --set 'components.modelServing.networkPolicy.predictor.additionalIngressNamespaces={envoy-gateway-system}' --set components.modelServing.networkPolicy.predictor.port=9000); \
+	for pattern in 'cidr: "203.0.113.0/24"' 'kubernetes.io/metadata.name: envoy-gateway-system' 'port: 9000'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: serving render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | grep -q 'Hugging Face: vanilla NetworkPolicy has no FQDN selector' && { echo "FAIL: public-destination rule rendered next to huggingFace.cidrs"; exit 1; }; true
+	@if $(MODEL_SERVING) --set global.networkPolicy.enabled=true --set 'components.modelServing.networkPolicy.huggingFace.fqdns[0].matchName=a.example' --set 'components.modelServing.networkPolicy.huggingFace.fqdns[0].matchPattern=*.example' >/dev/null 2>&1; then \
+		echo "FAIL: FQDN entry with both matchName and matchPattern accepted"; exit 1; fi
+	@if $(MODEL_SERVING) --set global.networkPolicy.enabled=true --set 'components.modelServing.networkPolicy.huggingFace.cidrs={notacidr}' >/dev/null 2>&1; then \
+		echo "FAIL: bad CIDR accepted"; exit 1; fi
+	@if $(MODEL_SERVING) --set global.networkPolicy.enabled=true --set 'components.modelServing.networkPolicy.predictor.additionalIngressNamespaces={Bad_NS}' >/dev/null 2>&1; then \
+		echo "FAIL: bad namespace name accepted"; exit 1; fi
+	@if $(MODEL_SERVING) --set global.networkPolicy.enabled=true --set components.modelServing.networkPolicy.predictor.port=0 >/dev/null 2>&1; then \
+		echo "FAIL: port 0 accepted"; exit 1; fi
+
 .PHONY: verify-model-manager
 verify-model-manager: deps ## The model-manager component renders nothing while off, the service + route + JWT policy + app-config entry while on, and its guards fail inconsistent configs.
 	@echo "--> model-manager off (the default): the render carries no model-manager object"
@@ -225,3 +253,10 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@$(MODEL_MANAGER) --set components.kagent.enabled=false --set 'model-manager.kagent.disableWiring=true' >/dev/null
 	@if $(MODEL_MANAGER) --set components.muster.enabled=false --set components.valkey.enabled=false >/dev/null 2>&1; then \
 		echo "FAIL: MCPServer CR without the muster component accepted"; exit 1; fi
+	@echo "--> kserve backend under network policies: model-manager gets the Hugging Face egress in both flavors"
+	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set global.networkPolicy.enabled=true); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'Hugging Face' || { echo "FAIL: kubernetes-flavor model-manager egress lacks the Hugging Face rule"; exit 1; }
+	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'toFQDNs:' || { echo "FAIL: cilium-flavor model-manager egress lacks the Hugging Face FQDN rule"; exit 1; }
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'Hugging Face' && { echo "FAIL: ollama backend got the Hugging Face egress"; exit 1; }; true
