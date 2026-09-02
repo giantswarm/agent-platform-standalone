@@ -52,9 +52,17 @@ data:
       cors:
         origin: https://{{ $hostname }}
       csp:
+        {{- /* Backstage replaces (does not merge) config arrays, so this list
+        supersedes the image's default img-src. It must therefore carry every
+        host the portal's own plugins load images from: the Giant Swarm app-icon
+        CDN (the muster plugin's dashboard renders the muster icon from
+        s.giantswarm.io/app-icons/) and this deployment's DiceBear avatars host
+        (agent avatars). Without the CDN entry the browser blocks the icon with a
+        CSP violation and the dashboard shows a broken image. */}}
         img-src:
           - "'self'"
           - "data:"
+          - https://s.giantswarm.io
           - https://avatars.{{ $domain }}
       {{- if eq (dig "database" "engine" "" .Values.backstage) "postgresql" }}
       {{- /* backstage.database.engine=postgresql makes the Backstage chart
