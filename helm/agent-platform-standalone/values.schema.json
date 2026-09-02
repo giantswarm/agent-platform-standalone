@@ -1773,6 +1773,36 @@
                         }
                     }
                 },
+                "kserve": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "certManager": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "requireApi": {
+                                    "type": "boolean"
+                                }
+                            }
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "llmisvc": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "requireApi": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                },
                 "mcp-kubernetes": {
                     "type": "object",
                     "additionalProperties": false,
@@ -2705,6 +2735,22 @@
             "additionalProperties": true
         },
         "klaus-gateway": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "kserve-crd": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "kserve-llmisvc-crd": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "kserve-llmisvc-resources": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "kserve-resources": {
             "type": "object",
             "additionalProperties": true
         },

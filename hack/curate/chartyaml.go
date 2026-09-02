@@ -37,7 +37,11 @@ func BuildChartYAML(config *Config, components []FleetComponent, resolved map[st
 		versionNode.LineComment = fmt.Sprintf("# range %s", dependency.Range)
 		mappingSet(entry, newScalar("version"), versionNode)
 		mappingSet(entry, newScalar("repository"), newScalar(repository))
-		mappingSet(entry, newScalar("condition"), newScalar("components."+dependency.Name+".enabled"))
+		condition := "components." + dependency.Name + ".enabled"
+		if dependency.Condition != "" {
+			condition = dependency.Condition
+		}
+		mappingSet(entry, newScalar("condition"), newScalar(condition))
 		dependencies.Content = append(dependencies.Content, entry)
 	}
 	dependenciesKey := newScalar("dependencies")

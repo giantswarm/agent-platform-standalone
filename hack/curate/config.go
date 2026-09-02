@@ -74,9 +74,31 @@ type Dependency struct {
 	Repository string `yaml:"repository"`
 	// Enabled is the default toggle of an extra dependency.
 	Enabled *bool `yaml:"enabled"`
+	// Condition replaces the generated Helm condition
+	// (components.<name>.enabled) for an extra dependency that is one part of
+	// an umbrella component — a control plane split into a CRD chart and a
+	// controller chart, switched together. The path has the form
+	// components.<umbrellaComponent>[.<key>...].enabled; overlay/contract.yaml
+	// defines it, and the dependency gets no components.<name> entry of its
+	// own (an overlay entry under its name fails the run).
+	Condition string `yaml:"condition"`
 }
 
 func (d Dependency) IsExtra() bool { return d.Repository != "" }
+
+// HasOwnToggle reports whether the dependency is switched by its generated
+// components.<name>.enabled entry (no condition override).
+func (d Dependency) HasOwnToggle() bool { return d.Condition == "" }
+
+// ConditionComponent returns the umbrella component a condition override
+// belongs to: the second segment of components.<name>....enabled.
+func (d Dependency) ConditionComponent() string {
+	match := conditionRe.FindStringSubmatch(d.Condition)
+	if match == nil {
+		return ""
+	}
+	return match[1]
+}
 
 type FleetConfig struct {
 	Repository        string   `yaml:"repository"`
@@ -150,6 +172,9 @@ var (
 	// identifier (a dependency name may carry hyphens; it is reached through
 	// index).
 	identifierNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+	// A dependency condition override points into an umbrella component's
+	// contract block and ends in an `enabled` leaf.
+	conditionRe = regexp.MustCompile(`^components\.([A-Za-z][A-Za-z0-9]*)((?:\.[A-Za-z][A-Za-z0-9]*)*)\.enabled$`)
 )
 
 func LoadConfig(path string) (*Config, error) {
@@ -198,7 +223,21 @@ func (c *Config) Validate() error {
 		if !exactVersionRe.MatchString(dependency.Version) {
 			return fmt.Errorf("dependency %q: version %q must be an exact version (the pin Renovate bumps)", dependency.Name, dependency.Version)
 		}
-		if dependency.IsExtra() && dependency.Enabled == nil {
+		if dependency.Condition != "" {
+			if !dependency.IsExtra() {
+				return fmt.Errorf("dependency %q: condition is only valid on an extra dependency (a fleet dependency is switched by the fleet's components.%s.enabled)", dependency.Name, dependency.Name)
+			}
+			if dependency.Enabled != nil {
+				return fmt.Errorf("dependency %q: enabled and condition are exclusive; the umbrella component's contract block carries the toggle %s", dependency.Name, dependency.Condition)
+			}
+			component := dependency.ConditionComponent()
+			if component == "" {
+				return fmt.Errorf("dependency %q: condition %q must have the form components.<umbrellaComponent>[.<key>...].enabled", dependency.Name, dependency.Condition)
+			}
+			if !slices.Contains(c.UmbrellaComponents, component) {
+				return fmt.Errorf("dependency %q: condition %q points at components.%s, which is not declared in umbrellaComponents", dependency.Name, dependency.Condition, component)
+			}
+		} else if dependency.IsExtra() && dependency.Enabled == nil {
 			return fmt.Errorf("extra dependency %q must set enabled", dependency.Name)
 		}
 		if !dependency.IsExtra() && dependency.Enabled != nil {

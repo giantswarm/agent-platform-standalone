@@ -129,6 +129,39 @@ dependencies:
     version: "0.6.2"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
+  # The KServe control plane (ADR 2026-09-02 "KServe bundled optionally",
+  # revising decision D1 of the Model Manager PDR): the CRD chart and the
+  # controller chart of giantswarm/kserve, switched together by the umbrella
+  # component components.kserve (its contract block in overlay/contract.yaml),
+  # and the llm-d control plane — the LLMInferenceService CRDs and controller
+  # — by components.kserve.llmisvc.enabled. All four pins move together (one
+  # upstream repo, giantswarm/kserve). A CRD chart rendered from templates is
+  # part of the release manifest: `helm upgrade` upgrades the CRDs, and the
+  # charts annotate them helm.sh/resource-policy: keep (kserve ≥ 0.2.0).
+  - name: kserve-crd
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kserve-crd
+    version: "0.2.0"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    condition: components.kserve.enabled
+  - name: kserve-resources
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kserve-resources
+    version: "0.2.0"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    condition: components.kserve.enabled
+  - name: kserve-llmisvc-crd
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-crd
+    version: "0.2.0"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    condition: components.kserve.llmisvc.enabled
+  - name: kserve-llmisvc-resources
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-resources
+    version: "0.2.0"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    condition: components.kserve.llmisvc.enabled
 
 # Components the umbrella renders itself, with no Helm dependency behind them.
 # Their templates are hand-authored (templates.extra below) and read
@@ -137,10 +170,15 @@ dependencies:
 # The generator admits exactly these names into the components map: an
 # overlay entry for any other non-dependency name still fails the run.
 umbrellaComponents:
-  # KServe/vLLM model serving: runtime, serving presets, HF cache. KServe
-  # itself is a cluster prerequisite, never a dependency (decision D1 of the
-  # Model Manager PDR).
+  # KServe/vLLM model serving: runtime, serving presets, HF cache. Runs on
+  # the KServe control plane — the kserve component below, or a KServe the
+  # cluster already has.
   - modelServing
+  # The KServe control plane switch: its dependencies (kserve-crd,
+  # kserve-resources, kserve-llmisvc-crd, kserve-llmisvc-resources) hang off
+  # this block through their `condition`; the umbrella's own templates are the
+  # render-time guards and the controller network policies (templates/kserve/).
+  - kserve
 
 # Rule per top-level key of the fleet and connectivity values.
 #   keep          copy the fleet block under the same key
@@ -480,3 +518,11 @@ templates:
     - model-manager/route.yaml
     - model-manager/jwt-policy.yaml
     - model-manager/netpol.yaml
+    # The kserve umbrella component (umbrellaComponents above): render-time
+    # guards (cert-manager, deployment mode, the two-phase first install, the
+    # llmisvc prerequisites) and the network policies of the KServe and
+    # llmisvc controllers. Reads components.kserve and the dependency blocks
+    # kserve-resources / kserve-llmisvc-resources.
+    - kserve/_helpers.tpl
+    - kserve/validate.yaml
+    - kserve/netpol.yaml

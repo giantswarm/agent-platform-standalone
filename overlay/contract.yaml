@@ -452,6 +452,56 @@ components:
         # additionalEgressFQDNs apply to both flavors as well.
         cidrs: []  # @schema item: string
 
+  # The KServe control plane the modelServing component and model-manager's
+  # kserve backend run on: the KServe CRDs (kserve-crd) and the controller
+  # with its admission webhooks (kserve-resources), two dependencies switched
+  # together by this one toggle (ADR 2026-09-02 "KServe bundled optionally",
+  # revising decision D1 of the Model Manager PDR). Off by default and inert
+  # while off; an install that already runs KServe leaves it off. The
+  # controller runs in the release namespace, in Standard mode (plain
+  # Deployments and Services per InferenceService; no Knative, no Istio);
+  # its values are the dependency block kserve-resources below.
+  #
+  # First install is two-phase: KServe's CRDs and webhook must exist before a
+  # ClusterServingRuntime or InferenceService can be created, and Helm applies
+  # a release in one pass — so turn this on first (with modelServing and a
+  # kserve-backend model-manager still off), then enable those in a second
+  # upgrade. The render fails with that instruction otherwise.
+  #
+  # CRDs are part of the release: `helm upgrade` upgrades them (unlike a
+  # chart's crds/ directory), and kserve-crd annotates them
+  # helm.sh/resource-policy: keep, so an uninstall or a later enabled: false
+  # leaves the CRDs and every InferenceService on the cluster.
+  kserve:
+    enabled: false
+    certManager:
+      # KServe's webhook certificates come from a cert-manager self-signed
+      # Issuer + Certificate and the CA is injected by cert-manager, so
+      # cert-manager is a prerequisite this chart does not install. Fail the
+      # render while the cert-manager.io/v1 API is missing (an offline
+      # `helm template` passes with --api-versions cert-manager.io/v1);
+      # false skips the check.
+      requireApi: true
+    # The llm-d control plane: the LLMInferenceService CRDs
+    # (kserve-llmisvc-crd) and controller (kserve-llmisvc-resources), two
+    # dependencies switched together, for multi-node and disaggregated
+    # serving through KServe's LLMInferenceService CRD (inference-direction
+    # PDR 2026-09-02). Needs the kserve component: the controller reads its
+    # inferenceservice-config and shares its certificate Issuer. The CRDs'
+    # conversion webhook points at the controller in the release namespace.
+    # Controller values: the dependency block kserve-llmisvc-resources below.
+    llmisvc:
+      enabled: false
+      # The Gateway API Inference Extension CRDs (InferencePool, ...) the
+      # controller needs: shipped by the controller chart when
+      # kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs is true, which
+      # Helm cannot do when a cluster has them already (an inference gateway
+      # installed them) — set it false then. The render checks the
+      # combination while this is true; an offline `helm template` passes
+      # with --api-versions inference.networking.k8s.io/v1 when createGIECRDs
+      # is false. false skips the check.
+      requireApi: true
+
 ingress:
   # The full-platform default topology: client -> agentgateway /mcp -> muster,
   # matching the fleet (agentgateway is the observability choke point for
@@ -536,6 +586,41 @@ model-manager:
   # flavors; the chart's own NetworkPolicy stays off.
   networkPolicy:
     enabled: false
+
+# The KServe controller chart (components.kserve turns it on, together with
+# kserve-crd). Everything not set here is the chart's default: the upstream
+# multi-arch kserve/kserve-controller image at the KServe version the chart
+# vendors, the storage-initializer, the webhook certificates through
+# cert-manager. The umbrella renders the controller's network policies
+# (templates/kserve/netpol.yaml) under global.networkPolicy.
+kserve-resources:
+  kserve:
+    controller:
+      # Plain Deployments and Services per InferenceService ("Standard", the
+      # former RawDeployment). The Knative and ModelMesh modes need
+      # controllers this chart does not ship; the render fails on them.
+      deploymentMode: Standard
+      gateway:
+        # No per-model Ingress or HTTPRoute: agents and the platform reach a
+        # model through its predictor Service (<name>-predictor.<namespace>),
+        # which is what the portal and model-manager wire into kagent. An
+        # install that wants external per-model routes sets this false and
+        # the gateway domain / ingressGateway.* of the chart.
+        disableIngressCreation: true
+
+# The LLMInferenceService (llm-d) controller chart
+# (components.kserve.llmisvc.enabled turns it on).
+kserve-llmisvc-resources:
+  kserve:
+    # kserve-resources renders the shared objects (the inferenceservice-config
+    # ConfigMap, the self-signed Issuer, the default ClusterStorageContainer);
+    # a second copy in the same release would conflict. Guarded.
+    createSharedResources: false
+    llmisvc:
+      # Ship the Gateway API Inference Extension CRDs (InferencePool, ...)
+      # with the controller. A cluster that already has them (an inference
+      # gateway installed them) sets this false: Helm cannot adopt them.
+      createGIECRDs: true
 
 kagent:
   kagent:

@@ -22,9 +22,13 @@ its exact chart name:
 | `backstage` | off | Developer portal |
 | `cloudnative-pg` | off | PostgreSQL operator |
 | `model-manager` | off | Model management service (inventory, pull, load/unload, delete, kagent wiring), see [Model manager](#model-manager) |
+| `kserve-crd`, `kserve-resources` | off | The KServe control plane (CRDs, controller, admission webhooks), switched together by `components.kserve.enabled`, see [KServe control plane](#kserve-control-plane) |
+| `kserve-llmisvc-crd`, `kserve-llmisvc-resources` | off | The llm-d control plane (`LLMInferenceService` CRDs and controller), switched together by `components.kserve.llmisvc.enabled` |
 
-One component has no dependency behind it: `modelServing` (off) renders the
-KServe/vLLM model-serving layer itself, see [Model serving](#model-serving).
+Two components have no dependency of their own: `modelServing` (off) renders
+the KServe/vLLM model-serving layer itself, see [Model serving](#model-serving);
+`kserve` (off) is the switch of the four KServe dependencies above plus their
+render-time guards and network policies.
 
 The templates in `helm/agent-platform-standalone/templates/` render the wiring
 between the components: the public routes, the agentgateway data-plane
@@ -121,33 +125,88 @@ on every pod restart. With the CloudNativePG operator on the cluster, set
 CNPG `Cluster` (`backstage-cnpg`) and this chart's app-config overlay points
 the backend at it (pg client, schema division mode).
 
+### KServe control plane
+
+`components.kserve.enabled: true` installs [KServe](https://kserve.github.io/website/)
+with the platform: the CRDs (`kserve-crd`) and the controller with its
+admission webhooks (`kserve-resources`), the Giant Swarm builds of the
+upstream charts ([giantswarm/kserve](https://github.com/giantswarm/kserve)),
+switched together by that one toggle. Off by default and inert while off; an
+install that already runs KServe leaves it off and the [Model
+serving](#model-serving) component uses the cluster's. The controller runs in
+the release namespace in Standard mode (plain Deployments and Services per
+`InferenceService`; no Knative, no Istio) and creates no per-model Ingress or
+HTTPRoute: agents and the platform reach a model through its predictor
+Service, which is what the portal and model-manager wire into kagent. Its
+values are the dependency block `kserve-resources` (`kserve.controller.*`,
+`kserve.storage.*`, ...); an install that wants external per-model routes sets
+`kserve.controller.gateway.disableIngressCreation: false` and the chart's
+gateway domain / `ingressGateway.*`.
+
+**Prerequisite: cert-manager.** KServe's webhook certificates come from a
+cert-manager self-signed `Issuer` and `Certificate`, and cert-manager injects
+the CA into the webhook configurations. The render fails until the
+`cert-manager.io/v1` API exists (`components.kserve.certManager.requireApi`;
+an offline `helm template` passes with `--api-versions cert-manager.io/v1`).
+For GPU serving, add the NVIDIA device plugin (or GPU operator) so nodes
+expose `nvidia.com/gpu`.
+
+**First install is two-phase.** KServe's CRDs and admission webhook must
+exist before a `ClusterServingRuntime` or `InferenceService` can be created,
+and Helm applies a release in one pass. Install or upgrade with
+`components.kserve` on and `components.modelServing` / a kserve-backend
+`model-manager` still off, wait for the controller to be Ready, then turn
+those on in a second upgrade. The render fails with that instruction when
+the serving APIs are not on the cluster yet. Upgrades of an install that has
+the APIs are single-pass.
+
+**CRDs are part of the release.** Unlike a chart's `crds/` directory, the
+CRD charts render their CRDs as templates: `helm upgrade` upgrades them, and
+they carry `helm.sh/resource-policy: keep`, so `helm uninstall` or a later
+`components.kserve.enabled: false` leaves the CRDs — and with them every
+`InferenceService` — on the cluster. Removing them is a deliberate
+`kubectl delete crd`.
+
+**llm-d.** `components.kserve.llmisvc.enabled: true` adds the llm-d control
+plane on top: the `LLMInferenceService` / `LLMInferenceServiceConfig` CRDs
+(`kserve-llmisvc-crd`, their conversion webhook pointing at the controller in
+the release namespace) and the llmisvc controller (`kserve-llmisvc-resources`,
+values block of the same name; `kserve.createSharedResources` stays `false`,
+the KServe chart renders the shared objects). The controller needs the
+Gateway API Inference Extension CRDs (`InferencePool`): it ships them
+(`kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs: true`) unless the
+cluster has them already — an inference gateway installed them — in which
+case set it `false`, because Helm cannot adopt them. The render checks the
+combination (`components.kserve.llmisvc.requireApi`; offline with
+`--api-versions inference.networking.k8s.io/v1` when `createGIECRDs` is
+false). Multi-node and disaggregated serving through `LLMInferenceService`
+also needs the runtimes the llm-d guides describe; nothing in this chart
+creates an `LLMInferenceService`.
+
+With `global.networkPolicy` on, the umbrella renders the controllers'
+policies in both flavors (`templates/kserve/netpol.yaml`): webhook (9443),
+metrics (8443) and probe (8081) ingress, DNS and Kubernetes API egress.
+
 ### Model serving
 
 `components.modelServing.enabled: true` adds the layer that serves local
 models on [KServe](https://kserve.github.io/website/) with
 [vLLM](https://docs.vllm.ai/), for installs with GPU nodes. Off by default and
 inert while off. The component is rendered by the umbrella itself (no Helm
-dependency; `templates/model-serving/`, `files/model-serving/`), and follows
-decision D1 of the Model Manager design: integrate KServe, do not bundle it.
+dependency; `templates/model-serving/`, `files/model-serving/`).
 
-**Prerequisite: KServe.** The chart installs neither the KServe CRDs nor the
-controller. With the component on, the render fails until the
-`serving.kserve.io/v1alpha1` and `v1beta1` APIs exist on the cluster
+**Prerequisite: KServe** — the [KServe control plane](#kserve-control-plane)
+component (`components.kserve.enabled`, two-phase on a first install) or a
+KServe the cluster already runs. In the latter case the render fails until
+the `serving.kserve.io/v1alpha1` and `v1beta1` APIs exist on the cluster
 (`components.modelServing.kserve.requireApi`); an offline `helm template`
 passes the check with `--api-versions serving.kserve.io/v1alpha1
---api-versions serving.kserve.io/v1beta1`. Install KServe first, for example
-in raw-deployment mode (no Knative, no Istio), which is what the GPU
-reference install runs:
-
-```sh
-helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v0.20.0 -n kserve --create-namespace
-helm install kserve oci://ghcr.io/kserve/charts/kserve --version v0.20.0 -n kserve \
-  --set kserve.controller.deploymentMode=RawDeployment
-```
-
-plus the NVIDIA device plugin (or GPU operator) so nodes expose
-`nvidia.com/gpu`. The portal's Serving view lights up on the CRDs; the chart's
-own state check is the API guard above.
+--api-versions serving.kserve.io/v1beta1`. A KServe installed some other way
+must run in raw-deployment (Standard) mode, no Knative, no Istio — what the
+GPU reference install ran before it moved to the component. Add the NVIDIA
+device plugin (or GPU operator) so nodes expose `nvidia.com/gpu`. The
+portal's Serving view lights up on the CRDs; the chart's own state check is
+the API guard above.
 
 What the component renders, all under `components.modelServing`:
 
@@ -542,7 +601,10 @@ helm show crds helm/agent-platform-standalone | kubectl apply --server-side -f -
 ```
 
 The CI upgrade test runs exactly this step between the last published chart
-and the release candidate (`tests/ats/upgrade-hook.sh`).
+and the release candidate (`tests/ats/upgrade-hook.sh`). The KServe CRD
+charts are the exception that needs no step: they render their CRDs as
+templates, so `helm upgrade` upgrades them with the release (see [KServe
+control plane](#kserve-control-plane)).
 
 ## The chart is generated
 

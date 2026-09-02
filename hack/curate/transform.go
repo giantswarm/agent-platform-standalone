@@ -76,6 +76,11 @@ func Transform(in Inputs) (*Result, error) {
 	// has no fleet entry, so curate.yaml carries its default.
 	entries := map[string]*componentEntry{}
 	for _, dependency := range config.Dependencies {
+		if !dependency.HasOwnToggle() {
+			// Switched by an umbrella component's contract block; the
+			// dependency has no components entry of its own.
+			continue
+		}
 		entry := &componentEntry{enabled: true}
 		if dependency.IsExtra() {
 			entry.enabled = *dependency.Enabled
@@ -378,7 +383,10 @@ func lift(block *yaml.Node, source string, keys []string, entry *componentEntry)
 func buildComponents(config *Config, entries map[string]*componentEntry) *yaml.Node {
 	components := newMapping()
 	for _, dependency := range config.Dependencies {
-		entry := entries[dependency.Name]
+		entry, ok := entries[dependency.Name]
+		if !ok {
+			continue
+		}
 		mapping := newMapping()
 		mappingSet(mapping, newScalar("enabled"), newBool(entry.enabled))
 		for _, node := range entry.lifted {
@@ -432,8 +440,12 @@ func validateOverlay(config *Config, overlay *yaml.Node, what string, keepEnable
 			return fmt.Errorf("%s components must be a mapping", what)
 		}
 		for _, name := range mappingKeys(components) {
-			if _, ok := config.Dependency(name); !ok && !config.IsUmbrellaComponent(name) {
+			dependency, ok := config.Dependency(name)
+			if !ok && !config.IsUmbrellaComponent(name) {
 				return fmt.Errorf("%s components.%s is not a dependency (nor an umbrella component declared in curate.yaml umbrellaComponents)", what, name)
+			}
+			if ok && !dependency.HasOwnToggle() {
+				return fmt.Errorf("%s components.%s: the dependency is switched by %s and has no components entry of its own", what, name, dependency.Condition)
 			}
 		}
 	}
@@ -542,6 +554,21 @@ func checkUmbrellaComponents(config *Config, out *yaml.Node) error {
 		}
 		if _, err := scalarBool(enabled, fmt.Sprintf("components.%s.enabled", name)); err != nil {
 			return fmt.Errorf("umbrellaComponents: %w", err)
+		}
+	}
+	// A condition override must resolve to a boolean leaf of the contract:
+	// Helm treats a missing condition path as "enabled", so a typo would
+	// install the dependency unconditionally.
+	for _, dependency := range config.Dependencies {
+		if dependency.HasOwnToggle() {
+			continue
+		}
+		_, leaf, err := pathGetPair(out, dependency.Condition)
+		if err != nil || leaf == nil {
+			return fmt.Errorf("dependency %q: condition %s is not defined by overlay/contract.yaml (Helm would install the dependency unconditionally)", dependency.Name, dependency.Condition)
+		}
+		if _, err := scalarBool(leaf, dependency.Condition); err != nil {
+			return fmt.Errorf("dependency %q: condition %w", dependency.Name, err)
 		}
 	}
 	return nil

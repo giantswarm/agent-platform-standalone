@@ -1,0 +1,69 @@
+{{- /*
+Render-time guards of the kserve component. They fail `helm template` (and
+therefore CI lint + install) with an actionable message instead of shipping a
+control plane that cannot start, a first install that Helm applies in the
+wrong order, or a CRD Helm cannot own.
+*/ -}}
+{{- if (include "agent-platform-standalone.kserve.enabled" .) }}
+  {{- $k := .Values.components.kserve }}
+  {{- $resources := include "agent-platform-standalone.kserve.resourcesValues" . | fromJson }}
+
+  {{- /* cert-manager: KServe's webhook certificates are a self-signed Issuer
+         + Certificate, the CA injected by cert-manager. */ -}}
+  {{- if and $k.certManager.requireApi (not (.Capabilities.APIVersions.Has "cert-manager.io/v1")) }}
+    {{- fail "components.kserve.enabled is true but the cert-manager.io/v1 API is not on the cluster. KServe's webhook certificates come from a cert-manager Issuer and Certificate, so cert-manager is a prerequisite this chart does not install (README, section KServe control plane). For an offline render pass --api-versions cert-manager.io/v1, or set components.kserve.certManager.requireApi=false to skip this check." }}
+  {{- end }}
+
+  {{- /* Deployment mode: only the raw mode works without Knative/ModelMesh. */ -}}
+  {{- $mode := dig "kserve" "controller" "deploymentMode" "" $resources }}
+  {{- if not (or (eq $mode "Standard") (eq $mode "RawDeployment")) }}
+    {{- fail (printf "kserve-resources.kserve.controller.deploymentMode (%q) must be Standard (plain Deployments and Services per InferenceService; RawDeployment is its former name): the Knative and ModelMesh modes need controllers this chart does not ship" $mode) }}
+  {{- end }}
+
+  {{- /* First install is two-phase: the CRDs and the admission webhook of
+         this very release must exist before a ClusterServingRuntime or an
+         InferenceService can be created, and Helm applies a release in one
+         pass. Without the serving APIs on the cluster this is that first
+         install, so the consumers must wait for the second upgrade. */ -}}
+  {{- if not (include "agent-platform-standalone.kserve.apiPresent" .) }}
+    {{- $consumers := list }}
+    {{- if (include "agent-platform-standalone.modelServing.enabled" .) }}
+      {{- $consumers = append $consumers "components.modelServing.enabled" }}
+    {{- end }}
+    {{- if and (include "agent-platform-standalone.modelManager.enabled" .) (eq (include "agent-platform-standalone.modelManager.backend" .) "kserve") }}
+      {{- $consumers = append $consumers "components.model-manager.enabled (model-manager.backend: kserve)" }}
+    {{- end }}
+    {{- if $consumers }}
+      {{- fail (printf "components.kserve.enabled is true and the serving.kserve.io APIs are not on the cluster yet — this is the first install of the KServe control plane — but %s need them: the CRDs and the admission webhook must exist before a ClusterServingRuntime or InferenceService can be created, and Helm applies a release in one pass. Install or upgrade with components.kserve on and these off first, then turn them on in a second upgrade. For an offline render pass --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1." (join " and " $consumers)) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The llm-d control plane. */ -}}
+  {{- if $k.llmisvc.enabled }}
+    {{- $llmisvc := include "agent-platform-standalone.kserve.llmisvcValues" . | fromJson }}
+    {{- if dig "kserve" "createSharedResources" false $llmisvc }}
+      {{- fail "kserve-llmisvc-resources.kserve.createSharedResources must stay false: kserve-resources renders the shared inferenceservice-config ConfigMap, the self-signed Issuer and the default ClusterStorageContainer, and a second copy in the same release conflicts" }}
+    {{- end }}
+    {{- if $k.llmisvc.requireApi }}
+      {{- $createGIE := dig "kserve" "llmisvc" "createGIECRDs" true $llmisvc }}
+      {{- $gieApi := .Capabilities.APIVersions.Has "inference.networking.k8s.io/v1" }}
+      {{- if and $createGIE $gieApi }}
+        {{- /* The API exists: ours from an earlier upgrade, or someone else's
+               (an inference gateway), which Helm cannot adopt. lookup is
+               empty in an offline render, so only a real cluster fails. */ -}}
+        {{- $pool := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "inferencepools.inference.networking.k8s.io" }}
+        {{- if $pool }}
+          {{- $owner := dig "metadata" "annotations" "meta.helm.sh/release-name" "" $pool }}
+          {{- if ne $owner .Release.Name }}
+            {{- fail (printf "kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs is true but the Gateway API Inference Extension CRDs (inferencepools.inference.networking.k8s.io) are already on the cluster and not owned by this release (%s); Helm cannot adopt them. Set kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs=false to use the existing ones." (default "no Helm owner" $owner)) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if and (not $createGIE) (not $gieApi) }}
+        {{- fail "kserve-llmisvc-resources.kserve.llmisvc.createGIECRDs is false but the Gateway API Inference Extension CRDs (inference.networking.k8s.io/v1 InferencePool) are not on the cluster; the llmisvc controller needs them. Set createGIECRDs=true to ship them with the controller, or install them first. For an offline render pass --api-versions inference.networking.k8s.io/v1." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- else if .Values.components.kserve.llmisvc.enabled }}
+  {{- fail "components.kserve.llmisvc.enabled is true but components.kserve.enabled is false: the llmisvc controller reads the KServe control plane's inferenceservice-config and shares its webhook certificate Issuer. Turn on components.kserve." }}
+{{- end }}
