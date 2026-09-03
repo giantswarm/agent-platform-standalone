@@ -1,7 +1,7 @@
 dependencies:
 - name: muster
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 5.7.4
+  version: 5.7.18
 - name: valkey
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.1.4
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:49cb3216456add2e826af3c05e3b7adb95279778b05b3a42fd1b3dea418fe2db
-generated: "2026-09-03T22:11:29.12262592+02:00"
+digest: sha256:4199b2dd0236bc5168065727aa09b6d7e5c563c59bdd58d414e5686dac452265
+generated: "2026-09-03T22:46:30.533775258+02:00"
