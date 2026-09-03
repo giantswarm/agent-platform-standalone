@@ -34,7 +34,7 @@ dependencies:
   version: 0.29.0
 - name: model-manager
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.11.0
+  version: 0.11.1
 - name: kserve-crd
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
@@ -44,5 +44,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:5033be483344d8a3cef28d0831a1f43e25a828283d66b125b17b3ee771083d82
-generated: "2026-09-03T11:14:17.396318353+02:00"
+digest: sha256:aae72444f49ab48d8f39f5a0198492138952bacd07efd524d9574479945f6bd5
+generated: "2026-09-03T11:57:14.963124665+02:00"
