@@ -15,9 +15,8 @@ spec:
   policies:
     auth:
       # Gateway strips the JWT after validation; passthrough re-injects it so
-      # the backend sees the caller's token (model-manager checks no identity
-      # today — the gateway policy is the boundary — but a later version may
-      # read claims).
+      # the backend sees the caller's token — model-manager validates it
+      # itself (model-manager.oauth) and acts as that caller.
       passthrough: {}
   static:
     host: {{ printf "%s.%s.svc.cluster.local" $fullname .Release.Namespace }}

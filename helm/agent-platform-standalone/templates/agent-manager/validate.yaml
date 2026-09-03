@@ -1,19 +1,18 @@
 {{- /*
 Render-time guards of the agent-manager component. They fail `helm template`
 (and therefore CI lint + install) with an actionable message instead of
-shipping a service that manages agents nobody runs, a route the API server
-rejects, or an MCPServer CR without its CRD.
+shipping a service that manages agents nobody runs, cannot validate its
+callers, a route the API server rejects, or an MCPServer CR without its CRD.
 */ -}}
 {{- if (include "agent-platform-standalone.agentManager.enabled" .) }}
-  {{- $am := index .Values.components "agent-manager" }}
+  {{- $am := (index .Values.components "agent-manager") }}
   {{- $chart := include "agent-platform-standalone.agentManager.chartValues" . | fromJson }}
   {{- $_ := include "agent-platform-standalone.agentManager.fullname" . }}
 
   {{- /* agent-manager creates kagent Agents (as HelmReleases of the agent
          chart) in the kagent namespace: without the kagent component there
          is no controller to run them and no namespace to put them in. */ -}}
-  {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
-  {{- if not $kagentOn }}
+  {{- if not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent")) }}
     {{- fail "components.agent-manager.enabled is true but components.kagent.enabled is false: agent-manager manages kagent agents and has nothing to manage without the runtime. Turn on kagent, or set components.agent-manager.enabled: false" }}
   {{- end }}
   {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
@@ -36,8 +35,29 @@ rejects, or an MCPServer CR without its CRD.
 
   {{- /* The MCP endpoint is how the meta agent reaches the tools: without
          muster nothing calls them (the MCPServer CRD ships with muster). */ -}}
-  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not .Values.components.muster.enabled) }}
+  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster"))) }}
     {{- fail "agent-manager.muster.mcpServer.enabled is true but components.muster.enabled is false: the MCPServer CRD ships with muster, so the CR has no API to map to. Turn on muster (agent-manager's tools reach agents through it) or set agent-manager.muster.mcpServer.enabled: false" }}
+  {{- end }}
+
+  {{- /* The component release resolves its OAuth inputs through the chart's
+         global.identity / global.domain fallbacks; a missing one fails inside
+         the child release, out of sight. Fail here, naming both keys. */ -}}
+  {{- if (include "agent-platform-standalone.agentManager.oauthEnabled" .) }}
+    {{- $oauth := dig "oauth" dict $chart }}
+    {{- if and (not (dig "baseURL" "" $oauth)) (not .Values.global.domain) }}
+      {{- fail "agent-manager.oauth.enabled is true but agent-manager.oauth.baseURL is empty and global.domain is not set: the resource server needs its public base URL (the gateway route, e.g. https://agentgateway.<domain>/agent-manager)" }}
+    {{- end }}
+    {{- if eq (dig "provider" "dex" $oauth) "dex" }}
+      {{- if not (include "agent-platform-standalone.agentManager.issuerUrl" .) }}
+        {{- fail "agent-manager.oauth.enabled is true but agent-manager.oauth.dex.issuerURL is empty and global.identity.issuerUrl is not set: the resource server needs the login issuer" }}
+      {{- end }}
+      {{- if and (not (dig "dex" "clientID" "" $oauth)) (not .Values.global.identity.clientId) }}
+        {{- fail "agent-manager.oauth.enabled is true but agent-manager.oauth.dex.clientID is empty and global.identity.clientId is not set: the resource server needs the platform OAuth client" }}
+      {{- end }}
+      {{- if and (not (dig "existingSecret" "" $oauth)) (not (dig "dex" "clientSecret" "" $oauth)) (not .Values.global.identity.existingSecret) }}
+        {{- fail "agent-manager.oauth.enabled is true but none of agent-manager.oauth.existingSecret, agent-manager.oauth.dex.clientSecret or global.identity.existingSecret is set: the resource server needs the platform client's secret (key dex-client-secret)" }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- if $am.route.enabled }}

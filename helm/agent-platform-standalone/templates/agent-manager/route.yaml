@@ -15,9 +15,8 @@ spec:
   policies:
     auth:
       # Gateway strips the JWT after validation; passthrough re-injects it so
-      # the backend sees the caller's token (agent-manager checks no identity
-      # today — the gateway policy is the boundary — but the writes-as-caller
-      # follow-up derives the per-call Kubernetes client from it).
+      # the backend sees the caller's token — agent-manager validates it
+      # itself (agent-manager.oauth) and writes every agent as that caller.
       passthrough: {}
   static:
     host: {{ printf "%s.%s.svc.cluster.local" $fullname .Release.Namespace }}

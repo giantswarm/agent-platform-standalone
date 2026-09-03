@@ -34,6 +34,17 @@ func TestLoadConfigRepoFile(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, "components.kserve.llmisvc.enabled", dependency.Condition, name)
 	}
+	// The two managers are fleet components (agent-platform >= 3.3.0): the
+	// chart block is mapped as a component, the camelCase wiring block is
+	// lifted whole into components.<chart>.
+	for chart, wiring := range map[string]string{"model-manager": "modelManager", "agent-manager": "agentManager"} {
+		dependency, ok := config.Dependency(chart)
+		require.True(t, ok)
+		require.False(t, dependency.IsExtra(), "%s is a fleet component, not an extra dependency", chart)
+		require.Equal(t, ActionComponent, config.Keys[chart].Action, chart)
+		require.Equal(t, ActionLift, config.Keys[wiring].Action, wiring)
+		require.Equal(t, chart, config.Keys[wiring].Chart, wiring)
+	}
 }
 
 func TestConfigValidate(t *testing.T) {

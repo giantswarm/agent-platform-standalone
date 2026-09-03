@@ -250,7 +250,9 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
 	for pattern in 'kind: CiliumNetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'matchName: gsoci.azurecr.io' 'matchName: api.github.com' 'blob\.core\.windows\.net' '- host' '- remote-node' '- kube-apiserver'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager cilium policies lack $$pattern"; exit 1; }; \
-	done
+	done; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the standalone patch)"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium agent-manager egress lacks the IdP (agent-manager.oauth is on)"; exit 1; }
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=kubernetes); \
 	for pattern in 'kind: NetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'cidr: 0.0.0.0/0'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager kubernetes policies lack $$pattern"; exit 1; }; \
@@ -296,14 +298,17 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | grep -q 'name: model-manager-public' && { echo "FAIL: layer-1 model-manager route rendered with the edge as data plane"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'apiBaseUrl: https://agentgateway.127.0.0.1.nip.io/model-manager$$' || { echo "FAIL: lab apiBaseUrl not rendered"; exit 1; }; \
 	printf '%s' "$$out" | grep -A3 'caCertificateRefs:' | grep -q 'name: agent-platform-idp-ca' || { echo "FAIL: JWKS TLS CA reference not rendered from global.identity.ca"; exit 1; }
-	@echo "--> network policies: both flavors render the ingress/egress pair and the Ollama /32; a hostname endpoint opens the port"
+	@echo "--> network policies: both flavors render the ingress/egress pair and the Ollama /32; a hostname endpoint opens the port; the ingress admits Backstage (the standalone patch) and the egress names the IdP"
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
 	for pattern in 'name: agent-platform-standalone-model-manager-ingress' 'name: agent-platform-standalone-model-manager-egress' 'name: agent-platform-standalone-dataplane-to-model-manager' 'name: agent-platform-standalone-muster-to-model-manager' 'cidr: 192.0.2.10/32'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kubernetes-flavor render lacks $$pattern"; exit 1; }; \
-	done
+	done; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: kubernetes-flavor model-manager ingress lacks the Backstage peer"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
 	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' || { echo "FAIL: no CiliumNetworkPolicy"; exit 1; }; \
-	printf '%s' "$$out" | grep -q -- '- 192.0.2.10/32' || { echo "FAIL: cilium toCIDR missing"; exit 1; }
+	printf '%s' "$$out" | grep -q -- '- 192.0.2.10/32' || { echo "FAIL: cilium toCIDR missing"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium model-manager ingress lacks the Backstage peer"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium model-manager egress lacks the IdP (model-manager.oauth is on)"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set 'model-manager.ollama.endpoint=http://ollama.example.internal:11434'); \
 	printf '%s' "$$out" | grep -q 'cidr: 0.0.0.0/0' || { echo "FAIL: hostname endpoint did not open the port"; exit 1; }
 	@echo "--> guards: ollama without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
@@ -341,11 +346,13 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@$(MODEL_MANAGER) --set components.kagent.enabled=false --set 'components.agent-manager.enabled=false' --set 'model-manager.kagent.disableWiring=true' >/dev/null
 	@if $(MODEL_MANAGER) --set components.muster.enabled=false --set components.valkey.enabled=false >/dev/null 2>&1; then \
 		echo "FAIL: MCPServer CR without the muster component accepted"; exit 1; fi
-	@echo "--> kserve backend under network policies: model-manager gets the Hugging Face egress in both flavors"
+	@echo "--> kserve backend under network policies: model-manager gets the Hugging Face egress in both flavors (kubernetes: every public destination on 443, cilium: the Hub by name); huggingFace.cidrs narrows the kubernetes flavor"
 	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set global.networkPolicy.enabled=true); \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'Hugging Face' || { echo "FAIL: kubernetes-flavor model-manager egress lacks the Hugging Face rule"; exit 1; }
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'cidr: 0.0.0.0/0' || { echo "FAIL: kubernetes-flavor model-manager egress lacks the Hugging Face rule"; exit 1; }
+	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set global.networkPolicy.enabled=true --set-json 'components.model-manager.networkPolicy.huggingFace.cidrs=["203.0.113.0/24"]'); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'cidr: "203.0.113.0/24"' || { echo "FAIL: kubernetes-flavor model-manager egress lacks the huggingFace.cidrs block"; exit 1; }
 	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'toFQDNs:' || { echo "FAIL: cilium-flavor model-manager egress lacks the Hugging Face FQDN rule"; exit 1; }
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'matchName: huggingface.co' || { echo "FAIL: cilium-flavor model-manager egress lacks the Hugging Face FQDN rule"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'Hugging Face' && { echo "FAIL: ollama backend got the Hugging Face egress"; exit 1; }; true
 

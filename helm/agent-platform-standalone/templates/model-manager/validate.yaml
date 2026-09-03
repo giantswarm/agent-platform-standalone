@@ -1,11 +1,11 @@
 {{- /*
 Render-time guards of the model-manager component. They fail `helm template`
 (and therefore CI lint + install) with an actionable message instead of
-shipping a service that cannot reach its backend, a route the API server
-rejects, or an MCPServer CR without its CRD.
+shipping a service that cannot reach its backend or its identity provider, a
+route the API server rejects, or an MCPServer CR without its CRD.
 */ -}}
 {{- if (include "agent-platform-standalone.modelManager.enabled" .) }}
-  {{- $mm := index .Values.components "model-manager" }}
+  {{- $mm := (index .Values.components "model-manager") }}
   {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson }}
   {{- $backend := include "agent-platform-standalone.modelManager.backend" . }}
   {{- $_ := include "agent-platform-standalone.modelManager.fullname" . }}
@@ -22,71 +22,26 @@ rejects, or an MCPServer CR without its CRD.
   {{- if eq $backend "ollama" }}
     {{- $endpoint := include "agent-platform-standalone.modelManager.ollamaEndpoint" . }}
     {{- if not $endpoint }}
-      {{- fail "model-manager.backend is ollama but model-manager.ollama.endpoint is empty: set the Ollama API base URL as reached from pods (on kind the docker network gateway, e.g. http://172.21.0.1:11434; the ollama backend ADR)" }}
+      {{- fail "model-manager.backend is ollama but model-manager.ollama.endpoint is empty: set the Ollama API base URL as reached from pods (e.g. http://ollama.models.svc.cluster.local:11434)" }}
     {{- end }}
     {{- if not (regexMatch "^https?://[^/]+" $endpoint) }}
-      {{- fail (printf "model-manager.ollama.endpoint (%q) must be an http(s) URL with a host, e.g. http://172.21.0.1:11434" $endpoint) }}
+      {{- fail (printf "model-manager.ollama.endpoint (%q) must be an http(s) URL with a host, e.g. http://ollama.models.svc.cluster.local:11434" $endpoint) }}
     {{- end }}
   {{- end }}
 
   {{- /* The kserve backend manages InferenceServices: it needs KServe on the
-         cluster, which the modelServing component guards the same way. */ -}}
-  {{- if eq $backend "kserve" }}
-    {{- $modelServingOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing") }}
-    {{- $kserveOn := include "agent-platform-standalone.kserve.enabled" . }}
-    {{- if and $mm.kserve.requireApi (not $modelServingOn) (not $kserveOn) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
-      {{- fail "model-manager.backend is kserve but neither the modelServing nor the kserve component is on, nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. Turn on components.kserve and components.modelServing (README, sections KServe control plane and Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
-    {{- end }}
-    {{- if $modelServingOn }}
-      {{- /* The two components describe one serving layer: model-manager
-             reads the runtime, GPU resource name, cache claim and preset
-             selector from the modelServing discovery ConfigMap at run time,
-             so only what must be static (the serving namespace, the
-             discovery ConfigMap's name and namespace) and explicit
-             overrides are checked here. */ -}}
-      {{- $ms := .Values.components.modelServing }}
-      {{- $servingNs := include "agent-platform-standalone.modelServing.namespace" . }}
-      {{- $kserve := dig "kserve" dict $chart }}
-      {{- $mmNs := dig "namespace" "" $kserve | default .Release.Namespace }}
-      {{- if ne $servingNs $mmNs }}
-        {{- fail (printf "model-manager.kserve.namespace (%s) must equal components.modelServing.namespace.name (%s): model-manager manages the InferenceServices the modelServing component's runtime, presets and cache target" $mmNs $servingNs) }}
-      {{- end }}
-      {{- $discovery := dig "discovery" dict $kserve }}
-      {{- if ne (dig "configMap" "" $discovery) "agent-platform-model-serving" }}
-        {{- fail (printf "model-manager.kserve.discovery.configMap (%q) must name the modelServing component's discovery ConfigMap, agent-platform-model-serving" (dig "configMap" "" $discovery)) }}
-      {{- end }}
-      {{- $discoveryNs := dig "namespace" "" $discovery }}
-      {{- if and $discoveryNs (ne $discoveryNs .Release.Namespace) }}
-        {{- fail (printf "model-manager.kserve.discovery.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its discovery ConfigMap" $discoveryNs .Release.Namespace) }}
-      {{- end }}
-      {{- $runtime := dig "runtime" "" $kserve }}
-      {{- if and $runtime (ne $runtime $ms.runtime.name) }}
-        {{- fail (printf "model-manager.kserve.runtime (%s) differs from components.modelServing.runtime.name (%s); leave it empty to follow the discovery ConfigMap" $runtime $ms.runtime.name) }}
-      {{- end }}
-      {{- $gpu := dig "gpuResourceName" "" $kserve }}
-      {{- if and $gpu (ne $gpu $ms.serving.gpuResourceName) }}
-        {{- fail (printf "model-manager.kserve.gpuResourceName (%s) differs from components.modelServing.serving.gpuResourceName (%s); leave it empty to follow the discovery ConfigMap" $gpu $ms.serving.gpuResourceName) }}
-      {{- end }}
-      {{- $claim := dig "cache" "claimName" "" $kserve }}
-      {{- if and $claim $ms.cache.enabled (ne $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
-        {{- fail (printf "model-manager.kserve.cache.claimName (%s) differs from the modelServing cache claim (%s); leave it empty to follow the discovery ConfigMap" $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
-      {{- end }}
-      {{- $presetsNs := dig "presets" "namespace" "" $kserve }}
-      {{- if and $presetsNs (ne $presetsNs .Release.Namespace) }}
-        {{- fail (printf "model-manager.kserve.presets.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its presets" $presetsNs .Release.Namespace) }}
-      {{- end }}
-      {{- $selector := dig "presets" "labelSelector" "" $kserve }}
-      {{- if and $selector (ne $selector "agent-platform.giantswarm.io/serving-preset=true") }}
-        {{- fail (printf "model-manager.kserve.presets.labelSelector (%q) differs from the modelServing preset label agent-platform.giantswarm.io/serving-preset=true; leave it empty to follow the discovery ConfigMap" $selector) }}
-      {{- end }}
-    {{- end }}
+         cluster. Only checkable through its CRDs at render time. */ -}}
+  {{- /* With the kserve component on, templates/kserve/validate.yaml owns
+         this check (a missing API is then the two-phase first install);
+         with modelServing on, templates/model-serving/validate.yaml does. */ -}}
+  {{- if and (eq $backend "kserve") $mm.kserve.requireApi (not (include "agent-platform-standalone.kserve.enabled" .)) (not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing"))) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+    {{- fail "model-manager.backend is kserve but neither the kserve nor the modelServing component is on, nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. Turn on components.kserve and components.modelServing (README, sections KServe control plane and Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
   {{- end }}
 
-  {{- /* ModelConfig wiring lands in the kagent namespace: the chart's Role is
-         rendered there, so the namespace must exist and be kagent's. */ -}}
+  {{- /* ModelConfig wiring lands in the kagent namespace: the ModelConfigs
+         model-manager creates must land where the kagent controller reads them. */ -}}
   {{- if not (dig "kagent" "disableWiring" false $chart) }}
-    {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
-    {{- if not $kagentOn }}
+    {{- if not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent")) }}
       {{- fail "model-manager wires kagent ModelConfigs but components.kagent.enabled is false: turn on kagent, or set model-manager.kagent.disableWiring: true (inventory, pull, load/unload and delete keep working; the wire capability reports false)" }}
     {{- end }}
     {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
@@ -96,9 +51,30 @@ rejects, or an MCPServer CR without its CRD.
     {{- end }}
   {{- end }}
 
-  {{- /* The MCPServer CRD ships with the muster sub-chart. */ -}}
-  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not .Values.components.muster.enabled) }}
+  {{- /* The MCPServer CRD ships with the muster component. */ -}}
+  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster"))) }}
     {{- fail "model-manager.muster.mcpServer.enabled is true but components.muster.enabled is false: the MCPServer CRD ships with muster, so the CR has no API to map to. Turn on muster or set model-manager.muster.mcpServer.enabled: false" }}
+  {{- end }}
+
+  {{- /* The component release resolves its OAuth inputs through the chart's
+         global.identity / global.domain fallbacks; a missing one fails inside
+         the child release, out of sight. Fail here, naming both keys. */ -}}
+  {{- if (include "agent-platform-standalone.modelManager.oauthEnabled" .) }}
+    {{- $oauth := dig "oauth" dict $chart }}
+    {{- if and (not (dig "baseURL" "" $oauth)) (not .Values.global.domain) }}
+      {{- fail "model-manager.oauth.enabled is true but model-manager.oauth.baseURL is empty and global.domain is not set: the resource server needs its public base URL (the gateway route, e.g. https://agentgateway.<domain>/model-manager)" }}
+    {{- end }}
+    {{- if eq (dig "provider" "dex" $oauth) "dex" }}
+      {{- if not (include "agent-platform-standalone.modelManager.issuerUrl" .) }}
+        {{- fail "model-manager.oauth.enabled is true but model-manager.oauth.dex.issuerURL is empty and global.identity.issuerUrl is not set: the resource server needs the login issuer" }}
+      {{- end }}
+      {{- if and (not (dig "dex" "clientID" "" $oauth)) (not .Values.global.identity.clientId) }}
+        {{- fail "model-manager.oauth.enabled is true but model-manager.oauth.dex.clientID is empty and global.identity.clientId is not set: the resource server needs the platform OAuth client" }}
+      {{- end }}
+      {{- if and (not (dig "existingSecret" "" $oauth)) (not (dig "dex" "clientSecret" "" $oauth)) (not .Values.global.identity.existingSecret) }}
+        {{- fail "model-manager.oauth.enabled is true but none of model-manager.oauth.existingSecret, model-manager.oauth.dex.clientSecret or global.identity.existingSecret is set: the resource server needs the platform client's secret (key dex-client-secret)" }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- if $mm.route.enabled }}

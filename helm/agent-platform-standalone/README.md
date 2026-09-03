@@ -145,6 +145,11 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.model-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
 | components.model-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
 | components.model-manager.kserve.requireApi | bool | `true` |  |
+| components.model-manager.networkPolicy.huggingFace.fqdns[0].matchName | string | `"huggingface.co"` |  |
+| components.model-manager.networkPolicy.huggingFace.fqdns[1].matchPattern | string | `"*.huggingface.co"` |  |
+| components.model-manager.networkPolicy.huggingFace.fqdns[2].matchPattern | string | `"*.hf.co"` |  |
+| components.model-manager.networkPolicy.huggingFace.fqdns[3].matchPattern | string | `"*.*.hf.co"` |  |
+| components.model-manager.networkPolicy.huggingFace.cidrs | list | `[]` |  |
 | components.agent-manager.enabled | bool | `true` |  |
 | components.agent-manager.route.enabled | bool | `false` |  |
 | components.agent-manager.route.pathPrefix | string | `"/agent-manager"` |  |
@@ -561,9 +566,6 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.ollama.agentHost | string | `""` |  |
 | model-manager.kagent.namespace | string | `"kagent"` |  |
 | model-manager.kagent.disableWiring | bool | `false` |  |
-| model-manager.kserve.namespace | string | `"model-serving"` |  |
-| model-manager.kserve.discovery.configMap | string | `"agent-platform-model-serving"` |  |
-| model-manager.kserve.discovery.namespace | string | `""` |  |
 | model-manager.mcp.enabled | bool | `true` |  |
 | model-manager.oauth.enabled | bool | `true` |  |
 | model-manager.oauth.provider | string | `"dex"` |  |
@@ -574,10 +576,14 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.muster.mcpServer.auth.forwardToken | bool | `true` |  |
 | model-manager.muster.mcpServer.auth.requiredAudiences[0] | string | `"dex-k8s-authenticator"` |  |
 | model-manager.networkPolicy.enabled | bool | `false` |  |
+| model-manager.kserve.namespace | string | `"model-serving"` |  |
+| model-manager.kserve.discovery.configMap | string | `"agent-platform-model-serving"` |  |
+| model-manager.kserve.discovery.namespace | string | `""` |  |
 | agent-manager.fullnameOverride | string | `"agent-manager"` |  |
 | agent-manager.kagent.namespace | string | `"kagent"` |  |
 | agent-manager.agentChart.ociUrl | string | `"oci://gsoci.azurecr.io/charts/giantswarm/agent"` |  |
 | agent-manager.agentChart.semver | string | `"x.x.x"` |  |
+| agent-manager.flux.helmReleaseServiceAccount | string | `""` |  |
 | agent-manager.skills.repositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
 | agent-manager.mcp.enabled | bool | `true` |  |
 | agent-manager.oauth.enabled | bool | `true` |  |

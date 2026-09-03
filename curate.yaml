@@ -21,7 +21,7 @@ fleet:
   # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
   # customManager convention).
   # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
-  version: 3.2.4
+  version: 3.3.0
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -120,29 +120,29 @@ dependencies:
     enabled: false
   # The model-manager service (Model Manager PDR phase 3, Ollama backend ADR):
   # backend-abstracted model inventory, pull, load/unload, delete and kagent
-  # ModelConfig wiring, as REST and MCP. Off by default; the umbrella renders
-  # its agentgateway route, JWT policy, network policies and the Backstage
-  # app-config entry (templates/model-manager/, templates/backstage/).
+  # ModelConfig wiring, as REST and MCP. A fleet component since
+  # agent-platform 3.3.0 (off there and here); its route, JWT policy and
+  # network policies are generated from the connectivity chart
+  # (templates/model-manager/), the Backstage app-config entry is the
+  # umbrella's own (templates/backstage/).
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
     version: "0.14.0"
-    repository: oci://gsoci.azurecr.io/charts/giantswarm
-    enabled: false
   # The agent-manager service (the agent write surface of the Agent Control
   # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
   # inspects kagent agents as Flux HelmReleases of the agent chart, validated
   # against the chart schema, as REST and MCP (x_agent-manager_* through
-  # muster). On by default with the rest of the platform (decision
-  # 2026-08-31: the standalone chart's product default is the FULL platform);
-  # the umbrella renders its agentgateway route, JWT policy and network
-  # policies (templates/agent-manager/).
+  # muster). A fleet component since agent-platform 3.3.0 (off there); on by
+  # default here with the rest of the platform (decision 2026-08-31: the
+  # standalone chart's product default is the FULL platform —
+  # overlay/contract.yaml flips the toggle). Its route, JWT policy and
+  # network policies are generated from the connectivity chart
+  # (templates/agent-manager/).
   - name: agent-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-manager
     version: "0.2.0"
-    repository: oci://gsoci.azurecr.io/charts/giantswarm
-    enabled: true
   # The KServe control plane (ADR 2026-09-02 "KServe bundled optionally",
   # revising decision D1 of the Model Manager PDR): the CRD chart and the
   # controller chart of giantswarm/kserve, switched together by the umbrella
@@ -255,6 +255,21 @@ keys:
     chart: agent-sandbox
     lift: [podSecurity]
     allowShadow: true
+  # The two managers follow the kagent shape: a chart block (forwarded
+  # verbatim) plus a camelCase wiring block the connectivity templates read,
+  # lifted whole into components.<chart>.
+  model-manager: {action: component, allowShadow: true}
+  agent-manager: {action: component, allowShadow: true}
+  modelManager:
+    action: lift
+    chart: model-manager
+    lift: [route, kserve, networkPolicy]
+    allowShadow: true
+  agentManager:
+    action: lift
+    chart: agent-manager
+    lift: [route, flux, networkPolicy]
+    allowShadow: true
 
 # `# @schema` line comments injected into the generated values.yaml, keyed by
 # the path in the GENERATED layout. The schema pre-commit hook turns them into
@@ -278,6 +293,14 @@ annotations:
   components.model-manager.route.jwtAuthentication.mode: "enum:[Strict,Optional,Permissive]"
   components.agent-manager.route.parentRef: "additionalProperties: true"
   components.agent-manager.route.jwtAuthentication.mode: "enum:[Strict,Optional,Permissive]"
+  # Cilium FQDN selectors (matchName or matchPattern per item) and CIDR lists
+  # of the two managers' egress: the fleet keeps the whole wiring block
+  # opaque, this chart's schema is strict below components.<chart>, so the
+  # array defaults would freeze the item shape (the first item's key only).
+  components.model-manager.networkPolicy.huggingFace.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
+  components.model-manager.networkPolicy.huggingFace.cidrs: "item: string"
+  components.agent-manager.networkPolicy.egress.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
+  components.agent-manager.networkPolicy.egress.cidrs: "item: string"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
   global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
   # Operator-set authorize-request parameters (e.g. Google's
@@ -485,6 +508,124 @@ templates:
         {{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
         {{- end -}}
         {{- end -}}
+    # The manager network policies admit the agentgateway data plane and
+    # muster; this chart runs Backstage (an in-cluster caller of both APIs)
+    # in the same release namespace and admits it too — the shape the
+    # hand-authored policies had before the templates came from the
+    # connectivity chart. The fleet's Backstage lives in another namespace, so
+    # upstream has no such peer. Retires with agent-platform#256 (a
+    # configurable ingress-peer list on both blocks).
+    - file: model-manager/netpol.yaml
+      find: |-
+        {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
+      replace: |-
+        {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
+        {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
+    - file: model-manager/netpol.yaml
+      find: |-
+        {{- if $mcpOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: muster
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if not (or $mm.route.enabled $mcpOn) }}
+      replace: |-
+        {{- if $mcpOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: muster
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if $backstageOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: backstage
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+    - file: model-manager/netpol.yaml
+      find: |-
+        {{- if $mcpOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: muster
+                {{- end }}
+                {{- if not (or $mm.route.enabled $mcpOn) }}
+      replace: |-
+        {{- if $mcpOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: muster
+                {{- end }}
+                {{- if $backstageOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: backstage
+                {{- end }}
+                {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+    - file: agent-manager/netpol.yaml
+      find: |-
+        {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
+      replace: |-
+        {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
+        {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
+    - file: agent-manager/netpol.yaml
+      find: |-
+        {{- if $mcpOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: muster
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if not (or $am.route.enabled $mcpOn) }}
+      replace: |-
+        {{- if $mcpOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: muster
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if $backstageOn }}
+                - matchLabels:
+                    app.kubernetes.io/name: backstage
+                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                {{- end }}
+                {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+    - file: agent-manager/netpol.yaml
+      find: |-
+        {{- if $mcpOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: muster
+                {{- end }}
+                {{- if not (or $am.route.enabled $mcpOn) }}
+      replace: |-
+        {{- if $mcpOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: muster
+                {{- end }}
+                {{- if $backstageOn }}
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: backstage
+                {{- end }}
+                {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+    # The fleet does not bundle KServe, this chart does (components.kserve, and
+    # the modelServing component runs on it): the kserve-backend API guard
+    # defers to them — with the kserve component on, templates/kserve/validate.yaml
+    # owns the check (a missing API is then the two-phase first install), with
+    # modelServing on templates/model-serving/validate.yaml does — and its
+    # remedy names them. model-manager/model-serving-validate.yaml adds the
+    # agreement with the modelServing component.
+    - file: model-manager/validate.yaml
+      find: |-
+        {{- if and (eq $backend "kserve") $mm.kserve.requireApi (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+            {{- fail "model-manager.backend is kserve but the serving.kserve.io/v1beta1 API (InferenceService) is not on the cluster: install KServe first (the Agent Platform does not bundle it). For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
+          {{- end }}
+      replace: |-
+        {{- /* With the kserve component on, templates/kserve/validate.yaml owns
+                 this check (a missing API is then the two-phase first install);
+                 with modelServing on, templates/model-serving/validate.yaml does. */ -}}
+          {{- if and (eq $backend "kserve") $mm.kserve.requireApi (not (include "agent-platform-standalone.kserve.enabled" .)) (not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing"))) (not (.Capabilities.APIVersions.Has "serving.kserve.io/v1beta1")) }}
+            {{- fail "model-manager.backend is kserve but neither the kserve nor the modelServing component is on, nor is the serving.kserve.io/v1beta1 API (InferenceService) on the cluster. Turn on components.kserve and components.modelServing (README, sections KServe control plane and Model serving) or install KServe first. For an offline render pass --api-versions serving.kserve.io/v1beta1, or set components.model-manager.kserve.requireApi=false to skip this check." }}
+          {{- end }}
   # Files under templates/ this generator does not produce. The install notes
   # are the umbrella's own: the fleet's version tells the reader to install the
   # meta-package. The Backstage app-config and route are umbrella-only: the
@@ -523,25 +664,12 @@ templates:
     - model-serving/cache-pvc.yaml
     - model-serving/policies.yaml
     - model-serving/netpol.yaml
-    # The model-manager dependency's umbrella wiring (components.model-manager):
-    # the agentgateway route + JWT policy that expose its API per installation
-    # (mirrors the kagent controllerRoute), the network policies its backend
-    # needs, and the render-time guards on the backend configuration.
-    - model-manager/_helpers.tpl
-    - model-manager/validate.yaml
-    - model-manager/route.yaml
-    - model-manager/jwt-policy.yaml
-    - model-manager/netpol.yaml
-    # The agent-manager dependency's umbrella wiring (components.agent-manager):
-    # the agentgateway route + JWT policy that expose its API per installation
-    # (mirrors model-manager), the network policies (probes, apiserver, the
-    # agent chart's registry, GitHub for skills) and the render-time guards
-    # (kagent on, same namespace, muster for the MCPServer CR).
-    - agent-manager/_helpers.tpl
-    - agent-manager/validate.yaml
-    - agent-manager/route.yaml
-    - agent-manager/jwt-policy.yaml
-    - agent-manager/netpol.yaml
+    # Guards the kserve-backend model-manager against the modelServing
+    # umbrella component it serves (the same serving namespace, discovery
+    # ConfigMap, runtime, GPU resource, cache claim and preset selector): the
+    # connectivity chart knows no modelServing component, so its generated
+    # model-manager/validate.yaml cannot check the two agree.
+    - model-manager/model-serving-validate.yaml
     # The kserve umbrella component (umbrellaComponents above): render-time
     # guards (cert-manager, deployment mode, the two-phase first install, the
     # llmisvc prerequisites) and the network policies of the KServe and

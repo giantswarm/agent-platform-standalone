@@ -1,19 +1,20 @@
 {{- if and (include "agent-platform-standalone.agentManager.enabled" .) .Values.global.networkPolicy.enabled }}
-{{- $am := index .Values.components "agent-manager" }}
+{{- $am := (index .Values.components "agent-manager") }}
 {{- $chart := include "agent-platform-standalone.agentManager.chartValues" . | fromJson }}
 {{- $port := include "agent-platform-standalone.agentManager.servicePort" . }}
-{{- $musterOn := .Values.components.muster.enabled }}
-{{- $backstageOn := .Values.components.backstage.enabled }}
+{{- $musterOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster") }}
 {{- $mcpOn := and $musterOn (dig "muster" "mcpServer" "enabled" false $chart) }}
+{{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
+{{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
 {{- $egress := $am.networkPolicy.egress }}
 {{- $registryHost := include "agent-platform-standalone.agentManager.registryHost" . }}
 
 {{- if eq .Values.global.networkPolicy.flavor "cilium" }}
 ---
-# Ingress to agent-manager: the agentgateway data plane (the portal's route),
-# muster (the MCP endpoint) and Backstage (in-cluster callers), all in the
-# release namespace, on the Service port only — plus the kubelet's probes
-# (host entity), which policyEnforcementMode always would otherwise deny.
+# Ingress to agent-manager: the agentgateway data plane (the portal's route)
+# and muster (the MCP endpoint), both in the release namespace, on the Service
+# port only — plus the kubelet's probes (host entity), which a policy that
+# selects the pod would otherwise deny.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -63,9 +64,10 @@ spec:
 ---
 # Egress from agent-manager: DNS (with Cilium's proxy clause so the FQDN
 # selectors below resolve), the Kubernetes API (HelmReleases, OCIRepositories,
-# Agents, ModelConfigs, workloads), the agent chart's OCI registry (versions,
-# values schema; blob downloads redirect to the registry's storage front) and
-# GitHub (skill discovery) — by name, on 443.
+# Agents, ModelConfigs, workloads — as the caller), the identity provider
+# (agent-manager.oauth: the issuer's JWKS and token endpoint), the agent
+# chart's OCI registry (versions, values schema; blob downloads redirect to the
+# registry's storage front) and GitHub (skill discovery) — by name, on 443.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -78,9 +80,12 @@ spec:
     matchLabels:
       {{- include "agent-platform-standalone.agentManager.podSelector" . | nindent 6 }}
   egress:
-    {{- include "agent-platform-standalone.modelServing.dnsEgress" . | nindent 4 }}
+    {{- include "agent-platform-standalone.dnsEgressWithProxy" . | nindent 4 }}
     - toEntities:
         - kube-apiserver
+    {{- if $oauthOn }}
+    {{- include "agent-platform-standalone.idpEgress.cilium" (dict "issuerUrl" (include "agent-platform-standalone.agentManager.issuerUrl" .)) | trim | nindent 4 }}
+    {{- end }}
     - toFQDNs:
         - matchName: {{ $registryHost }}
         {{- range $egress.fqdns }}
@@ -100,6 +105,14 @@ spec:
     {{- end }}
     {{- with .Values.global.networkPolicy.additionalEgressCIDRs }}
     - toCIDR:
+        {{- toYaml . | nindent 8 }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    {{- end }}
+    {{- with .Values.global.networkPolicy.additionalEgressFQDNs }}
+    - toFQDNs:
         {{- toYaml . | nindent 8 }}
       toPorts:
         - ports:
@@ -160,8 +173,8 @@ spec:
 
 {{- else if eq .Values.global.networkPolicy.flavor "kubernetes" }}
 ---
-# Ingress to agent-manager: the agentgateway data plane (the portal's route),
-# muster (the MCP endpoint) and Backstage, on the Service port only.
+# Ingress to agent-manager: the agentgateway data plane (the portal's route)
+# and muster (the MCP endpoint), on the Service port only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -203,7 +216,9 @@ spec:
 ---
 # Egress from agent-manager: DNS, the Kubernetes API, and — vanilla
 # NetworkPolicy has no FQDN selector — every public destination on 443 for the
-# chart registry and GitHub (networkPolicy.egress.cidrs narrows it).
+# identity provider, the chart registry and GitHub (components.agent-manager.networkPolicy
+# .egress.cidrs narrows it; a private identity provider needs its address in
+# global.networkPolicy.additionalEgressCIDRs).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -244,7 +259,7 @@ spec:
         - port: 6443
           protocol: TCP
     {{- if $egress.cidrs }}
-    # The chart registry and GitHub by address (networkPolicy.egress.cidrs).
+    # The chart registry and GitHub by address (global.networkPolicy.egress.cidrs).
     - to:
         {{- range $egress.cidrs }}
         - ipBlock:
@@ -253,7 +268,8 @@ spec:
       ports:
         - port: 443
           protocol: TCP
-    {{- else }}
+    {{- end }}
+    {{- if or $oauthOn (not $egress.cidrs) }}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
