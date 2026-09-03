@@ -1,0 +1,72 @@
+{{- /*
+Render-time guards of the agent-manager component. They fail `helm template`
+(and therefore CI lint + install) with an actionable message instead of
+shipping a service that manages agents nobody runs, a route the API server
+rejects, or an MCPServer CR without its CRD.
+*/ -}}
+{{- if (include "agent-platform-standalone.agentManager.enabled" .) }}
+  {{- $am := index .Values.components "agent-manager" }}
+  {{- $chart := include "agent-platform-standalone.agentManager.chartValues" . | fromJson }}
+  {{- $_ := include "agent-platform-standalone.agentManager.fullname" . }}
+
+  {{- /* agent-manager creates kagent Agents (as HelmReleases of the agent
+         chart) in the kagent namespace: without the kagent component there
+         is no controller to run them and no namespace to put them in. */ -}}
+  {{- $kagentOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "kagent") }}
+  {{- if not $kagentOn }}
+    {{- fail "components.agent-manager.enabled is true but components.kagent.enabled is false: agent-manager manages kagent agents and has nothing to manage without the runtime. Turn on kagent, or set components.agent-manager.enabled: false" }}
+  {{- end }}
+  {{- $kagentNs := .Values.kagent.kagent.namespaceOverride | default .Release.Namespace }}
+  {{- $amKagentNs := include "agent-platform-standalone.agentManager.kagentNamespace" . }}
+  {{- if ne $kagentNs $amKagentNs }}
+    {{- fail (printf "agent-manager.kagent.namespace (%s) must equal the kagent component's namespace (%s, kagent.kagent.namespaceOverride): the HelmReleases agent-manager creates must land where the kagent controller and the admin-provisioned ModelConfigs are" $amKagentNs $kagentNs) }}
+  {{- end }}
+
+  {{- /* The agents are Flux HelmReleases: helm-controller and
+         source-controller must run on the cluster. Only checkable through
+         their CRDs at render time; an offline `helm template` passes with
+         --api-versions helm.toolkit.fluxcd.io/v2 --api-versions source.toolkit.fluxcd.io/v1,
+         or components.agent-manager.flux.requireApi: false skips it. */ -}}
+  {{- if and $am.flux.requireApi (not (.Capabilities.APIVersions.Has "helm.toolkit.fluxcd.io/v2")) }}
+    {{- fail "components.agent-manager.enabled is true but the helm.toolkit.fluxcd.io/v2 API (HelmRelease) is not on the cluster: agent-manager composes agents as Flux HelmReleases of the agent chart, which helm-controller and source-controller reconcile. Install Flux (its helm and source controllers) first, or set components.agent-manager.flux.requireApi: false for an offline render (or pass --api-versions helm.toolkit.fluxcd.io/v2 --api-versions source.toolkit.fluxcd.io/v1)." }}
+  {{- end }}
+  {{- if and $am.flux.requireApi (not (.Capabilities.APIVersions.Has "source.toolkit.fluxcd.io/v1")) }}
+    {{- fail "components.agent-manager.enabled is true but the source.toolkit.fluxcd.io/v1 API (OCIRepository) is not on the cluster: the agent chart is tracked through a Flux OCIRepository. Install Flux's source-controller, or set components.agent-manager.flux.requireApi: false." }}
+  {{- end }}
+
+  {{- /* The MCP endpoint is how the meta agent reaches the tools: without
+         muster nothing calls them (the MCPServer CRD ships with muster). */ -}}
+  {{- if and (dig "muster" "mcpServer" "enabled" false $chart) (not .Values.components.muster.enabled) }}
+    {{- fail "agent-manager.muster.mcpServer.enabled is true but components.muster.enabled is false: the MCPServer CRD ships with muster, so the CR has no API to map to. Turn on muster (agent-manager's tools reach agents through it) or set agent-manager.muster.mcpServer.enabled: false" }}
+  {{- end }}
+
+  {{- if $am.route.enabled }}
+    {{- /* The route renders agentgateway.dev resources on the agentgateway
+           Gateway. */ -}}
+    {{- if not (include "agent-platform-standalone.ingress.agentgateway" .) }}
+      {{- fail "components.agent-manager.route renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" }}
+    {{- end }}
+    {{- if not (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "agentgateway")) }}
+      {{- fail "components.agent-manager.route.enabled is true but components.agentgateway.enabled is false: the route attaches to the agentgateway data plane" }}
+    {{- end }}
+    {{- if not (hasPrefix "/" $am.route.pathPrefix) }}
+      {{- fail (printf "components.agent-manager.route.pathPrefix (%q) must start with /" $am.route.pathPrefix) }}
+    {{- end }}
+    {{- /* An HTTPRoute with no hostname on the shared public Gateway matches
+           ALL traffic to that Gateway. The hostname helper derives
+           agentgateway.<global.domain> when the override is empty, and fails
+           the render when neither is set. */ -}}
+    {{- $_ := include "agent-platform-standalone.agentManager.hostname" . }}
+    {{- if and $am.route.parentRef.name (not $am.route.parentRef.namespace) }}
+      {{- fail "components.agent-manager.route.parentRef.name is set but .namespace is empty. Set both (the Gateway API CRD rejects an empty namespace), or clear .name to fall back to the chart-owned edge / global.gatewayApi.parentRefs." }}
+    {{- end }}
+    {{- if ($am.route.jwtAuthentication).enabled }}
+      {{- if not $am.route.jwtAuthentication.issuer }}
+        {{- $_ := include "agent-platform-standalone.issuerUrl" (dict "ctx" . "for" "components.agent-manager.route.jwtAuthentication (or set its .issuer)") }}
+      {{- end }}
+      {{- if not .Values.gateway.jwksEgress.enabled }}
+        {{- fail "components.agent-manager.route.jwtAuthentication.enabled is true but gateway.jwksEgress.enabled is false. The agentgateway data plane cannot reach the issuer's JWKS endpoint, so signature validation fails closed. Set gateway.jwksEgress.enabled: true (and its namespace/port to the issuer's)." }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

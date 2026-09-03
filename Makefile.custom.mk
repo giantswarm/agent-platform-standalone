@@ -21,6 +21,10 @@ KSERVE := $(VANILLA) --set components.kserve.enabled=true $(CERT_MANAGER_API)
 # (the controller ships the GIE CRDs).
 LLMISVC_API := --api-versions serving.kserve.io/v1alpha2/LLMInferenceService
 LLMISVC := $(KSERVE) $(KSERVE_API) --set components.kserve.llmisvc.enabled=true $(LLMISVC_API)
+# The agent-manager component (on by default) with its route and JWT policy
+# (the shape a portal or CLI calling the REST API runs).
+AGENT_MANAGER := $(VANILLA) --set 'components.agent-manager.route.enabled=true' \
+	--set 'components.agent-manager.route.jwtAuthentication.enabled=true' --set gateway.jwksEgress.enabled=true
 # The model-manager component on with the ollama backend, its route and JWT
 # policy (the shape the lab and the portal run).
 MODEL_MANAGER := $(VANILLA) --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
@@ -40,7 +44,7 @@ deps: ## Pull the pinned dependencies (helm dependency build, never update).
 ##@ Verification
 
 .PHONY: verify
-verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager verify-kserve ## Everything CI runs.
+verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager verify-agent-manager verify-kserve ## Everything CI runs.
 
 .PHONY: test
 test: ## Unit tests of the generator.
@@ -209,6 +213,40 @@ verify-model-serving: deps ## The modelServing component renders nothing while o
 	@if $(MODEL_SERVING) --set global.networkPolicy.enabled=true --set components.modelServing.networkPolicy.predictor.port=0 >/dev/null 2>&1; then \
 		echo "FAIL: port 0 accepted"; exit 1; fi
 
+.PHONY: verify-agent-manager
+verify-agent-manager: deps ## The agent-manager component renders the service + MCPServer by default, the route + JWT policy when on, nothing when off, and its guards fail inconsistent configs.
+	@echo "--> agent-manager on (the default), route off: Deployment, Service, Role in the kagent namespace, MCPServer; no route, no policy"
+	@out=$$($(VANILLA) --set 'components.agent-manager.route.enabled=false' --set 'components.agent-manager.route.jwtAuthentication.enabled=false'); \
+	for pattern in 'kind: Deployment' 'name: agent-manager$$' '--kagent-namespace=kagent' '--agent-chart-oci-url=oci://gsoci.azurecr.io/charts/giantswarm/agent' 'kind: MCPServer' 'url: http://agent-manager\..*\.svc\.cluster\.local:8080/mcp' 'helmreleases' 'ocirepositories'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager default render lacks $$pattern"; exit 1; }; \
+	done; \
+	for pattern in 'name: agent-manager-public' 'name: agent-manager-jwt' 'kind: NetworkPolicy' 'kind: CiliumNetworkPolicy'; do \
+		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: agent-manager default render contains $$pattern"; exit 1; fi; \
+	done
+	@echo "--> agent-manager off: the render carries no agent-manager object"
+	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false'); \
+	if printf '%s' "$$out" | grep -q -e 'agent-manager'; then echo "FAIL: render with agent-manager off contains agent-manager"; exit 1; fi
+	@echo "--> agent-manager route + JWT: backends, routes, policy, prefix strip"
+	@out=$$($(AGENT_MANAGER)); \
+	for pattern in 'host: agent-manager\..*\.svc\.cluster\.local' 'name: agent-manager-public' 'name: agent-manager-jwks' 'name: agent-manager-jwt' 'replacePrefixMatch: /' 'value: /agent-manager$$'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager route render lacks $$pattern"; exit 1; }; \
+	done
+	@echo "--> network policies in both flavors: ingress from the data plane, muster and Backstage, probes (cilium), egress to the registry and GitHub"
+	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	for pattern in 'kind: CiliumNetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'matchName: gsoci.azurecr.io' 'matchName: api.github.com' 'blob\.core\.windows\.net' '- host' '- remote-node' '- kube-apiserver'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager cilium policies lack $$pattern"; exit 1; }; \
+	done
+	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=kubernetes); \
+	for pattern in 'kind: NetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'cidr: 0.0.0.0/0'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager kubernetes policies lack $$pattern"; exit 1; }; \
+	done
+	@echo "--> guards: kagent off, namespace mismatch, muster off with the MCPServer on, route without agentgateway ingress, Flux API required"
+	@if $(VANILLA) --set 'components.kagent.enabled=false' >/dev/null 2>&1; then echo "FAIL: agent-manager rendered without kagent"; exit 1; fi
+	@if $(VANILLA) --set 'agent-manager.kagent.namespace=other' >/dev/null 2>&1; then echo "FAIL: agent-manager rendered with a kagent namespace mismatch"; exit 1; fi
+	@if $(VANILLA) --set 'components.muster.enabled=false' --set 'components.agentgateway.enabled=false' --set ingress.mode=muster-direct >/dev/null 2>&1; then echo "FAIL: agent-manager MCPServer rendered without muster"; exit 1; fi
+	@if $(VANILLA) --set 'components.agent-manager.flux.requireApi=true' >/dev/null 2>&1; then echo "FAIL: agent-manager rendered offline with flux.requireApi"; exit 1; fi
+	@$(VANILLA) --set 'components.agent-manager.flux.requireApi=true' --api-versions helm.toolkit.fluxcd.io/v2 --api-versions source.toolkit.fluxcd.io/v1 >/dev/null
+
 .PHONY: verify-model-manager
 verify-model-manager: deps ## The model-manager component renders nothing while off, the service + route + JWT policy + app-config entry while on, and its guards fail inconsistent configs.
 	@echo "--> model-manager off (the default): the render carries no model-manager object"
@@ -277,9 +315,9 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 		echo "FAIL: model-manager route in muster-direct mode accepted"; exit 1; fi
 	@if $(MODEL_MANAGER) --set gateway.jwksEgress.enabled=false >/dev/null 2>&1; then \
 		echo "FAIL: JWT policy without jwksEgress accepted"; exit 1; fi
-	@if $(MODEL_MANAGER) --set components.kagent.enabled=false >/dev/null 2>&1; then \
+	@if $(MODEL_MANAGER) --set components.kagent.enabled=false --set 'components.agent-manager.enabled=false' >/dev/null 2>&1; then \
 		echo "FAIL: ModelConfig wiring without the kagent component accepted"; exit 1; fi
-	@$(MODEL_MANAGER) --set components.kagent.enabled=false --set 'model-manager.kagent.disableWiring=true' >/dev/null
+	@$(MODEL_MANAGER) --set components.kagent.enabled=false --set 'components.agent-manager.enabled=false' --set 'model-manager.kagent.disableWiring=true' >/dev/null
 	@if $(MODEL_MANAGER) --set components.muster.enabled=false --set components.valkey.enabled=false >/dev/null 2>&1; then \
 		echo "FAIL: MCPServer CR without the muster component accepted"; exit 1; fi
 	@echo "--> kserve backend under network policies: model-manager gets the Hugging Face egress in both flavors"

@@ -19,6 +19,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | Repository | Name | Version |
 |------------|------|---------|
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agent-manager | 0.1.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.26 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.4 |
@@ -144,6 +145,24 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.model-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
 | components.model-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
 | components.model-manager.kserve.requireApi | bool | `true` |  |
+| components.agent-manager.enabled | bool | `true` |  |
+| components.agent-manager.route.enabled | bool | `false` |  |
+| components.agent-manager.route.pathPrefix | string | `"/agent-manager"` |  |
+| components.agent-manager.route.hostname | string | `""` |  |
+| components.agent-manager.route.parentRef.name | string | `""` |  |
+| components.agent-manager.route.parentRef.namespace | string | `""` |  |
+| components.agent-manager.route.jwtAuthentication.enabled | bool | `false` |  |
+| components.agent-manager.route.jwtAuthentication.mode | string | `"Strict"` |  |
+| components.agent-manager.route.jwtAuthentication.issuer | string | `""` |  |
+| components.agent-manager.route.jwtAuthentication.jwks.host | string | `"dex.giantswarm.svc.cluster.local"` |  |
+| components.agent-manager.route.jwtAuthentication.jwks.port | int | `5556` |  |
+| components.agent-manager.route.jwtAuthentication.jwks.path | string | `"/keys"` |  |
+| components.agent-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
+| components.agent-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
+| components.agent-manager.flux.requireApi | bool | `false` |  |
+| components.agent-manager.networkPolicy.egress.fqdns[0].matchPattern | string | `"*.blob.core.windows.net"` |  |
+| components.agent-manager.networkPolicy.egress.fqdns[1].matchName | string | `"api.github.com"` |  |
+| components.agent-manager.networkPolicy.egress.cidrs | list | `[]` |  |
 | components.modelServing.enabled | bool | `false` |  |
 | components.modelServing.kserve.requireApi | bool | `true` |  |
 | components.modelServing.namespace.name | string | `"model-serving"` |  |
@@ -555,6 +574,14 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.muster.mcpServer.auth.forwardToken | bool | `true` |  |
 | model-manager.muster.mcpServer.auth.requiredAudiences[0] | string | `"dex-k8s-authenticator"` |  |
 | model-manager.networkPolicy.enabled | bool | `false` |  |
+| agent-manager.fullnameOverride | string | `"agent-manager"` |  |
+| agent-manager.kagent.namespace | string | `"kagent"` |  |
+| agent-manager.agentChart.ociUrl | string | `"oci://gsoci.azurecr.io/charts/giantswarm/agent"` |  |
+| agent-manager.agentChart.semver | string | `"x.x.x"` |  |
+| agent-manager.skills.repositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
+| agent-manager.mcp.enabled | bool | `true` |  |
+| agent-manager.muster.mcpServer.enabled | bool | `true` |  |
+| agent-manager.networkPolicy.enabled | bool | `false` |  |
 | kserve-crd | object | `{}` |  |
 | kserve-resources.kserve.controller.deploymentMode | string | `"Standard"` |  |
 | kserve-resources.kserve.controller.gateway.disableIngressCreation | bool | `true` |  |

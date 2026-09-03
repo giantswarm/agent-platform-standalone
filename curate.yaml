@@ -129,6 +129,20 @@ dependencies:
     version: "0.13.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
+  # The agent-manager service (the agent write surface of the Agent Control
+  # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
+  # inspects kagent agents as Flux HelmReleases of the agent chart, validated
+  # against the chart schema, as REST and MCP (x_agent-manager_* through
+  # muster). On by default with the rest of the platform (decision
+  # 2026-08-31: the standalone chart's product default is the FULL platform);
+  # the umbrella renders its agentgateway route, JWT policy and network
+  # policies (templates/agent-manager/).
+  - name: agent-manager
+    range: "0.x"
+    # registry: gsoci.azurecr.io/charts/giantswarm/agent-manager
+    version: "0.1.0"
+    repository: oci://gsoci.azurecr.io/charts/giantswarm
+    enabled: true
   # The KServe control plane (ADR 2026-09-02 "KServe bundled optionally",
   # revising decision D1 of the Model Manager PDR): the CRD chart and the
   # controller chart of giantswarm/kserve, switched together by the umbrella
@@ -262,6 +276,8 @@ annotations:
   components.model-manager.route.parentRef: "additionalProperties: true"
   # A typo in the validation mode would silently render an invalid policy.
   components.model-manager.route.jwtAuthentication.mode: "enum:[Strict,Optional,Permissive]"
+  components.agent-manager.route.parentRef: "additionalProperties: true"
+  components.agent-manager.route.jwtAuthentication.mode: "enum:[Strict,Optional,Permissive]"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
   global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
   # Operator-set authorize-request parameters (e.g. Google's
@@ -516,6 +532,16 @@ templates:
     - model-manager/route.yaml
     - model-manager/jwt-policy.yaml
     - model-manager/netpol.yaml
+    # The agent-manager dependency's umbrella wiring (components.agent-manager):
+    # the agentgateway route + JWT policy that expose its API per installation
+    # (mirrors model-manager), the network policies (probes, apiserver, the
+    # agent chart's registry, GitHub for skills) and the render-time guards
+    # (kagent on, same namespace, muster for the MCPServer CR).
+    - agent-manager/_helpers.tpl
+    - agent-manager/validate.yaml
+    - agent-manager/route.yaml
+    - agent-manager/jwt-policy.yaml
+    - agent-manager/netpol.yaml
     # The kserve umbrella component (umbrellaComponents above): render-time
     # guards (cert-manager, deployment mode, the two-phase first install, the
     # llmisvc prerequisites) and the network policies of the KServe and
