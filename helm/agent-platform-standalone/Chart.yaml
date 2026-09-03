@@ -29,7 +29,7 @@ annotations:
 # Chart.lock mirrors these pins; CI runs `helm dependency build` and fails on drift.
 dependencies:
   - name: muster
-    version: "5.7.4"  # range 5.x
+    version: "5.7.18"  # range 5.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.muster.enabled
   - name: valkey
