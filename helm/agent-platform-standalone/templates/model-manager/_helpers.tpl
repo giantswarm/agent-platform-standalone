@@ -1,25 +1,25 @@
 {{/* vim: set filetype=mustache: */}}
 {{/*
-Helpers of the model-manager component's umbrella wiring (templates/model-manager/).
-Hand-authored: listed in curate.yaml templates.extra, never generated.
+Helpers of the model-manager component's wiring (templates/model-manager/).
 
-Two values blocks feed these templates: components.model-manager (the umbrella
-wiring — route, JWT policy, guards; hyphenated, so reached through index) and
-model-manager (the dependency chart's own values: backend, endpoint, kagent
-namespace, Service name and port), read here the way the kagent templates read
-kagent.kagent.namespaceOverride — a dependency's values cannot be derived at
-render time, so the umbrella reads what the chart will see.
+Two values blocks feed these templates: components.model-manager (the umbrella wiring —
+route, JWT policy, network policy inputs, guards) and model-manager (the
+component chart's own values: backend, endpoint, kagent namespace, OAuth,
+Service name and port; hyphenated, so reached through index), read here the
+way the kagent templates read kagent.kagent.namespaceOverride — a component release's
+values cannot be derived at render time, so the wiring reads what the chart
+will see.
 */}}
 
 {{/*
-Truthy when the model-manager dependency is on (components.model-manager.enabled).
+Truthy when the model-manager component is on (components.model-manager.enabled).
 */}}
 {{- define "agent-platform-standalone.modelManager.enabled" -}}
 {{- include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "model-manager") -}}
 {{- end -}}
 
 {{/*
-The dependency's values block, model-manager (a dict; empty when unset).
+The component chart's values block, model-manager (a dict; empty when unset).
 */}}
 {{- define "agent-platform-standalone.modelManager.chartValues" -}}
 {{- index .Values "model-manager" | default dict | toJson -}}
@@ -27,10 +27,10 @@ The dependency's values block, model-manager (a dict; empty when unset).
 
 {{/*
 The model-manager Service name. Single source of truth: the umbrella pins
-model-manager.fullnameOverride (overlay/contract.yaml), which the sub-chart
-uses verbatim for its Service, and the AgentgatewayBackend host and the
-network policies target exactly that name — a misconfiguration fails the
-render instead of a silent 503.
+model-manager.fullnameOverride (values.yaml), which the component chart uses
+verbatim for its Service, and the AgentgatewayBackend host and the network
+policies target exactly that name — a misconfiguration fails the render
+instead of a silent 503.
 */}}
 {{- define "agent-platform-standalone.modelManager.fullname" -}}
 {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
@@ -89,6 +89,29 @@ The namespace model-manager wires ModelConfigs into (model-manager.kagent.namesp
 {{- end -}}
 
 {{/*
+Truthy when the component validates the caller's identity itself
+(model-manager.oauth.enabled): the network policies then admit egress to the
+identity provider.
+*/}}
+{{- define "agent-platform-standalone.modelManager.oauthEnabled" -}}
+{{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
+{{- if dig "oauth" "enabled" false $chart }}true{{ end -}}
+{{- end -}}
+
+{{/*
+The issuer URL the component validates tokens against: the dex provider's
+model-manager.oauth.dex.issuerURL, else global.identity.issuerUrl (the chart's
+own fallback). Empty for the google provider (public Google endpoints) and
+when neither is set.
+*/}}
+{{- define "agent-platform-standalone.modelManager.issuerUrl" -}}
+{{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
+{{- if eq (dig "oauth" "provider" "dex" $chart) "dex" -}}
+{{- dig "oauth" "dex" "issuerURL" "" $chart | default .Values.global.identity.issuerUrl -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 The public hostname of the model-manager route: the override when set, else
 agentgateway.<global.domain> — the same hostname as the kagent controller route.
 */}}
@@ -106,13 +129,13 @@ app.kubernetes.io/component: model-manager
 {{- end -}}
 
 {{/*
-The selector labels of the model-manager pods, as the sub-chart stamps them
-(app.kubernetes.io/name from its chart name or nameOverride, instance = the
-release name Helm hands the sub-chart, which is this release's).
+The selector labels of the model-manager pods, as the component chart stamps
+them (app.kubernetes.io/name from its chart name or nameOverride). The
+component runs as its own release, so it is selected by name only, not by a
+release-scoped instance label — like the muster policies.
 Rendered as YAML mapping entries; the caller provides the indentation.
 */}}
 {{- define "agent-platform-standalone.modelManager.podSelector" -}}
 {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
 app.kubernetes.io/name: {{ dig "nameOverride" "" $chart | default "model-manager" }}
-app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}

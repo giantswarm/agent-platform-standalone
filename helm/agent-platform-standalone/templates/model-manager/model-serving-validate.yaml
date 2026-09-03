@@ -1,0 +1,53 @@
+{{- /*
+Render-time guards between the kserve-backend model-manager and the
+modelServing umbrella component. Hand-authored: listed in curate.yaml
+templates.extra, never generated — the connectivity chart's model-manager
+guards (validate.yaml next to this file) know no modelServing component.
+
+The two components describe one serving layer: model-manager reads the
+runtime, GPU resource name, cache claim and preset selector from the
+modelServing discovery ConfigMap at run time, so only what must be static (the
+serving namespace, the discovery ConfigMap's name and namespace) and explicit
+overrides are checked here. They fail `helm template` (and therefore CI lint +
+install) with an actionable message instead of shipping a model-manager that
+manages InferenceServices in a namespace the runtime, presets and cache do not
+target.
+*/ -}}
+{{- if and (include "agent-platform-standalone.modelManager.enabled" .) (eq (include "agent-platform-standalone.modelManager.backend" .) "kserve") (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing")) }}
+  {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson }}
+  {{- $ms := .Values.components.modelServing }}
+  {{- $servingNs := include "agent-platform-standalone.modelServing.namespace" . }}
+  {{- $kserve := dig "kserve" dict $chart }}
+  {{- $mmNs := dig "namespace" "" $kserve | default .Release.Namespace }}
+  {{- if ne $servingNs $mmNs }}
+    {{- fail (printf "model-manager.kserve.namespace (%s) must equal components.modelServing.namespace.name (%s): model-manager manages the InferenceServices the modelServing component's runtime, presets and cache target" $mmNs $servingNs) }}
+  {{- end }}
+  {{- $discovery := dig "discovery" dict $kserve }}
+  {{- if ne (dig "configMap" "" $discovery) "agent-platform-model-serving" }}
+    {{- fail (printf "model-manager.kserve.discovery.configMap (%q) must name the modelServing component's discovery ConfigMap, agent-platform-model-serving" (dig "configMap" "" $discovery)) }}
+  {{- end }}
+  {{- $discoveryNs := dig "namespace" "" $discovery }}
+  {{- if and $discoveryNs (ne $discoveryNs .Release.Namespace) }}
+    {{- fail (printf "model-manager.kserve.discovery.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its discovery ConfigMap" $discoveryNs .Release.Namespace) }}
+  {{- end }}
+  {{- $runtime := dig "runtime" "" $kserve }}
+  {{- if and $runtime (ne $runtime $ms.runtime.name) }}
+    {{- fail (printf "model-manager.kserve.runtime (%s) differs from components.modelServing.runtime.name (%s); leave it empty to follow the discovery ConfigMap" $runtime $ms.runtime.name) }}
+  {{- end }}
+  {{- $gpu := dig "gpuResourceName" "" $kserve }}
+  {{- if and $gpu (ne $gpu $ms.serving.gpuResourceName) }}
+    {{- fail (printf "model-manager.kserve.gpuResourceName (%s) differs from components.modelServing.serving.gpuResourceName (%s); leave it empty to follow the discovery ConfigMap" $gpu $ms.serving.gpuResourceName) }}
+  {{- end }}
+  {{- $claim := dig "cache" "claimName" "" $kserve }}
+  {{- if and $claim $ms.cache.enabled (ne $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
+    {{- fail (printf "model-manager.kserve.cache.claimName (%s) differs from the modelServing cache claim (%s); leave it empty to follow the discovery ConfigMap" $claim (include "agent-platform-standalone.modelServing.claimName" .)) }}
+  {{- end }}
+  {{- $presetsNs := dig "presets" "namespace" "" $kserve }}
+  {{- if and $presetsNs (ne $presetsNs .Release.Namespace) }}
+    {{- fail (printf "model-manager.kserve.presets.namespace (%s) must be empty or the release namespace (%s), where the modelServing component publishes its presets" $presetsNs .Release.Namespace) }}
+  {{- end }}
+  {{- $selector := dig "presets" "labelSelector" "" $kserve }}
+  {{- if and $selector (ne $selector "agent-platform.giantswarm.io/serving-preset=true") }}
+    {{- fail (printf "model-manager.kserve.presets.labelSelector (%q) differs from the modelServing preset label agent-platform.giantswarm.io/serving-preset=true; leave it empty to follow the discovery ConfigMap" $selector) }}
+  {{- end }}
+{{- end }}

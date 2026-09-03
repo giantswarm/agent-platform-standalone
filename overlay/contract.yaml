@@ -138,158 +138,39 @@ components:
     # scopes (they fail the login with invalid_scope) and its client id IS
     # the apiserver's --oidc-client-id.
     kubernetesAudience: dex-k8s-authenticator
-  # The model-manager service (Model Manager PDR phase 3; the Ollama backend
-  # ADR): model inventory, pull with progress, load/unload, delete and kagent
-  # ModelConfig wiring behind one REST + MCP API, per installation. Off by
-  # default and inert while off. The service's own configuration — the
-  # serving backend (`ollama` for a host Ollama, `kserve` for KServe/vLLM on
-  # GPU installs), its endpoint, the kagent namespace it wires ModelConfigs
-  # into — is the model-manager chart's and lives in the `model-manager:`
-  # block below, validated by that chart's schema; the umbrella cannot
-  # compute a dependency's values at render time. This block carries the
-  # wiring the umbrella renders for it: the agentgateway route the portal
-  # backend (agentPlatform.modelManager.installations.<release>.apiBaseUrl in
-  # the Backstage app-config) reaches the API through, and the JWT policy
-  # that makes the gateway the identity boundary — model-manager itself
-  # checks no identity, exactly like the kagent controller behind its
-  # controllerRoute. muster reaches the MCP endpoint in-cluster (the chart's
-  # MCPServer CR, model-manager.muster.mcpServer), not through this route.
-  # See the README section "Model manager".
+  # The model-manager component's wiring (route, JWT policy, network policy
+  # inputs, the kserve API guard) is the fleet's since agent-platform 3.3.0,
+  # lifted here from its modelManager block; the toggle default (off) is the
+  # fleet's too. The portal backend reaches the API through the route
+  # (agentPlatform.modelManager.installations.<release>.apiBaseUrl in the
+  # Backstage app-config, templates/backstage/); muster reaches the MCP
+  # endpoint in-cluster (the chart's MCPServer CR). See the README section
+  # "Model manager".
   model-manager:
-    # Expose the model-manager API on the agentgateway data plane at
-    # https://agentgateway.<global.domain><pathPrefix>: an AgentgatewayBackend
-    # for the Service, an HTTPRoute that strips the prefix (model-manager
-    # then sees /api/v1/...), and — when the chart-owned edge is not the data
-    # plane — the public HTTPRoute on the outer Gateway. Requires an
-    # agentgateway-* ingress.mode.
     route:
-      enabled: false
-      pathPrefix: /model-manager
-      # Public hostname; empty derives agentgateway.<global.domain> (the
-      # same hostname as the kagent controller route).
-      hostname: ""
-      # Gateway of the public route (outer edge). Both halves or neither:
-      # empty follows the chart-owned edge, else global.gatewayApi.parentRefs.
       parentRef:
+        # The standalone default: empty follows the chart-owned edge, else
+        # global.gatewayApi.parentRefs (the fleet names its own public
+        # Gateway here; a vanilla cluster has none).
         name: ""
         namespace: ""
-      # Validate the bearer JWT (signature, issuer, expiry) at the gateway
-      # before forwarding: no token, no API. The issuer defaults to
-      # global.identity.issuerUrl; the JWKS is fetched from the issuer's
-      # in-cluster endpoint through a static AgentgatewayBackend (needs
-      # gateway.jwksEgress when network policies are on).
-      jwtAuthentication:
-        enabled: false
-        mode: Strict
-        issuer: ""
-        jwks:
-          host: dex.giantswarm.svc.cluster.local
-          port: 5556
-          path: /keys
-          # The issuer serves its JWKS over TLS (a Dex with `web.https`):
-          # originate TLS to it, verifying against the CA Secret (key
-          # ca.crt); empty caSecretName uses global.identity.ca.secretName,
-          # and with both empty the data plane's system trust. Off: plain
-          # HTTP, the in-cluster Dex default.
-          tls:
-            enabled: false
-            caSecretName: ""
-    # The kserve backend (model-manager.backend: kserve) manages
-    # InferenceServices; the render fails while the serving.kserve.io API
-    # is missing and the modelServing component is off, unless this is
-    # false (an offline `helm template` passes with --api-versions
-    # serving.kserve.io/v1beta1).
-    kserve:
-      requireApi: true
-  # The agent-manager service (the agent write surface of the Agent Control
-  # Plane, giantswarm/giantswarm#36796): the sibling of model-manager for
-  # agents. It composes a kagent agent the way the portal's create flow does
-  # — a Flux HelmRelease of the agent chart plus the shared per-namespace
-  # OCIRepository of that chart — validates the values against the chart's
-  # values.schema.json before applying, and reads agents back from the Agent,
-  # its HelmRelease and the workload; ModelConfigs and skills are listed for
-  # it. Ten MCP tools (x_agent-manager_* through muster's own MCPServer CR,
-  # agent-manager.muster.mcpServer) and the same REST API. On by default with
-  # the platform: it needs kagent (the agents it manages) and Flux's helm and
-  # source controllers on the cluster (the HelmReleases it writes — the same
+  # The agent-manager component: the fleet ships it off, the standalone's
+  # product default is the FULL platform (decision 2026-08-31), so it is on
+  # here — it needs kagent (the agents it manages) and Flux's helm and source
+  # controllers on the cluster (the HelmReleases it writes — the same
   # prerequisite the portal's agent create flow has; without them an agent
-  # stays "progressing" and get_agent_status says so). The service's own
-  # configuration is the agent-manager chart's, in the `agent-manager:` block
-  # below. This block carries the wiring the umbrella renders for it: the
-  # agentgateway route a portal backend reaches the API through and the JWT
-  # policy that makes the gateway the identity boundary — agent-manager itself
-  # checks no identity yet and writes with its own ServiceAccount (model-manager
-  # did the same until 0.13.0; since then it validates the forwarded token
-  # itself and acts only as the caller — agent-manager gets the same treatment
-  # in a follow-up). See the README section "Agent manager".
+  # stays "progressing" and get_agent_status says so). The wiring (route, JWT
+  # policy, network policy inputs, the Flux API guard) is the fleet's, lifted
+  # from its agentManager block. See the README section "Agent manager".
   agent-manager:
-    # Expose the agent-manager API on the agentgateway data plane at
-    # https://agentgateway.<global.domain><pathPrefix>: an AgentgatewayBackend
-    # for the Service, an HTTPRoute that strips the prefix (agent-manager then
-    # sees /api/v1/...), and — when the chart-owned edge is not the data
-    # plane — the public HTTPRoute on the outer Gateway. Off by default: the
-    # MCP tools reach muster in-cluster without it; turn it on for a portal
-    # or CLI that calls the REST API. Requires an agentgateway-* ingress.mode.
+    enabled: true
     route:
-      enabled: false
-      pathPrefix: /agent-manager
-      # Public hostname; empty derives agentgateway.<global.domain>.
-      hostname: ""
-      # Gateway of the public route (outer edge). Both halves or neither:
-      # empty follows the chart-owned edge, else global.gatewayApi.parentRefs.
       parentRef:
+        # The standalone default: empty follows the chart-owned edge, else
+        # global.gatewayApi.parentRefs (the fleet names its own public
+        # Gateway here; a vanilla cluster has none).
         name: ""
         namespace: ""
-      # Validate the bearer JWT (signature, issuer, expiry) at the gateway
-      # before forwarding: no token, no API. The issuer defaults to
-      # global.identity.issuerUrl; the JWKS is fetched from the issuer's
-      # in-cluster endpoint through a static AgentgatewayBackend (needs
-      # gateway.jwksEgress when network policies are on).
-      jwtAuthentication:
-        enabled: false
-        mode: Strict
-        issuer: ""
-        jwks:
-          host: dex.giantswarm.svc.cluster.local
-          port: 5556
-          path: /keys
-          tls:
-            enabled: false
-            caSecretName: ""
-    flux:
-      # Fail the render when the Flux APIs agent-manager writes
-      # (helm.toolkit.fluxcd.io/v2 HelmRelease, source.toolkit.fluxcd.io/v1
-      # OCIRepository) are not on the cluster. Off by default because the
-      # component is on by default and an offline `helm template` (lint, the
-      # catalog build) never sees cluster APIs; turn it on for installs that
-      # want a missing Flux to fail the upgrade instead of leaving agents
-      # "progressing".
-      requireApi: false
-    # Network policies of the component, rendered under global.networkPolicy
-    # (enabled + flavor) like every other component's wiring; nothing renders
-    # while global.networkPolicy.enabled is false. Ingress: the agentgateway
-    # data plane (route on), muster (MCPServer on), Backstage, and — cilium —
-    # the kubelet's probes. Egress: DNS, the Kubernetes API, and 443 to the
-    # agent chart's registry (derived from agent-manager.agentChart.ociUrl)
-    # plus the names below.
-    networkPolicy:
-      egress:
-        # cilium flavor: Cilium FQDN selectors (matchName, matchPattern) next
-        # to the registry host, resolved through the DNS proxy rule the policy
-        # renders. The defaults cover the registry's blob storage front
-        # (gsoci.azurecr.io redirects downloads to *.blob.core.windows.net)
-        # and the GitHub API skill discovery reads SKILL.md files from.
-        # Ignored by the kubernetes flavor (see cidrs).
-        fqdns:  # @schema item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}
-          - matchPattern: "*.blob.core.windows.net"
-          - matchName: api.github.com
-        # IP blocks of the registry and GitHub. kubernetes flavor: vanilla
-        # NetworkPolicy selects addresses, never names, so an empty list (the
-        # default) opens 443 to every public destination — 0.0.0.0/0 minus
-        # global.networkPolicy.kubernetes.worldExcludedCIDRs. A list here
-        # narrows the egress to exactly these blocks (a mirror, a proxy). The
-        # cilium flavor adds them next to the names.
-        cidrs: []  # @schema item: string
   # Model serving on KServe with vLLM, for installs that run local models
   # (Model Manager PDR, decision D1: integrate KServe, do not bundle it). Off
   # by default and inert while off: nothing below renders. The umbrella
@@ -670,149 +551,40 @@ mcp-kubernetes:
         allowPrivateIPs: true
       enableDownstreamOAuth: true
 
-# Values forwarded to the agent-manager chart (components.agent-manager above
-# is the umbrella's wiring). fullnameOverride is what the umbrella's route and
-# network policies target; kagent.namespace must equal the kagent component's
-# namespace (validate.yaml); the MCPServer CR registers the tools with muster.
-#
-# The user's identity, not a ServiceAccount (chart >= 0.2.0): oauth.enabled
-# makes agent-manager an OAuth 2.1 resource server (mcp-oauth) in front of
-# both its MCP endpoint and its REST API — issuer, client, secret and CA fall
-# back to global.identity inside the chart, the trusted audience to the
-# platform client; the OAuth base URL derives from global.domain. muster
-# forwards the session's IdP id_token (the MCPServer CR's auth block,
-# muster.mcpServer.auth) and the portal sends the user's id_token through the
-# gateway route; agent-manager validates both against the IdP's JWKS and logs
-# every write with the caller (results carry requestedBy). oauth.downstream
-# presents that token to the kube-apiserver for everything a request does —
-# the HelmRelease and OCIRepository writes, the Agent, ModelConfig,
-# Deployment, pod and event reads — so the user's RBAC governs and the
-# ServiceAccount holds no permissions at all (the chart renders no Role;
-# agent-manager has no background work). requiredAudiences is the
-# cross-client audience the apiserver trusts (see
-# components.mcp-kubernetes.kubernetesAudience — a Google IdP sets []); the
-# private-IP relaxations are for the platform's in-cluster Dex.
-agent-manager:  # @schema skipProperties: true; additionalProperties: true
-  fullnameOverride: agent-manager
-  kagent:
-    namespace: kagent
-  # The agent chart every agent renders from, and the range the shared
-  # OCIRepository tracks (x.x.x: every release — the platform convention).
-  agentChart:
-    ociUrl: oci://gsoci.azurecr.io/charts/giantswarm/agent
-    semver: x.x.x
-  # The skill repositories list_skills offers: keep in step with
-  # components.backstage.skillsRepositories (the portal's create flow reads
-  # the same repositories).
-  skills:
-    repositories:
-      - https://github.com/giantswarm/agent-skills
-  mcp:
-    enabled: true
-  oauth:
-    enabled: true
-    provider: dex
-    dex:
-      allowPrivateURLs: true
-    sso:
-      allowPrivateIPs: true
-    downstream:
-      enabled: true
-  muster:
-    mcpServer:
-      enabled: true
-      auth:
-        forwardToken: true
-        requiredAudiences:
-          - dex-k8s-authenticator
-  # The umbrella renders the network policies for this component under
-  # global.networkPolicy (templates/agent-manager/netpol.yaml), in both
-  # flavors; the chart's own NetworkPolicy stays off.
-  networkPolicy:
-    enabled: false
+# The agent-manager chart's values are the fleet's since agent-platform 3.3.0
+# (fullnameOverride, the agent chart, skills, OAuth as the caller, the
+# MCPServer CR with the forwarded token); only the standalone deviation is
+# here.
+agent-manager:
+  flux:
+    # HelmRelease.spec.serviceAccountName of every agent agent-manager
+    # writes. The fleet names the `kagent-flux` ServiceAccount the Giant
+    # Swarm management-cluster base provisions for its Flux multi-tenancy
+    # admission policy; a standalone cluster has neither, and a HelmRelease
+    # naming a missing ServiceAccount never reconciles. Empty omits the field
+    # (the agent-manager chart's own default); an install with Flux
+    # multi-tenancy names its tenant ServiceAccount here.
+    helmReleaseServiceAccount: ""
 
-
-# The model-manager dependency's own values (components.model-manager turns
-# it on; the umbrella wiring — route, JWT policy, network policies — is under
-# components.model-manager). The pinned Service name keeps the in-cluster
-# MCPServer URL and the AgentgatewayBackend host stable regardless of the
-# release name (the umbrella templates read it, like muster.fullnameOverride).
-# `backend` selects the serving driver: `ollama` proxies a host Ollama (the
-# laptop / agentlab dev loop; `ollama.endpoint` as reached from pods is
-# REQUIRED — on kind the docker network gateway, e.g.
-# http://172.21.0.1:11434 — and `ollama.agentHost` is what agent pods dial
-# when it differs), `kserve` manages InferenceServices on the modelServing
-# component's KServe: kserve.namespace must equal
-# components.modelServing.namespace.name, and the runtime, GPU resource
-# name, cache claim and preset selector are read at run time from the
-# modelServing discovery ConfigMap (kserve.discovery.configMap, the umbrella's
-# agent-platform-model-serving in the release namespace) — an install that
-# turns on both components configures the serving layer once; a kserve.*
-# override that disagrees with components.modelServing fails the render.
-# ModelConfigs are
-# wired into kagent.namespace, which must be the kagent component's namespace
-# (kagent.kagent.namespaceOverride); an install without the kagent component
-# sets kagent.disableWiring: true. The MCP endpoint is registered with muster
-# through the chart's own MCPServer CR (muster.mcpServer.enabled — the muster
-# component must be on for the CRD to exist), tools appear as
-# x_model-manager_<tool>. Image, resources and the rest are the chart's
-# defaults (see its README).
-#
-# The user's identity, not a ServiceAccount (chart >= 0.13.0): oauth.enabled
-# makes model-manager an OAuth 2.1 resource server (mcp-oauth) in front of
-# both its MCP endpoint and its REST API — issuer, client, secret and CA fall
-# back to global.identity inside the chart, the trusted audience to the
-# platform client; the OAuth base URL derives from global.domain. muster
-# forwards the session's IdP id_token (the MCPServer CR's auth block,
-# muster.mcpServer.auth) and the portal sends the user's id_token through the
-# gateway route; model-manager validates both against the IdP's JWKS and
-# logs every mutation with the caller (jobs carry requestedBy).
-# oauth.downstream presents that token to the kube-apiserver for everything
-# a request does (InferenceServices, download Jobs, cache scans,
-# ModelConfigs) — the user's RBAC governs and the ServiceAccount gets no
-# RBAC at all (chart >= 0.14.0 renders none; the paths without a caller,
-# download re-adoption and the wiring reconciler, are off; a job outliving
-# its caller's token fails on the apiserver's 401). requiredAudiences is the cross-client
-# audience the apiserver trusts (see components.mcp-kubernetes
-# .kubernetesAudience — a Google IdP sets []); the private-IP relaxations
-# are for the platform's in-cluster Dex.
+# The model-manager chart's values are the fleet's since agent-platform 3.3.0
+# (fullnameOverride, the ollama backend, kagent wiring, OAuth as the caller,
+# the MCPServer CR with the forwarded token); the standalone adds the wiring
+# to its modelServing umbrella component, which the fleet does not have.
 model-manager:
-  fullnameOverride: model-manager
-  backend: ollama
-  ollama:
-    endpoint: ""
-    agentHost: ""
-  kagent:
-    namespace: kagent
-    disableWiring: false
+  # The kserve backend (model-manager.backend: kserve) manages
+  # InferenceServices on the modelServing component's KServe: kserve.namespace
+  # must equal components.modelServing.namespace.name, and the runtime, GPU
+  # resource name, cache claim and preset selector are read at run time from
+  # the modelServing discovery ConfigMap (kserve.discovery.configMap, the
+  # umbrella's agent-platform-model-serving in the release namespace) — an
+  # install that turns on both components configures the serving layer once;
+  # a kserve.* override that disagrees with components.modelServing fails the
+  # render (templates/model-manager/model-serving-validate.yaml).
   kserve:
     namespace: model-serving
     discovery:
       configMap: agent-platform-model-serving
       namespace: ""
-  mcp:
-    enabled: true
-  oauth:
-    enabled: true
-    provider: dex
-    dex:
-      allowPrivateURLs: true
-    sso:
-      allowPrivateIPs: true
-    downstream:
-      enabled: true
-  muster:
-    mcpServer:
-      enabled: true
-      auth:
-        forwardToken: true
-        requiredAudiences:
-          - dex-k8s-authenticator
-  # The umbrella renders the network policies for this component under
-  # global.networkPolicy (templates/model-manager/netpol.yaml), in both
-  # flavors; the chart's own NetworkPolicy stays off.
-  networkPolicy:
-    enabled: false
 
 # The KServe controller chart (components.kserve turns it on, together with
 # kserve-crd). Everything not set here is the chart's default: the upstream

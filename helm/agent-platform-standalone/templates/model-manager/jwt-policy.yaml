@@ -14,13 +14,14 @@ metadata:
     {{- include "agent-platform-standalone.modelManager.labels" . | nindent 4 }}
 spec:
   {{- if ($jwt.jwks.tls).enabled }}
-  {{- /* An issuer serving its JWKS over TLS (a Dex with web.https, e.g. the
-  agentlab Dex): originate TLS and verify against the named CA Secret (key
-  ca.crt), defaulting to the platform's identity CA; with neither, the data
-  plane's system trust. SNI and the verified SAN follow the host above. */}}
+  {{- /* An issuer serving its JWKS over TLS (a Dex with web.https): originate
+  TLS and verify against the named CA Secret (key ca.crt), defaulting to the
+  platform's identity CA (global.identity.ca.secretName, the standalone
+  contract); with neither, the data plane's system trust. SNI and the verified
+  SAN follow the host above. */}}
   policies:
     tls:
-      {{- $ca := $jwt.jwks.tls.caSecretName | default .Values.global.identity.ca.secretName }}
+      {{- $ca := $jwt.jwks.tls.caSecretName | default (dig "identity" "ca" "secretName" "" .Values.global) }}
       {{- if $ca }}
       caCertificateRefs:
         - kind: Secret
@@ -34,10 +35,9 @@ spec:
     port: {{ $jwt.jwks.port }}
 ---
 # AgentgatewayPolicy — verifies the bearer JWT (signature, issuer, expiry)
-# against the issuer on the inner model-manager HTTPRoute before forwarding.
-# model-manager checks no identity itself and depends on this boundary being
-# enforced in front of it — the same trust model as the kagent controller
-# route. Without a token the gateway answers 401.
+# against the issuer on the inner model-manager HTTPRoute before forwarding —
+# the same boundary as the kagent controller route, in front of the service's
+# own validation. Without a token the gateway answers 401.
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -65,7 +65,7 @@ spec:
           # No audiences: any audience the issuer minted is accepted. dex
           # id_tokens carry the originating client id as aud, which varies per
           # caller (the portal's, a CLI's); requiring one would break the
-          # human path.
+          # human path. The service checks the audience itself.
           jwks:
             remote:
               backendRef:
