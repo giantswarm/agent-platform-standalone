@@ -674,6 +674,24 @@ mcp-kubernetes:
 # is the umbrella's wiring). fullnameOverride is what the umbrella's route and
 # network policies target; kagent.namespace must equal the kagent component's
 # namespace (validate.yaml); the MCPServer CR registers the tools with muster.
+#
+# The user's identity, not a ServiceAccount (chart >= 0.2.0): oauth.enabled
+# makes agent-manager an OAuth 2.1 resource server (mcp-oauth) in front of
+# both its MCP endpoint and its REST API — issuer, client, secret and CA fall
+# back to global.identity inside the chart, the trusted audience to the
+# platform client; the OAuth base URL derives from global.domain. muster
+# forwards the session's IdP id_token (the MCPServer CR's auth block,
+# muster.mcpServer.auth) and the portal sends the user's id_token through the
+# gateway route; agent-manager validates both against the IdP's JWKS and logs
+# every write with the caller (results carry requestedBy). oauth.downstream
+# presents that token to the kube-apiserver for everything a request does —
+# the HelmRelease and OCIRepository writes, the Agent, ModelConfig,
+# Deployment, pod and event reads — so the user's RBAC governs and the
+# ServiceAccount holds no permissions at all (the chart renders no Role;
+# agent-manager has no background work). requiredAudiences is the
+# cross-client audience the apiserver trusts (see
+# components.mcp-kubernetes.kubernetesAudience — a Google IdP sets []); the
+# private-IP relaxations are for the platform's in-cluster Dex.
 agent-manager:  # @schema skipProperties: true; additionalProperties: true
   fullnameOverride: agent-manager
   kagent:
@@ -691,9 +709,22 @@ agent-manager:  # @schema skipProperties: true; additionalProperties: true
       - https://github.com/giantswarm/agent-skills
   mcp:
     enabled: true
+  oauth:
+    enabled: true
+    provider: dex
+    dex:
+      allowPrivateURLs: true
+    sso:
+      allowPrivateIPs: true
+    downstream:
+      enabled: true
   muster:
     mcpServer:
       enabled: true
+      auth:
+        forwardToken: true
+        requiredAudiences:
+          - dex-k8s-authenticator
   # The umbrella renders the network policies for this component under
   # global.networkPolicy (templates/agent-manager/netpol.yaml), in both
   # flavors; the chart's own NetworkPolicy stays off.

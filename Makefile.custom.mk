@@ -100,11 +100,11 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: mcp-kubernetes render lacks $$pattern"; exit 1; }; \
 	done; \
 	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q 'forwardToken: true' || { echo "FAIL: mcp-kubernetes MCPServer lacks forwardToken"; exit 1; }; \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
-	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience='); \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences"; exit 1; }; true
-	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false'); \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: mcp-kubernetes MCPServer carries an auth block with the server's OAuth off"; exit 1; }; true
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
+	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience=' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences on the mcp-kubernetes MCPServer"; exit 1; }; true
+	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q 'forwardToken' && { echo "FAIL: mcp-kubernetes MCPServer carries an auth block with the server's OAuth off"; exit 1; }; true
 	@echo "--> examples/giantswarm.yaml turns Kyverno, Cilium, ServiceMonitors, the valkey PodMonitor and OTLP back on"
 	@out=$$($(TEMPLATE) -f examples/giantswarm.yaml); \
 	for pattern in 'kyverno.io' 'kind: ServiceMonitor' 'kind: PodMonitor' 'OTEL_EXPORTER_OTLP_ENDPOINT' 'kind: CiliumNetworkPolicy'; do \
@@ -215,14 +215,29 @@ verify-model-serving: deps ## The modelServing component renders nothing while o
 
 .PHONY: verify-agent-manager
 verify-agent-manager: deps ## The agent-manager component renders the service + MCPServer by default, the route + JWT policy when on, nothing when off, and its guards fail inconsistent configs.
-	@echo "--> agent-manager on (the default), route off: Deployment, Service, Role in the kagent namespace, MCPServer; no route, no policy"
+	@echo "--> agent-manager on (the default), route off: Deployment, Service, MCPServer with the forward-token auth block, OAuth against global.identity with downstream OAuth; no Role for the ServiceAccount, no route, no policy"
 	@out=$$($(VANILLA) --set 'components.agent-manager.route.enabled=false' --set 'components.agent-manager.route.jwtAuthentication.enabled=false'); \
-	for pattern in 'kind: Deployment' 'name: agent-manager$$' '--kagent-namespace=kagent' '--agent-chart-oci-url=oci://gsoci.azurecr.io/charts/giantswarm/agent' 'kind: MCPServer' 'url: http://agent-manager\..*\.svc\.cluster\.local:8080/mcp' 'helmreleases' 'ocirepositories'; do \
+	for pattern in 'kind: Deployment' 'name: agent-manager$$' '--kagent-namespace=kagent' '--agent-chart-oci-url=oci://gsoci.azurecr.io/charts/giantswarm/agent' 'kind: MCPServer' 'url: http://agent-manager\..*\.svc\.cluster\.local:8080/mcp' \
+		'--enable-oauth=true' '--oauth-provider=dex' '--downstream-oauth=true' '--allow-private-oauth-urls=true' '--sso-allow-private-ips=true' '--dex-issuer-url=' '--dex-client-id=' '--oauth-trusted-audiences=' 'forwardToken: true' '- dex-k8s-authenticator' 'name: DEX_CLIENT_SECRET' 'key: dex-client-secret'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager default render lacks $$pattern"; exit 1; }; \
 	done; \
-	for pattern in 'name: agent-manager-public' 'name: agent-manager-jwt' 'kind: NetworkPolicy' 'kind: CiliumNetworkPolicy'; do \
+	for pattern in 'name: agent-manager-public' 'name: agent-manager-jwt' 'kind: NetworkPolicy' 'kind: CiliumNetworkPolicy' 'charts/agent-manager/templates/rbac.yaml' 'charts/agent-manager/templates/oauth-secret.yaml'; do \
 		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: agent-manager default render contains $$pattern"; exit 1; fi; \
 	done
+	@echo "--> the agent-manager ServiceAccount gets no RBAC: no Role/RoleBinding rendered by the agent-manager chart"
+	@out=$$($(VANILLA) --show-only charts/agent-manager/templates/rbac.yaml 2>&1); \
+	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC for its ServiceAccount"; exit 1; fi
+	@echo "--> a Google-shaped override: provider google, empty requiredAudiences on the agent-manager MCPServer, still no RBAC"
+	@GOOGLE="--set agent-manager.oauth.provider=google --set agent-manager.oauth.baseURL=https://muster.example.com/agent-manager --set agent-manager.oauth.google.clientID=gid --set agent-manager.oauth.existingSecret=google-oauth --set-json agent-manager.muster.mcpServer.auth.requiredAudiences=[] --set-json agent-manager.oauth.trustedAudiences=[\"gid\"]"; \
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/deployment.yaml); \
+	for pattern in '--oauth-provider=google' '--oauth-trusted-audiences=gid' 'name: GOOGLE_CLIENT_SECRET' 'name: google-oauth' '--downstream-oauth=true'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager google render lacks $$pattern"; exit 1; }; \
+	done; \
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q -e 'forwardToken: true' || { echo "FAIL: agent-manager google MCPServer lacks forwardToken"; exit 1; }; \
+	if printf '%s' "$$out" | grep -q -e 'dex-k8s-authenticator'; then echo "FAIL: agent-manager google MCPServer still requests the Dex audience"; exit 1; fi; \
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/rbac.yaml 2>&1); \
+	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC under the google override"; exit 1; fi
 	@echo "--> agent-manager off: the render carries no agent-manager object"
 	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false'); \
 	if printf '%s' "$$out" | grep -q -e 'agent-manager'; then echo "FAIL: render with agent-manager off contains agent-manager"; exit 1; fi

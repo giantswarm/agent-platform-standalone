@@ -77,7 +77,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.model-manager.enabled
   - name: agent-manager
-    version: "0.1.0"  # range 0.x
+    version: "0.2.0"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-manager.enabled
   - name: kserve-crd

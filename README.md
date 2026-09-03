@@ -463,11 +463,14 @@ agent-manager:
   `pathPrefix` with the prefix stripped, the public `HTTPRoute` when the
   chart-owned edge is not the data plane, and `route.jwtAuthentication`
   rendering the `AgentgatewayPolicy` that validates the bearer JWT before
-  forwarding. agent-manager checks no identity itself and writes with its own
-  ServiceAccount (a Role in the kagent namespace: HelmReleases and
-  OCIRepositories read/write; Agents, ModelConfigs, Deployments, pods and
-  events read) — the gateway policy is the boundary, as for model-manager and
-  the kagent controller.
+  forwarding. agent-manager then validates the token again itself and acts as
+  that user: `agent-manager.oauth` is on in the umbrella contract (mcp-oauth
+  against `global.identity`, downstream OAuth), so every HelmRelease and
+  OCIRepository write and every Agent, ModelConfig, pod and event read carries
+  the signed-in user's id_token and the user's RBAC decides — the chart
+  renders **no** Role for the agent-manager ServiceAccount (see
+  [MCP servers and the user's identity](#mcp-servers-and-the-users-identity)).
+  Writes report `requestedBy` and log `caller=`.
 - **Network policies** (`global.networkPolicy` on, both flavors): ingress from
   the data plane (route on), muster (MCPServer on) and Backstage, plus — cilium
   — the kubelet's probes; egress to DNS, the Kubernetes API, the agent chart's
@@ -583,8 +586,9 @@ flavors) and checks every guard above.
 
 ### MCP servers and the user's identity
 
-The MCP servers the umbrella bundles — mcp-kubernetes and model-manager — act
-as the signed-in user, never as a ServiceAccount, and one contract drives it:
+The MCP servers the umbrella bundles — mcp-kubernetes, model-manager and
+agent-manager — act as the signed-in user, never as a ServiceAccount, and one
+contract drives it:
 `global.identity`. Each server runs as an OAuth 2.1 resource server
 ([mcp-oauth](https://github.com/giantswarm/mcp-oauth)) whose issuer, client,
 client secret (`dex-client-secret` in `global.identity.existingSecret`) and CA
@@ -597,19 +601,22 @@ id_token byte-identical and the server validates it against the IdP's JWKS
 every call.
 
 The same token goes on to the kube-apiserver: mcp-kubernetes
-(`enableDownstreamOAuth`) and model-manager (`oauth.downstream`) present the
-caller's id_token instead of the ServiceAccount's, so **the user's RBAC
-governs** every InferenceService, Job, ModelConfig and kubectl-shaped call —
-and the ServiceAccounts hold no permissions of their own: neither chart
-renders Roles or ClusterRoles for them in this mode (mcp-kubernetes forces its
-`minimal` profile, model-manager ≥ 0.14.0 renders no RBAC at all), and work
-that would run without a caller (model-manager's download re-adoption and
-wiring reconciler) is off.
+(`enableDownstreamOAuth`), model-manager and agent-manager (`oauth.downstream`)
+present the caller's id_token instead of the ServiceAccount's, so **the user's
+RBAC governs** every InferenceService, Job, ModelConfig, agent HelmRelease and
+kubectl-shaped call — and the ServiceAccounts hold no permissions of their
+own: none of the three charts renders Roles or ClusterRoles for them in this
+mode (mcp-kubernetes forces its `minimal` profile, model-manager ≥ 0.14.0 and
+agent-manager ≥ 0.2.0 render no RBAC at all), work that would run without a
+caller (model-manager's download re-adoption and wiring reconciler) is off,
+and agent-manager refuses a request that carries no token instead of running
+it as nobody.
 That needs an apiserver that trusts the token: `--oidc-issuer-url` is the
 platform issuer and `--oidc-client-id` an audience the token carries. Dex
 mints per-client tokens, so the audience the apiserver trusts is requested as
-a cross-client scope — `components.mcp-kubernetes.kubernetesAudience` and
-`model-manager.muster.mcpServer.auth.requiredAudiences` name it (default
+a cross-client scope — `components.mcp-kubernetes.kubernetesAudience`,
+`model-manager.muster.mcpServer.auth.requiredAudiences` and
+`agent-manager.muster.mcpServer.auth.requiredAudiences` name it (default
 `dex-k8s-authenticator`, the client Giant Swarm apiservers trust; the Dex must
 list the platform client in that client's `trustedPeers`, as
 `prerequisites/lab-dex.yaml` does); muster requests it at login, so users
@@ -636,6 +643,17 @@ model-manager:
   oauth:
     enabled: true
     downstream: {enabled: true}
+    dex: {allowPrivateURLs: true}
+    sso: {allowPrivateIPs: true}
+  muster:
+    mcpServer:
+      auth:
+        forwardToken: true
+        requiredAudiences: [dex-k8s-authenticator]   # [] for Google
+agent-manager:
+  oauth:
+    enabled: true
+    downstream: {enabled: true}                        # no Role for the ServiceAccount
     dex: {allowPrivateURLs: true}
     sso: {allowPrivateIPs: true}
   muster:
