@@ -29,8 +29,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.0.53 |
-| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.12.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.13.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
@@ -102,6 +102,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.agent-sandbox.podSecurity.containerSecurityContext.runAsNonRoot | bool | `true` |  |
 | components.agent-sandbox.podSecurity.containerSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
 | components.mcp-kubernetes.enabled | bool | `true` |  |
+| components.mcp-kubernetes.kubernetesAudience | string | `"dex-k8s-authenticator"` |  |
 | components.backstage.enabled | bool | `true` |  |
 | components.backstage.hostname | string | `""` |  |
 | components.backstage.parentRefs | list | `[]` |  |
@@ -509,6 +510,11 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | dicebear.route.hostnames | list | `[]` |  |
 | agent-sandbox | object | `{}` |  |
 | mcp-kubernetes.fullnameOverride | string | `"mcp-kubernetes"` |  |
+| mcp-kubernetes.mcpKubernetes.oauth.enabled | bool | `true` |  |
+| mcp-kubernetes.mcpKubernetes.oauth.provider | string | `"dex"` |  |
+| mcp-kubernetes.mcpKubernetes.oauth.allowPrivateURLs | bool | `true` |  |
+| mcp-kubernetes.mcpKubernetes.oauth.sso.allowPrivateIPs | bool | `true` |  |
+| mcp-kubernetes.mcpKubernetes.oauth.enableDownstreamOAuth | bool | `true` |  |
 | mcp-kubernetes.ciliumNetworkPolicy.enabled | bool | `false` |  |
 | backstage.ingress.enabled | bool | `false` |  |
 | backstage.resources.verticalPodAutoscaler.enabled | bool | `false` |  |
@@ -540,7 +546,14 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.kserve.discovery.configMap | string | `"agent-platform-model-serving"` |  |
 | model-manager.kserve.discovery.namespace | string | `""` |  |
 | model-manager.mcp.enabled | bool | `true` |  |
+| model-manager.oauth.enabled | bool | `true` |  |
+| model-manager.oauth.provider | string | `"dex"` |  |
+| model-manager.oauth.dex.allowPrivateURLs | bool | `true` |  |
+| model-manager.oauth.sso.allowPrivateIPs | bool | `true` |  |
+| model-manager.oauth.downstream.enabled | bool | `true` |  |
 | model-manager.muster.mcpServer.enabled | bool | `true` |  |
+| model-manager.muster.mcpServer.auth.forwardToken | bool | `true` |  |
+| model-manager.muster.mcpServer.auth.requiredAudiences[0] | string | `"dex-k8s-authenticator"` |  |
 | model-manager.networkPolicy.enabled | bool | `false` |  |
 | kserve-crd | object | `{}` |  |
 | kserve-resources.kserve.controller.deploymentMode | string | `"Standard"` |  |

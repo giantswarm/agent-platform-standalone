@@ -1809,6 +1809,9 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean"
+                        },
+                        "kubernetesAudience": {
+                            "type": "string"
                         }
                     }
                 },

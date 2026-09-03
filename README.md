@@ -470,14 +470,15 @@ gateway:
 - **Identity boundary.** `route.jwtAuthentication` renders the
   `AgentgatewayPolicy` that validates the bearer JWT (signature, issuer,
   expiry) against `global.identity.issuerUrl` before forwarding — without a
-  token the gateway answers 401. model-manager checks no identity itself;
-  the gateway policy is the boundary, the same trust model as the kagent
-  controller route. The JWKS is fetched through a static
+  token the gateway answers 401. The JWKS is fetched through a static
   `AgentgatewayBackend` (`jwks.host/port/path`, the in-cluster Dex by
   default; `gateway.jwksEgress` must be on). An issuer that serves its JWKS
   over TLS (a Dex with `web.https`, e.g. the lab's) sets `jwks.tls.enabled`
   — the data plane then verifies against `jwks.tls.caSecretName` (key
-  `ca.crt`), defaulting to `global.identity.ca.secretName`.
+  `ca.crt`), defaulting to `global.identity.ca.secretName`. The gateway is
+  the first check, not the only one: the gateway passes the token through
+  and model-manager validates it again itself and acts as that user — see
+  [MCP servers and the user's identity](#mcp-servers-and-the-users-identity).
 - **Portal.** With the route on, the Backstage app-config gets
   `agentPlatform.modelManager.installations.<release>.apiBaseUrl:
   https://<hostname><pathPrefix>` next to the kagent entry; the portal
@@ -507,6 +508,78 @@ gateway:
 `make verify-model-manager` renders the component off (nothing), on (the
 service, MCPServer, route, JWT policy, app-config entry, both network-policy
 flavors) and checks every guard above.
+
+### MCP servers and the user's identity
+
+The MCP servers the umbrella bundles — mcp-kubernetes and model-manager — act
+as the signed-in user, never as a ServiceAccount, and one contract drives it:
+`global.identity`. Each server runs as an OAuth 2.1 resource server
+([mcp-oauth](https://github.com/giantswarm/mcp-oauth)) whose issuer, client,
+client secret (`dex-client-secret` in `global.identity.existingSecret`) and CA
+fall back to `global.identity` inside the component chart, and whose trusted
+audience is the platform client (`global.identity.clientId`). muster never
+issues or verifies identity tokens: its `MCPServer` CR carries
+`auth: {type: oauth, forwardToken: true}`, so muster forwards the session's IdP
+id_token byte-identical and the server validates it against the IdP's JWKS
+(`OAUTH_TRUSTED_AUDIENCES`). The user — email, subject, groups — is then on
+every call.
+
+The same token goes on to the kube-apiserver: mcp-kubernetes
+(`enableDownstreamOAuth`) and model-manager (`oauth.downstream`) present the
+caller's id_token instead of the ServiceAccount's, so **the user's RBAC
+governs** every InferenceService, Job, ModelConfig and kubectl-shaped call.
+That needs an apiserver that trusts the token: `--oidc-issuer-url` is the
+platform issuer and `--oidc-client-id` an audience the token carries. Dex
+mints per-client tokens, so the audience the apiserver trusts is requested as
+a cross-client scope — `components.mcp-kubernetes.kubernetesAudience` and
+`model-manager.muster.mcpServer.auth.requiredAudiences` name it (default
+`dex-k8s-authenticator`, the client Giant Swarm apiservers trust; the Dex must
+list the platform client in that client's `trustedPeers`, as
+`prerequisites/lab-dex.yaml` does); muster requests it at login, so users
+re-login after a change. A Google IdP has no cross-client scopes (they fail
+the login with `invalid_scope`) and its client id *is* the apiserver's
+`--oidc-client-id`: set the audience to `""` / `[]` there. On plain kind the
+apiserver trusts no OIDC issuer, so tool calls that reach the apiserver fail
+with the user's 401 until it is wired — the
+[agentlab](https://github.com/giantswarm/agentlab) apiserver trusts the lab
+Dex (client id `kubernetes`) for exactly this.
+
+```yaml
+components:
+  mcp-kubernetes:
+    kubernetesAudience: dex-k8s-authenticator   # "" for Google
+mcp-kubernetes:
+  mcpKubernetes:
+    oauth:
+      enabled: true              # the umbrella default; false = anonymous, ServiceAccount
+      enableDownstreamOAuth: true
+      allowPrivateURLs: true     # the platform Dex resolves to a cluster address
+      sso: {allowPrivateIPs: true}
+model-manager:
+  oauth:
+    enabled: true
+    downstream: {enabled: true}
+    dex: {allowPrivateURLs: true}
+    sso: {allowPrivateIPs: true}
+  muster:
+    mcpServer:
+      auth:
+        forwardToken: true
+        requiredAudiences: [dex-k8s-authenticator]   # [] for Google
+```
+
+Turning a server's OAuth off (`oauth.enabled: false`) drops the auth block
+from its `MCPServer` CR: muster then connects anonymously and the server acts
+as its ServiceAccount — only defensible when nothing but muster can reach it.
+`make verify-decisions` and `make verify-model-manager` render both shapes.
+
+Upgrading an installation whose MCP servers were anonymous: restart muster
+once the upgrade is through (`kubectl -n <ns> rollout restart deployment/muster`).
+muster reconciles the changed `MCPServer` CRs while the old anonymous pods
+still answer its probe and then keeps a token-less global client for them;
+after the OAuth pods take over that client 401-loops and every tool call
+answers "authorization required" until muster restarts
+([giantswarm/muster#1135](https://github.com/giantswarm/muster/issues/1135)).
 
 ## Install
 
