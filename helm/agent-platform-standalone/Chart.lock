@@ -25,7 +25,7 @@ dependencies:
   version: 0.2.26
 - name: mcp-kubernetes
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 1.1.0
+  version: 1.1.1
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.218.0
@@ -44,5 +44,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:20a74c6c7b8440b0c2aa3883e1783be24ef201530e364b66e42574c87939a13d
-generated: "2026-09-03T17:07:45.27663398+02:00"
+digest: sha256:073e93b6f164729242877474ddd91158c58006d5546ec9b3dff158a7b44bdb89
+generated: "2026-09-03T18:42:50.128872182+02:00"

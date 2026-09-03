@@ -103,7 +103,7 @@ dependencies:
   - name: mcp-kubernetes
     range: "1.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
-    version: "1.1.0"
+    version: "1.1.1"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: backstage

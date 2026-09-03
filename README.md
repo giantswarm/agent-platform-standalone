@@ -573,6 +573,14 @@ from its `MCPServer` CR: muster then connects anonymously and the server acts
 as its ServiceAccount — only defensible when nothing but muster can reach it.
 `make verify-decisions` and `make verify-model-manager` render both shapes.
 
+Upgrading an installation whose MCP servers were anonymous: restart muster
+once the upgrade is through (`kubectl -n <ns> rollout restart deployment/muster`).
+muster reconciles the changed `MCPServer` CRs while the old anonymous pods
+still answer its probe and then keeps a token-less global client for them;
+after the OAuth pods take over that client 401-loops and every tool call
+answers "authorization required" until muster restarts
+([giantswarm/muster#1135](https://github.com/giantswarm/muster/issues/1135)).
+
 ## Install
 
 ```sh

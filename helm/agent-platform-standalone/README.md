@@ -29,7 +29,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.13.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.7.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
