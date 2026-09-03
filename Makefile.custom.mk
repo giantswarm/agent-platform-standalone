@@ -100,11 +100,11 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: mcp-kubernetes render lacks $$pattern"; exit 1; }; \
 	done; \
 	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q 'forwardToken: true' || { echo "FAIL: mcp-kubernetes MCPServer lacks forwardToken"; exit 1; }; \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
 	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience=' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
 	printf '%s' "$$out" | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences on the mcp-kubernetes MCPServer"; exit 1; }; true
-	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false'); \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: mcp-kubernetes MCPServer carries an auth block with the server's OAuth off"; exit 1; }; true
+	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q 'forwardToken' && { echo "FAIL: mcp-kubernetes MCPServer carries an auth block with the server's OAuth off"; exit 1; }; true
 	@echo "--> examples/giantswarm.yaml turns Kyverno, Cilium, ServiceMonitors, the valkey PodMonitor and OTLP back on"
 	@out=$$($(TEMPLATE) -f examples/giantswarm.yaml); \
 	for pattern in 'kyverno.io' 'kind: ServiceMonitor' 'kind: PodMonitor' 'OTEL_EXPORTER_OTLP_ENDPOINT' 'kind: CiliumNetworkPolicy'; do \
