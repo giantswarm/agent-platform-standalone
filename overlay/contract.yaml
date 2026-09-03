@@ -120,6 +120,24 @@ components:
         name: giantswarm/kubectl
         # registry: gsoci.azurecr.io/giantswarm/kubectl
         version: "1.33.4"
+  # The bundled Kubernetes MCP server. Its own values are the mcp-kubernetes
+  # chart's (`mcp-kubernetes:` block below); this block carries what the
+  # umbrella renders around it: the MCPServer CR that registers it with
+  # muster (templates/mcp-kubernetes/mcpserver.yaml).
+  mcp-kubernetes:
+    # Audience the forwarded IdP id_token must carry on top of the platform
+    # client's so the kube-apiserver accepts it: with the server's OAuth on,
+    # muster forwards the session's id_token byte-identical
+    # (auth.forwardToken) and requests this cross-client audience at login
+    # (auth.requiredAudiences), and mcp-kubernetes presents that token to the
+    # apiserver (enableDownstreamOAuth) — the user's RBAC governs, not a
+    # ServiceAccount's. dex-k8s-authenticator is the Dex client Giant Swarm
+    # apiservers trust (the lab Dex ships it, with the platform client in its
+    # trustedPeers); an apiserver that trusts another client id names it
+    # here. Empty: no extra audience — a Google IdP has no cross-client
+    # scopes (they fail the login with invalid_scope) and its client id IS
+    # the apiserver's --oidc-client-id.
+    kubernetesAudience: dex-k8s-authenticator
   # The model-manager service (Model Manager PDR phase 3; the Ollama backend
   # ADR): model inventory, pull with progress, load/unload, delete and kagent
   # ModelConfig wiring behind one REST + MCP API, per installation. Off by
@@ -539,11 +557,29 @@ agent-platform-mcps:
 
 # The bundled Kubernetes MCP server (registered with muster by
 # templates/mcp-kubernetes/mcpserver.yaml). The pinned Service name keeps the
-# in-cluster MCPServer URL stable regardless of the release name; the chart's
-# own defaults already run in-cluster with OAuth off, so muster connects
-# without an auth block.
+# in-cluster MCPServer URL stable regardless of the release name.
+#
+# The user's identity, not a ServiceAccount: the server runs as an OAuth 2.1
+# resource server (mcp-oauth) against the platform IdP. Its issuer, client,
+# secret and CA fall back to the umbrella's global.identity contract inside
+# the mcp-kubernetes chart (chart >= 1.0.55), the trusted audience to the
+# platform client — muster forwards the session's IdP id_token
+# (templates/mcp-kubernetes/mcpserver.yaml, auth.forwardToken) and the server
+# validates it against the IdP's JWKS. enableDownstreamOAuth presents that
+# token to the kube-apiserver, so every call runs with the user's RBAC (the
+# chart then grants the ServiceAccount nothing). The two private-IP
+# relaxations are for the platform's in-cluster Dex (discovery and JWKS
+# resolve to cluster addresses); Google needs neither and ignores them.
 mcp-kubernetes:
   fullnameOverride: mcp-kubernetes
+  mcpKubernetes:
+    oauth:
+      enabled: true
+      provider: dex
+      allowPrivateURLs: true
+      sso:
+        allowPrivateIPs: true
+      enableDownstreamOAuth: true
 
 # The model-manager dependency's own values (components.model-manager turns
 # it on; the umbrella wiring — route, JWT policy, network policies — is under
@@ -570,6 +606,24 @@ mcp-kubernetes:
 # component must be on for the CRD to exist), tools appear as
 # x_model-manager_<tool>. Image, resources and the rest are the chart's
 # defaults (see its README).
+#
+# The user's identity, not a ServiceAccount (chart >= 0.13.0): oauth.enabled
+# makes model-manager an OAuth 2.1 resource server (mcp-oauth) in front of
+# both its MCP endpoint and its REST API — issuer, client, secret and CA fall
+# back to global.identity inside the chart, the trusted audience to the
+# platform client; the OAuth base URL derives from global.domain. muster
+# forwards the session's IdP id_token (the MCPServer CR's auth block,
+# muster.mcpServer.auth) and the portal sends the user's id_token through the
+# gateway route; model-manager validates both against the IdP's JWKS and
+# logs every mutation with the caller (jobs carry requestedBy).
+# oauth.downstream presents that token to the kube-apiserver for everything
+# a request does (InferenceServices, download Jobs, cache scans,
+# ModelConfigs) — the user's RBAC governs; only work that outlives the
+# request (the wiring reconciler, a download longer than the token lives)
+# continues as the ServiceAccount. requiredAudiences is the cross-client
+# audience the apiserver trusts (see components.mcp-kubernetes
+# .kubernetesAudience — a Google IdP sets []); the private-IP relaxations
+# are for the platform's in-cluster Dex.
 model-manager:
   fullnameOverride: model-manager
   backend: ollama
@@ -586,9 +640,22 @@ model-manager:
       namespace: ""
   mcp:
     enabled: true
+  oauth:
+    enabled: true
+    provider: dex
+    dex:
+      allowPrivateURLs: true
+    sso:
+      allowPrivateIPs: true
+    downstream:
+      enabled: true
   muster:
     mcpServer:
       enabled: true
+      auth:
+        forwardToken: true
+        requiredAudiences:
+          - dex-k8s-authenticator
   # The umbrella renders the network policies for this component under
   # global.networkPolicy (templates/model-manager/netpol.yaml), in both
   # flavors; the chart's own NetworkPolicy stays off.

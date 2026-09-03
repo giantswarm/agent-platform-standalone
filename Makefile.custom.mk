@@ -89,6 +89,18 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 	printf '%s' "$$out" | grep -q 'request: 0s' || { echo "FAIL: HTTPRoute timeouts missing"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'kind: BackendTrafficPolicy' && { echo "FAIL: Envoy BackendTrafficPolicy rendered by default"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'name: agent-platform-backstage-app-config' || { echo "FAIL: backstage app-config not rendered"; exit 1; }
+	@echo "--> the bundled mcp-kubernetes runs as an OAuth resource server against global.identity and muster forwards the user's id_token (auth block with the kube audience)"
+	@out=$$($(VANILLA)); \
+	for pattern in -- '--enable-oauth=true' '--oauth-provider=dex' '--downstream-oauth' 'DEX_ISSUER_URL' 'https://dex.ci.example.com' 'OAUTH_TRUSTED_AUDIENCES' 'SSO_ALLOW_PRIVATE_IPS'; do \
+		[ "$$pattern" = "--" ] && continue; \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: mcp-kubernetes render lacks $$pattern"; exit 1; }; \
+	done; \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q 'forwardToken: true' || { echo "FAIL: mcp-kubernetes MCPServer lacks forwardToken"; exit 1; }; \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
+	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience='); \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences"; exit 1; }; true
+	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false'); \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: mcp-kubernetes MCPServer carries an auth block with the server's OAuth off"; exit 1; }; true
 	@echo "--> examples/giantswarm.yaml turns Kyverno, Cilium, ServiceMonitors, the valkey PodMonitor and OTLP back on"
 	@out=$$($(TEMPLATE) -f examples/giantswarm.yaml); \
 	for pattern in 'kyverno.io' 'kind: ServiceMonitor' 'kind: PodMonitor' 'OTEL_EXPORTER_OTLP_ENDPOINT' 'kind: CiliumNetworkPolicy'; do \
@@ -208,10 +220,18 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@out=$$($(MODEL_MANAGER)); \
 	for pattern in 'kind: Deployment' 'name: model-manager$$' '--backend=ollama' '--ollama-endpoint=http://192.0.2.10:11434' 'kind: MCPServer' 'url: http://model-manager\..*\.svc\.cluster\.local:8080/mcp' \
 		'host: model-manager\..*\.svc\.cluster\.local' 'name: model-manager-public' 'name: model-manager-jwks' 'name: model-manager-jwt' 'replacePrefixMatch: /' \
-		'apiBaseUrl: https://agentgateway.ci.example.com/model-manager$$' 'name: model-manager-kagent$$'; do \
+		'apiBaseUrl: https://agentgateway.ci.example.com/model-manager$$' 'name: model-manager-kagent$$' \
+		'--enable-oauth=true' '--oauth-provider=dex' '--oauth-base-url=https://model-manager.ci.example.com' '--oauth-trusted-audiences=agent-platform' '--downstream-oauth=true' \
+		'--dex-issuer-url=https://dex.ci.example.com' '--dex-client-id=agent-platform' '--allow-private-oauth-urls=true' '--sso-allow-private-ips=true' 'forwardToken: true' 'requiredAudiences:'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: model-manager render lacks $$pattern"; exit 1; }; \
 	done; \
+	printf '%s' "$$out" | awk '/^kind: Deployment/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q 'key: dex-client-secret' || { echo "FAIL: model-manager reads no dex-client-secret from the platform Secret"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'kind: Secret' && { echo "FAIL: model-manager rendered its own OAuth Secret although global.identity.existingSecret is set"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy rendered without global.networkPolicy.enabled"; exit 1; }; true
+	@echo "--> model-manager OAuth off: anonymous MCPServer, no auth block, no OAuth args"
+	@out=$$($(MODEL_MANAGER) --set 'model-manager.oauth.enabled=false'); \
+	printf '%s' "$$out" | grep -q -e '--enable-oauth' && { echo "FAIL: OAuth args rendered with model-manager.oauth.enabled=false"; exit 1; }; \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: model-manager MCPServer carries an auth block with OAuth off"; exit 1; }; true
 	@echo "--> the edge as data plane drops the public route; the JWKS TLS option renders the CA reference"
 	@out=$$($(TEMPLATE) -f examples/kind-lab-dex.yaml --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
 		--set 'components.model-manager.route.jwtAuthentication.enabled=true' --set 'components.model-manager.route.jwtAuthentication.jwks.tls.enabled=true' \
