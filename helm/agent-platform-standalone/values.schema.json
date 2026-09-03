@@ -1411,6 +1411,10 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+        "agent-manager": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "agent-platform-mcps": {
             "type": "object",
             "additionalProperties": true
@@ -1466,6 +1470,131 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
+                "agent-manager": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "flux": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "requireApi": {
+                                    "type": "boolean"
+                                }
+                            }
+                        },
+                        "networkPolicy": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "egress": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cidrs": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "fqdns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                    "matchName": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchPattern": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "route": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "hostname": {
+                                    "type": "string"
+                                },
+                                "jwtAuthentication": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "issuer": {
+                                            "type": "string"
+                                        },
+                                        "jwks": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "host": {
+                                                    "type": "string"
+                                                },
+                                                "path": {
+                                                    "type": "string"
+                                                },
+                                                "port": {
+                                                    "type": "integer"
+                                                },
+                                                "tls": {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "caSecretName": {
+                                                            "type": "string"
+                                                        },
+                                                        "enabled": {
+                                                            "type": "boolean"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "mode": {
+                                            "type": "string",
+                                            "enum": [
+                                                "Strict",
+                                                "Optional",
+                                                "Permissive"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "parentRef": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "namespace": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "pathPrefix": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
                 "agent-platform-mcps": {
                     "type": "object",
                     "additionalProperties": false,

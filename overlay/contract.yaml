@@ -201,6 +201,93 @@ components:
     # serving.kserve.io/v1beta1).
     kserve:
       requireApi: true
+  # The agent-manager service (the agent write surface of the Agent Control
+  # Plane, giantswarm/giantswarm#36796): the sibling of model-manager for
+  # agents. It composes a kagent agent the way the portal's create flow does
+  # — a Flux HelmRelease of the agent chart plus the shared per-namespace
+  # OCIRepository of that chart — validates the values against the chart's
+  # values.schema.json before applying, and reads agents back from the Agent,
+  # its HelmRelease and the workload; ModelConfigs and skills are listed for
+  # it. Ten MCP tools (x_agent-manager_* through muster's own MCPServer CR,
+  # agent-manager.muster.mcpServer) and the same REST API. On by default with
+  # the platform: it needs kagent (the agents it manages) and Flux's helm and
+  # source controllers on the cluster (the HelmReleases it writes — the same
+  # prerequisite the portal's agent create flow has; without them an agent
+  # stays "progressing" and get_agent_status says so). The service's own
+  # configuration is the agent-manager chart's, in the `agent-manager:` block
+  # below. This block carries the wiring the umbrella renders for it: the
+  # agentgateway route a portal backend reaches the API through and the JWT
+  # policy that makes the gateway the identity boundary — agent-manager itself
+  # checks no identity and writes with its own ServiceAccount, exactly like
+  # model-manager. See the README section "Agent manager".
+  agent-manager:
+    # Expose the agent-manager API on the agentgateway data plane at
+    # https://agentgateway.<global.domain><pathPrefix>: an AgentgatewayBackend
+    # for the Service, an HTTPRoute that strips the prefix (agent-manager then
+    # sees /api/v1/...), and — when the chart-owned edge is not the data
+    # plane — the public HTTPRoute on the outer Gateway. Off by default: the
+    # MCP tools reach muster in-cluster without it; turn it on for a portal
+    # or CLI that calls the REST API. Requires an agentgateway-* ingress.mode.
+    route:
+      enabled: false
+      pathPrefix: /agent-manager
+      # Public hostname; empty derives agentgateway.<global.domain>.
+      hostname: ""
+      # Gateway of the public route (outer edge). Both halves or neither:
+      # empty follows the chart-owned edge, else global.gatewayApi.parentRefs.
+      parentRef:
+        name: ""
+        namespace: ""
+      # Validate the bearer JWT (signature, issuer, expiry) at the gateway
+      # before forwarding: no token, no API. The issuer defaults to
+      # global.identity.issuerUrl; the JWKS is fetched from the issuer's
+      # in-cluster endpoint through a static AgentgatewayBackend (needs
+      # gateway.jwksEgress when network policies are on).
+      jwtAuthentication:
+        enabled: false
+        mode: Strict
+        issuer: ""
+        jwks:
+          host: dex.giantswarm.svc.cluster.local
+          port: 5556
+          path: /keys
+          tls:
+            enabled: false
+            caSecretName: ""
+    flux:
+      # Fail the render when the Flux APIs agent-manager writes
+      # (helm.toolkit.fluxcd.io/v2 HelmRelease, source.toolkit.fluxcd.io/v1
+      # OCIRepository) are not on the cluster. Off by default because the
+      # component is on by default and an offline `helm template` (lint, the
+      # catalog build) never sees cluster APIs; turn it on for installs that
+      # want a missing Flux to fail the upgrade instead of leaving agents
+      # "progressing".
+      requireApi: false
+    # Network policies of the component, rendered under global.networkPolicy
+    # (enabled + flavor) like every other component's wiring; nothing renders
+    # while global.networkPolicy.enabled is false. Ingress: the agentgateway
+    # data plane (route on), muster (MCPServer on), Backstage, and — cilium —
+    # the kubelet's probes. Egress: DNS, the Kubernetes API, and 443 to the
+    # agent chart's registry (derived from agent-manager.agentChart.ociUrl)
+    # plus the names below.
+    networkPolicy:
+      egress:
+        # cilium flavor: Cilium FQDN selectors (matchName, matchPattern) next
+        # to the registry host, resolved through the DNS proxy rule the policy
+        # renders. The defaults cover the registry's blob storage front
+        # (gsoci.azurecr.io redirects downloads to *.blob.core.windows.net)
+        # and the GitHub API skill discovery reads SKILL.md files from.
+        # Ignored by the kubernetes flavor (see cidrs).
+        fqdns:  # @schema item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}
+          - matchPattern: "*.blob.core.windows.net"
+          - matchName: api.github.com
+        # IP blocks of the registry and GitHub. kubernetes flavor: vanilla
+        # NetworkPolicy selects addresses, never names, so an empty list (the
+        # default) opens 443 to every public destination — 0.0.0.0/0 minus
+        # global.networkPolicy.kubernetes.worldExcludedCIDRs. A list here
+        # narrows the egress to exactly these blocks (a mirror, a proxy). The
+        # cilium flavor adds them next to the names.
+        cidrs: []  # @schema item: string
   # Model serving on KServe with vLLM, for installs that run local models
   # (Model Manager PDR, decision D1: integrate KServe, do not bundle it). Off
   # by default and inert while off: nothing below renders. The umbrella
@@ -580,6 +667,37 @@ mcp-kubernetes:
       sso:
         allowPrivateIPs: true
       enableDownstreamOAuth: true
+
+# Values forwarded to the agent-manager chart (components.agent-manager above
+# is the umbrella's wiring). fullnameOverride is what the umbrella's route and
+# network policies target; kagent.namespace must equal the kagent component's
+# namespace (validate.yaml); the MCPServer CR registers the tools with muster.
+agent-manager:  # @schema skipProperties: true; additionalProperties: true
+  fullnameOverride: agent-manager
+  kagent:
+    namespace: kagent
+  # The agent chart every agent renders from, and the range the shared
+  # OCIRepository tracks (x.x.x: every release — the platform convention).
+  agentChart:
+    ociUrl: oci://gsoci.azurecr.io/charts/giantswarm/agent
+    semver: x.x.x
+  # The skill repositories list_skills offers: keep in step with
+  # components.backstage.skillsRepositories (the portal's create flow reads
+  # the same repositories).
+  skills:
+    repositories:
+      - https://github.com/giantswarm/agent-skills
+  mcp:
+    enabled: true
+  muster:
+    mcpServer:
+      enabled: true
+  # The umbrella renders the network policies for this component under
+  # global.networkPolicy (templates/agent-manager/netpol.yaml), in both
+  # flavors; the chart's own NetworkPolicy stays off.
+  networkPolicy:
+    enabled: false
+
 
 # The model-manager dependency's own values (components.model-manager turns
 # it on; the umbrella wiring — route, JWT policy, network policies — is under

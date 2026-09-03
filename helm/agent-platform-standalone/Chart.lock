@@ -35,6 +35,9 @@ dependencies:
 - name: model-manager
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.13.0
+- name: agent-manager
+  repository: oci://gsoci.azurecr.io/charts/giantswarm
+  version: 0.1.0
 - name: kserve-crd
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
@@ -44,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:cb13981241b62f1750ce1a404c1df7ffdcff8b1e9a9a4632f33a1517db38d6ee
-generated: "2026-09-03T19:05:19.060108483+02:00"
+digest: sha256:f708da9d2e5bd1cba1e4bfca644222a94a28d8be79ae2bfa673ac4b3c23443ff
+generated: "2026-09-03T19:29:56.014406239+02:00"

@@ -45,6 +45,12 @@ components:
       enabled: true
       jwtAuthentication:
         enabled: true
+  agent-manager:
+    enabled: true
+    route:
+      enabled: true
+      jwtAuthentication:
+        enabled: true
 
 ingress:
   mode: agentgateway-muster

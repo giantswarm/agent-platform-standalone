@@ -22,6 +22,7 @@ its exact chart name:
 | `backstage` | off | Developer portal |
 | `cloudnative-pg` | off | PostgreSQL operator |
 | `model-manager` | off | Model management service (inventory, pull, load/unload, delete, kagent wiring), see [Model manager](#model-manager) |
+| `agent-manager` | on | Agent lifecycle service (create, update, delete, status of kagent agents as Flux HelmReleases of the agent chart; model configs, skills), see [Agent manager](#agent-manager) |
 | `kserve-crd`, `kserve-resources` | off | The KServe control plane (CRDs, controller, admission webhooks), switched together by `components.kserve.enabled`, see [KServe control plane](#kserve-control-plane) |
 | `kserve-llmisvc-resources` | off | The llm-d control plane (`LLMInferenceService` controller; its CRDs are a prerequisite), switched by `components.kserve.llmisvc.enabled` |
 
@@ -405,6 +406,77 @@ carry the same trade-off:
 to both (an S3 endpoint for `s3://` presets). The render fails on an FQDN
 entry that is not exactly one of `matchName` / `matchPattern`, a value that
 is not a CIDR, a namespace that is not a DNS label, or a port out of range.
+
+### Agent manager
+
+`components.agent-manager.enabled` (on by default with the rest of the
+platform) installs [agent-manager](https://github.com/giantswarm/agent-manager),
+the agent write surface of the Agent Control Plane
+([giantswarm#36796](https://github.com/giantswarm/giantswarm/issues/36796)) and
+the sibling of model-manager for agents: `create_agent`, `update_agent`,
+`delete_agent`, `get_agent_status`, `validate_agent`, `list_agents`,
+`get_agent`, `list_model_configs`, `list_skills`, `get_info`, as MCP tools
+(`x_agent-manager_<tool>` through muster's own `MCPServer` CR) and as one REST
+API. It is a Helm dependency (chart `agent-manager`, pinned in `curate.yaml`);
+the umbrella renders the wiring around it from `templates/agent-manager/`.
+
+An agent is what the portal's create flow composes: a Flux `HelmRelease` of the
+[`agent` chart](https://github.com/giantswarm/agent) (one release renders one
+kagent `Agent`) plus the shared per-namespace `OCIRepository` tracking the
+chart by semver range. agent-manager validates the values against the chart's
+`values.schema.json` (read from the registry, embedded fallback) and the
+`ModelConfig` against the namespace before anything is applied; deletion removes
+the HelmRelease and the OCIRepository only when no other release references it;
+agents whose HelmRelease is applied from git (`managed: gitops`) are read-only
+unless forced. The service's own configuration is the agent-manager chart's,
+under the `agent-manager:` block:
+
+```yaml
+components:
+  agent-manager:
+    enabled: true
+    route:                        # the REST API on the agentgateway data plane
+      enabled: false              # (the MCP tools need no route: muster dials the Service)
+      pathPrefix: /agent-manager  # https://agentgateway.<domain>/agent-manager
+      jwtAuthentication:
+        enabled: true             # no Dex token, no API (401 at the gateway)
+agent-manager:
+  kagent:
+    namespace: kagent             # must equal the kagent component's namespace
+  agentChart:
+    ociUrl: oci://gsoci.azurecr.io/charts/giantswarm/agent
+  skills:
+    repositories:                 # keep in step with components.backstage.skillsRepositories
+      - https://github.com/giantswarm/agent-skills
+```
+
+- **Prerequisites.** The kagent component (the agents it manages; the render
+  fails without it and when `agent-manager.kagent.namespace` differs from the
+  kagent namespace) and Flux's helm and source controllers on the cluster (the
+  HelmReleases it writes — the same prerequisite the portal's agent create
+  flow has). Without Flux an agent stays `progressing` and `get_agent_status`
+  says so; `components.agent-manager.flux.requireApi: true` makes a missing
+  Flux fail the upgrade instead (off by default: an offline `helm template`
+  never sees cluster APIs).
+- **Route and identity boundary.** `components.agent-manager.route` mirrors
+  the model-manager route: an `AgentgatewayBackend`, an `HTTPRoute` at
+  `pathPrefix` with the prefix stripped, the public `HTTPRoute` when the
+  chart-owned edge is not the data plane, and `route.jwtAuthentication`
+  rendering the `AgentgatewayPolicy` that validates the bearer JWT before
+  forwarding. agent-manager checks no identity itself and writes with its own
+  ServiceAccount (a Role in the kagent namespace: HelmReleases and
+  OCIRepositories read/write; Agents, ModelConfigs, Deployments, pods and
+  events read) — the gateway policy is the boundary, as for model-manager and
+  the kagent controller.
+- **Network policies** (`global.networkPolicy` on, both flavors): ingress from
+  the data plane (route on), muster (MCPServer on) and Backstage, plus — cilium
+  — the kubelet's probes; egress to DNS, the Kubernetes API, the agent chart's
+  registry (derived from `agent-manager.agentChart.ociUrl`, blob downloads
+  redirect to `*.blob.core.windows.net`) and GitHub for skill discovery
+  (`components.agent-manager.networkPolicy.egress.fqdns` / `cidrs`).
+- **MCP.** `agent-manager.muster.mcpServer.enabled` (on by default; the muster
+  component must be on) registers the endpoint with muster; every tool
+  description says whether it writes.
 
 ### Model manager
 
