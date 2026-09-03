@@ -221,18 +221,23 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 		'--enable-oauth=true' '--oauth-provider=dex' '--downstream-oauth=true' '--allow-private-oauth-urls=true' '--sso-allow-private-ips=true' '--dex-issuer-url=' '--dex-client-id=' '--oauth-trusted-audiences=' 'forwardToken: true' '- dex-k8s-authenticator' 'name: DEX_CLIENT_SECRET' 'key: dex-client-secret'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager default render lacks $$pattern"; exit 1; }; \
 	done; \
-	for pattern in 'name: agent-manager-public' 'name: agent-manager-jwt' 'kind: NetworkPolicy' 'kind: CiliumNetworkPolicy' 'templates/rbac.yaml' 'templates/oauth-secret.yaml'; do \
-		if printf '%s' "$$out" | grep -e 'agent-manager/templates' -e 'name: agent-manager' -e "$$pattern" | grep -q -e "$$pattern"; then echo "FAIL: agent-manager default render contains $$pattern"; exit 1; fi; \
+	for pattern in 'name: agent-manager-public' 'name: agent-manager-jwt' 'kind: NetworkPolicy' 'kind: CiliumNetworkPolicy' 'charts/agent-manager/templates/rbac.yaml' 'charts/agent-manager/templates/oauth-secret.yaml'; do \
+		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: agent-manager default render contains $$pattern"; exit 1; fi; \
 	done
 	@echo "--> the agent-manager ServiceAccount gets no RBAC: no Role/RoleBinding rendered by the agent-manager chart"
 	@out=$$($(VANILLA) --show-only charts/agent-manager/templates/rbac.yaml 2>&1); \
 	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC for its ServiceAccount"; exit 1; fi
-	@echo "--> a Google-shaped override: provider google, empty requiredAudiences, still no RBAC"
-	@out=$$($(VANILLA) --set 'agent-manager.oauth.provider=google' --set 'agent-manager.oauth.baseURL=https://muster.example.com/agent-manager' --set 'agent-manager.oauth.google.clientID=gid' --set 'agent-manager.oauth.existingSecret=google-oauth' --set 'agent-manager.muster.mcpServer.auth.requiredAudiences=null' --set 'agent-manager.oauth.trustedAudiences={gid}'); \
-	for pattern in '--oauth-provider=google' '--oauth-trusted-audiences=gid' 'name: GOOGLE_CLIENT_SECRET' 'forwardToken: true'; do \
+	@echo "--> a Google-shaped override: provider google, empty requiredAudiences on the agent-manager MCPServer, still no RBAC"
+	@GOOGLE="--set agent-manager.oauth.provider=google --set agent-manager.oauth.baseURL=https://muster.example.com/agent-manager --set agent-manager.oauth.google.clientID=gid --set agent-manager.oauth.existingSecret=google-oauth --set-json agent-manager.muster.mcpServer.auth.requiredAudiences=[] --set-json agent-manager.oauth.trustedAudiences=[\"gid\"]"; \
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/deployment.yaml); \
+	for pattern in '--oauth-provider=google' '--oauth-trusted-audiences=gid' 'name: GOOGLE_CLIENT_SECRET' 'name: google-oauth' '--downstream-oauth=true'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager google render lacks $$pattern"; exit 1; }; \
 	done; \
-	if printf '%s' "$$out" | grep -q -e '- dex-k8s-authenticator'; then echo "FAIL: agent-manager google render still requests the Dex audience"; exit 1; fi
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q -e 'forwardToken: true' || { echo "FAIL: agent-manager google MCPServer lacks forwardToken"; exit 1; }; \
+	if printf '%s' "$$out" | grep -q -e 'dex-k8s-authenticator'; then echo "FAIL: agent-manager google MCPServer still requests the Dex audience"; exit 1; fi; \
+	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/rbac.yaml 2>&1); \
+	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC under the google override"; exit 1; fi
 	@echo "--> agent-manager off: the render carries no agent-manager object"
 	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false'); \
 	if printf '%s' "$$out" | grep -q -e 'agent-manager'; then echo "FAIL: render with agent-manager off contains agent-manager"; exit 1; fi

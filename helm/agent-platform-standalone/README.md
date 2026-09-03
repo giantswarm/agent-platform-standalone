@@ -19,7 +19,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | Repository | Name | Version |
 |------------|------|---------|
 | oci://ghcr.io/cloudnative-pg/charts | cloudnative-pg | 0.29.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | agent-manager | 0.1.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | agent-manager | 0.2.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.6.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.26 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.4 |
@@ -580,7 +580,14 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | agent-manager.agentChart.semver | string | `"x.x.x"` |  |
 | agent-manager.skills.repositories[0] | string | `"https://github.com/giantswarm/agent-skills"` |  |
 | agent-manager.mcp.enabled | bool | `true` |  |
+| agent-manager.oauth.enabled | bool | `true` |  |
+| agent-manager.oauth.provider | string | `"dex"` |  |
+| agent-manager.oauth.dex.allowPrivateURLs | bool | `true` |  |
+| agent-manager.oauth.sso.allowPrivateIPs | bool | `true` |  |
+| agent-manager.oauth.downstream.enabled | bool | `true` |  |
 | agent-manager.muster.mcpServer.enabled | bool | `true` |  |
+| agent-manager.muster.mcpServer.auth.forwardToken | bool | `true` |  |
+| agent-manager.muster.mcpServer.auth.requiredAudiences[0] | string | `"dex-k8s-authenticator"` |  |
 | agent-manager.networkPolicy.enabled | bool | `false` |  |
 | kserve-crd | object | `{}` |  |
 | kserve-resources.kserve.controller.deploymentMode | string | `"Standard"` |  |
