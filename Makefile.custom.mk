@@ -258,14 +258,18 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@out=$$($(MODEL_MANAGER)); \
 	for pattern in 'kind: Deployment' 'name: model-manager$$' '--backend=ollama' '--ollama-endpoint=http://192.0.2.10:11434' 'kind: MCPServer' 'url: http://model-manager\..*\.svc\.cluster\.local:8080/mcp' \
 		'host: model-manager\..*\.svc\.cluster\.local' 'name: model-manager-public' 'name: model-manager-jwks' 'name: model-manager-jwt' 'replacePrefixMatch: /' \
-		'apiBaseUrl: https://agentgateway.ci.example.com/model-manager$$' 'name: model-manager-kagent$$' \
+		'apiBaseUrl: https://agentgateway.ci.example.com/model-manager$$' \
 		'--enable-oauth=true' '--oauth-provider=dex' '--oauth-base-url=https://model-manager.ci.example.com' '--oauth-trusted-audiences=agent-platform' '--downstream-oauth=true' \
 		'--dex-issuer-url=https://dex.ci.example.com' '--dex-client-id=agent-platform' '--allow-private-oauth-urls=true' '--sso-allow-private-ips=true' 'forwardToken: true' 'requiredAudiences:'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: model-manager render lacks $$pattern"; exit 1; }; \
 	done; \
 	printf '%s' "$$out" | awk '/^kind: Deployment/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q 'key: dex-client-secret' || { echo "FAIL: model-manager reads no dex-client-secret from the platform Secret"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'name: model-manager-oauth$$' && { echo "FAIL: model-manager rendered its own OAuth Secret although global.identity.existingSecret is set"; exit 1; }; \
+	printf '%s' "$$out" | grep -qE 'name: model-manager-(kagent|kserve|kserve-config|nodes)$$' && { echo "FAIL: model-manager ServiceAccount RBAC rendered although downstream OAuth is on (the caller's RBAC is the only RBAC)"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy rendered without global.networkPolicy.enabled"; exit 1; }; true
+	@echo "--> model-manager downstream OAuth off: the ServiceAccount RBAC comes back"
+	@out=$$($(MODEL_MANAGER) --set 'model-manager.oauth.downstream.enabled=false'); \
+	printf '%s' "$$out" | grep -q 'name: model-manager-kagent$$' || { echo "FAIL: kagent Role missing with downstream OAuth off"; exit 1; }
 	@echo "--> model-manager OAuth off: anonymous MCPServer, no auth block, no OAuth args"
 	@out=$$($(MODEL_MANAGER) --set 'model-manager.oauth.enabled=false'); \
 	printf '%s' "$$out" | awk '/^kind: Deployment/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q -e '--enable-oauth' && { echo "FAIL: OAuth args rendered with model-manager.oauth.enabled=false"; exit 1; }; \
@@ -306,11 +310,13 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	@if $(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.runtime=other' >/dev/null 2>&1; then \
 		echo "FAIL: kserve runtime differing from modelServing accepted"; exit 1; fi
 	@$(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.kserve.runtime=kserve-vllm' --set 'model-manager.kserve.cache.claimName=hf-cache' >/dev/null
-	@echo "--> kserve backend: the chart renders the serving-namespace Role and the nodes ClusterRole"
+	@echo "--> kserve backend: no ServiceAccount RBAC with downstream OAuth (the default); the serving-namespace Role and the nodes ClusterRole only without it"
 	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve'); \
-	printf '%s' "$$out" | grep -q 'name: model-manager-kserve$$' || { echo "FAIL: kserve Role missing"; exit 1; }; \
-	printf '%s' "$$out" | grep -q 'name: model-manager-nodes$$' || { echo "FAIL: nodes ClusterRole missing"; exit 1; }; \
+	printf '%s' "$$out" | grep -qE 'name: model-manager-(kserve|nodes)$$' && { echo "FAIL: kserve ServiceAccount RBAC rendered although downstream OAuth is on"; exit 1; }; \
 	printf '%s' "$$out" | grep -q -e '--backend=kserve' || { echo "FAIL: kserve backend arg missing"; exit 1; }
+	@out=$$($(MODEL_SERVING) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' --set 'model-manager.oauth.downstream.enabled=false'); \
+	printf '%s' "$$out" | grep -q 'name: model-manager-kserve$$' || { echo "FAIL: kserve Role missing with downstream OAuth off"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'name: model-manager-nodes$$' || { echo "FAIL: nodes ClusterRole missing with downstream OAuth off"; exit 1; }
 	@if $(MODEL_MANAGER) --set ingress.mode=muster-direct --set components.agentgateway.enabled=false --set 'agent-platform-mcps.agentgateway.viaMuster=false' >/dev/null 2>&1; then \
 		echo "FAIL: model-manager route in muster-direct mode accepted"; exit 1; fi
 	@if $(MODEL_MANAGER) --set gateway.jwksEgress.enabled=false >/dev/null 2>&1; then \

@@ -126,7 +126,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.13.0"
+    version: "0.14.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: false
   # The agent-manager service (the agent write surface of the Agent Control
