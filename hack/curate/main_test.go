@@ -276,3 +276,27 @@ func TestRunKeepsExtraTemplate(t *testing.T) {
 	require.Equal(t, "the umbrella's own notes\n", string(content))
 	require.NoError(t, run(checkMode(opts), helm))
 }
+
+func TestRunFleetDirCuratesFromLocalCheckout(t *testing.T) {
+	opts := setupRepo(t)
+	helm := newFakeHelm()
+	require.NoError(t, run(opts, helm))
+	fromRegistry := snapshot(t, opts)
+
+	// The same two source charts as a checkout. Both layouts name the
+	// directory after the chart, so -fleet-dir must curate byte-identically.
+	local := t.TempDir()
+	for _, chart := range []string{"agent-platform", "agent-platform-connectivity"} {
+		require.NoError(t, helm.Pull("", chart, "", local))
+		require.NoError(t, os.WriteFile(filepath.Join(local, chart, "Chart.yaml"), []byte("name: "+chart+"\n"), 0o644))
+	}
+	// A pull now fails, so the checkout is provably the only source read.
+	helm.values = nil
+
+	opts.fleetDir = local
+	require.NoError(t, run(opts, helm))
+	require.Equal(t, fromRegistry, snapshot(t, opts), "the same sources curate the same chart, pulled or checked out")
+
+	opts.fleetDir = filepath.Join(local, "missing")
+	require.ErrorContains(t, run(opts, helm), "is not a chart directory")
+}
