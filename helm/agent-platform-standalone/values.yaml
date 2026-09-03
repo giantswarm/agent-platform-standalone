@@ -1837,9 +1837,10 @@ cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true
 # logs every mutation with the caller (jobs carry requestedBy).
 # oauth.downstream presents that token to the kube-apiserver for everything
 # a request does (InferenceServices, download Jobs, cache scans,
-# ModelConfigs) — the user's RBAC governs; only work that outlives the
-# request (the wiring reconciler, a download longer than the token lives)
-# continues as the ServiceAccount. requiredAudiences is the cross-client
+# ModelConfigs) — the user's RBAC governs and the ServiceAccount gets no
+# RBAC at all (chart >= 0.14.0 renders none; the paths without a caller,
+# download re-adoption and the wiring reconciler, are off; a job outliving
+# its caller's token fails on the apiserver's 401). requiredAudiences is the cross-client
 # audience the apiserver trusts (see components.mcp-kubernetes
 # .kubernetesAudience — a Google IdP sets []); the private-IP relaxations
 # are for the platform's in-cluster Dex.

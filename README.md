@@ -599,7 +599,12 @@ every call.
 The same token goes on to the kube-apiserver: mcp-kubernetes
 (`enableDownstreamOAuth`) and model-manager (`oauth.downstream`) present the
 caller's id_token instead of the ServiceAccount's, so **the user's RBAC
-governs** every InferenceService, Job, ModelConfig and kubectl-shaped call.
+governs** every InferenceService, Job, ModelConfig and kubectl-shaped call —
+and the ServiceAccounts hold no permissions of their own: neither chart
+renders Roles or ClusterRoles for them in this mode (mcp-kubernetes forces its
+`minimal` profile, model-manager ≥ 0.14.0 renders no RBAC at all), and work
+that would run without a caller (model-manager's download re-adoption and
+wiring reconciler) is off.
 That needs an apiserver that trusts the token: `--oidc-issuer-url` is the
 platform issuer and `--oidc-client-id` an audience the token carries. Dex
 mints per-client tokens, so the audience the apiserver trusts is requested as
