@@ -230,8 +230,8 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy rendered without global.networkPolicy.enabled"; exit 1; }; true
 	@echo "--> model-manager OAuth off: anonymous MCPServer, no auth block, no OAuth args"
 	@out=$$($(MODEL_MANAGER) --set 'model-manager.oauth.enabled=false'); \
-	printf '%s' "$$out" | grep -q -e '--enable-oauth' && { echo "FAIL: OAuth args rendered with model-manager.oauth.enabled=false"; exit 1; }; \
-	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: model-manager MCPServer carries an auth block with OAuth off"; exit 1; }; true
+	printf '%s' "$$out" | awk '/^kind: Deployment/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q -e '--enable-oauth' && { echo "FAIL: OAuth args rendered with model-manager.oauth.enabled=false"; exit 1; }; \
+	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q 'forwardToken' && { echo "FAIL: model-manager MCPServer carries an auth block with OAuth off"; exit 1; }; true
 	@echo "--> the edge as data plane drops the public route; the JWKS TLS option renders the CA reference"
 	@out=$$($(TEMPLATE) -f examples/kind-lab-dex.yaml --set 'components.model-manager.enabled=true' --set 'components.model-manager.route.enabled=true' \
 		--set 'components.model-manager.route.jwtAuthentication.enabled=true' --set 'components.model-manager.route.jwtAuthentication.jwks.tls.enabled=true' \

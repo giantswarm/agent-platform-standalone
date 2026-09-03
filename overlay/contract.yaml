@@ -562,7 +562,7 @@ agent-platform-mcps:
 # The user's identity, not a ServiceAccount: the server runs as an OAuth 2.1
 # resource server (mcp-oauth) against the platform IdP. Its issuer, client,
 # secret and CA fall back to the umbrella's global.identity contract inside
-# the mcp-kubernetes chart (chart >= 1.0.55), the trusted audience to the
+# the mcp-kubernetes chart (chart >= 1.1.0), the trusted audience to the
 # platform client — muster forwards the session's IdP id_token
 # (templates/mcp-kubernetes/mcpserver.yaml, auth.forwardToken) and the server
 # validates it against the IdP's JWKS. enableDownstreamOAuth presents that
