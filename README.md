@@ -687,6 +687,33 @@ charts are public. If Helm returns `401 unauthorized` for `gsoci.azurecr.io`,
 a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
 `docker logout gsoci.azurecr.io`).
 
+### Curating an unreleased fleet change
+
+`fleet.version` is a released pin, so a fleet change reaches this chart only
+after it is published. To try one before that — a new component, a new wiring
+key, a template fix — point the generator at a local checkout of
+`giantswarm/agentic-platform` instead:
+
+```sh
+hack/curate.sh -fleet-dir ~/workspace/agentic-platform/helm
+```
+
+The directory holds both source charts under their own names
+(`agent-platform/`, `agent-platform-connectivity/`), which is the layout
+`helm pull --untar` produces, so the two paths differ only in where the charts
+come from. `fleet.version` is not consulted and the run says so on stderr.
+
+The transform is deny-unknown, so a new top-level values key also needs its
+`keys:` rule (and, for an open map, an `annotations:` entry) in `curate.yaml`
+before the run succeeds. Write that rule here and commit it together with the
+`fleet.version` bump that makes it real — the committed output must stay
+reproducible from the registry, so **do not commit a chart curated from a
+local checkout**. `hack/curate.sh --check` in CI always pulls the pin.
+
+`giantswarm/agentplatform-kind` installs such a checkout with
+`platform.apsPath` in `agentlab.yaml`, which is the end-to-end loop: curate
+here, install there.
+
 ## CI
 
 - `build-chart` (generated): app-build-suite lint, template validation with

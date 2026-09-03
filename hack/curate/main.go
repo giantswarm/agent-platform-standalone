@@ -26,7 +26,11 @@ type options struct {
 	giantswarmInputsPath string
 	chartDir             string
 	examplesDir          string
-	check                bool
+	// fleetDir replaces the `helm pull` of the two source charts with a local
+	// checkout, so an unreleased fleet change can be curated and installed
+	// before it is published. Never set in CI.
+	fleetDir string
+	check    bool
 }
 
 func main() {
@@ -37,6 +41,7 @@ func main() {
 	flag.StringVar(&opts.giantswarmInputsPath, "giantswarm-inputs", "overlay/giantswarm.yaml", "per-installation inputs merged into the generated examples/giantswarm.yaml")
 	flag.StringVar(&opts.chartDir, "chart-dir", "helm/agent-platform-standalone", "chart directory to generate into")
 	flag.StringVar(&opts.examplesDir, "examples-dir", "examples", "directory of the generated examples")
+	flag.StringVar(&opts.fleetDir, "fleet-dir", "", "read the fleet and connectivity charts from this local directory (<dir>/<chart>) instead of pulling fleet.version; for curating an unreleased fleet change")
 	flag.BoolVar(&opts.check, "check", false, "verify the committed files match the generator output and Chart.lock is in sync; write nothing")
 	helmBin := flag.String("helm", "helm", "helm binary")
 	flag.Parse()
@@ -71,11 +76,14 @@ func run(opts options, helm Helm) error {
 	}
 	defer os.RemoveAll(workDir)
 
-	fleetDir, err := pullChart(helm, config.Fleet.Repository, config.Fleet.Chart, config.Fleet.Version, workDir)
+	if opts.fleetDir != "" {
+		fmt.Fprintf(os.Stderr, "curate: reading the fleet charts from %s; the fleet.version pin %s is ignored, so this output is not reproducible from the registry\n", opts.fleetDir, config.Fleet.Version)
+	}
+	fleetDir, err := chartSource(helm, opts.fleetDir, config.Fleet.Repository, config.Fleet.Chart, config.Fleet.Version, workDir)
 	if err != nil {
 		return err
 	}
-	connectivityDir, err := pullChart(helm, config.Fleet.Repository, config.Fleet.ConnectivityChart, config.Fleet.Version, workDir)
+	connectivityDir, err := chartSource(helm, opts.fleetDir, config.Fleet.Repository, config.Fleet.ConnectivityChart, config.Fleet.Version, workDir)
 	if err != nil {
 		return err
 	}
@@ -176,6 +184,21 @@ func loadOverlay(path string) (*yaml.Node, error) {
 		return nil, err
 	}
 	return parseYAML(raw, path)
+}
+
+// chartSource returns the directory holding the named source chart: the
+// checkout under localDir when the caller passed -fleet-dir, otherwise the
+// pinned release, pulled into workDir. Both layouts name the directory after
+// the chart, so the two paths differ only in how it got there.
+func chartSource(helm Helm, localDir, repository, chart, version, workDir string) (string, error) {
+	if localDir == "" {
+		return pullChart(helm, repository, chart, version, workDir)
+	}
+	dir := filepath.Join(localDir, chart)
+	if _, err := os.Stat(filepath.Join(dir, "Chart.yaml")); err != nil {
+		return "", fmt.Errorf("fleet-dir %s: %s is not a chart directory: %w", localDir, dir, err)
+	}
+	return dir, nil
 }
 
 // pullChart pulls a chart and returns the directory it was unpacked into.
