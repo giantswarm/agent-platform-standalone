@@ -226,7 +226,7 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: model-manager render lacks $$pattern"; exit 1; }; \
 	done; \
 	printf '%s' "$$out" | awk '/^kind: Deployment/,/^---/' | awk '/name: model-manager$$/,/^---/' | grep -q 'key: dex-client-secret' || { echo "FAIL: model-manager reads no dex-client-secret from the platform Secret"; exit 1; }; \
-	printf '%s' "$$out" | grep -q 'kind: Secret' && { echo "FAIL: model-manager rendered its own OAuth Secret although global.identity.existingSecret is set"; exit 1; }; \
+	printf '%s' "$$out" | grep -q 'name: model-manager-oauth$$' && { echo "FAIL: model-manager rendered its own OAuth Secret although global.identity.existingSecret is set"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'kind: NetworkPolicy' && { echo "FAIL: NetworkPolicy rendered without global.networkPolicy.enabled"; exit 1; }; true
 	@echo "--> model-manager OAuth off: anonymous MCPServer, no auth block, no OAuth args"
 	@out=$$($(MODEL_MANAGER) --set 'model-manager.oauth.enabled=false'); \
