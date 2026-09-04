@@ -238,6 +238,14 @@ var proseTLDs = map[string]bool{"ai": true, "cloud": true, "com": true, "dev": t
 // identifier that merely ends in a moved key, a path nested under a key that
 // did not move, and a domain name are left as written.
 func rewriteProsePaths(text string, moves []PathMove, valueKeys []string) string {
+	return rewriteProsePathsKeeping(text, moves, valueKeys, nil)
+}
+
+// rewriteProsePathsKeeping is rewriteProsePaths with a veto: keep, when set,
+// sees the path as written and its moved form and returns true to leave the
+// token alone. The values comment rewrite uses it for a path that names a key
+// of the block the comment sits in (see blockRelativePath).
+func rewriteProsePathsKeeping(text string, moves []PathMove, valueKeys []string, keep func(token, moved []string) bool) string {
 	text = prosePathRe.ReplaceAllStringFunc(text, func(token string) string {
 		if strings.Contains(token, "`") {
 			return token // a backtick-quoted literal identifier, e.g. a helper name
@@ -254,7 +262,11 @@ func rewriteProsePaths(text string, moves []PathMove, valueKeys []string) string
 			if len(rest) == 1 && proseTLDs[rest[0]] {
 				return token
 			}
-			return strings.Join(append(slices.Clone(move.To), rest...), ".")
+			moved := append(slices.Clone(move.To), rest...)
+			if keep != nil && keep(segments, moved) {
+				return token
+			}
+			return strings.Join(moved, ".")
 		}
 		return token
 	})
@@ -284,19 +296,69 @@ func rewriteProsePaths(text string, moves []PathMove, valueKeys []string) string
 // generated values document, so a copied comment (the postgres wiring notes,
 // for one) names the keys of this chart's layout. The explicit template
 // rewrites are template-domain and do not apply here.
+//
+// A component block's comments name the block's own keys as relative paths
+// (model-manager's kagent.namespace), and such a path can start with a
+// top-level fleet key that moved. The rewrite therefore carries the blocks a
+// comment sits in — a key's head comment sits in the block it opens — and
+// blockRelativePath vetoes a move whose result the document does not carry
+// while the path as written resolves in one of those blocks.
 func rewriteValuesComments(document *yaml.Node, moves []PathMove, valueKeys []string) {
 	ordered := slices.Clone(moves)
 	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i].From) > len(ordered[j].From) })
-	var walk func(node *yaml.Node)
-	walk = func(node *yaml.Node) {
-		node.HeadComment = rewriteProsePaths(node.HeadComment, ordered, valueKeys)
-		node.LineComment = rewriteProsePaths(node.LineComment, ordered, valueKeys)
-		node.FootComment = rewriteProsePaths(node.FootComment, ordered, valueKeys)
-		for _, child := range node.Content {
-			walk(child)
+	root := document
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	rewrite := func(node *yaml.Node, scopes []*yaml.Node) {
+		keep := func(token, moved []string) bool { return blockRelativePath(root, scopes, token, moved) }
+		node.HeadComment = rewriteProsePathsKeeping(node.HeadComment, ordered, valueKeys, keep)
+		node.LineComment = rewriteProsePathsKeeping(node.LineComment, ordered, valueKeys, keep)
+		node.FootComment = rewriteProsePathsKeeping(node.FootComment, ordered, valueKeys, keep)
+	}
+	var walk func(node *yaml.Node, scopes []*yaml.Node)
+	walk = func(node *yaml.Node, scopes []*yaml.Node) {
+		rewrite(node, scopes)
+		if node.Kind != yaml.MappingNode {
+			for _, child := range node.Content {
+				walk(child, scopes)
+			}
+			return
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, value := node.Content[i], node.Content[i+1]
+			inner := scopes
+			if value.Kind == yaml.MappingNode {
+				inner = append(slices.Clone(scopes), value)
+			}
+			rewrite(key, inner)
+			walk(value, inner)
 		}
 	}
-	walk(document)
+	walk(document, nil)
+}
+
+// blockRelativePath reports whether a prose path names a key of one of the
+// blocks the comment sits in rather than the top-level fleet key it starts
+// with: its moved form resolves nowhere in the document, while the path as
+// written resolves inside an enclosing block. The document root is not a
+// scope — a path that resolves there is the moved form's own domain.
+func blockRelativePath(root *yaml.Node, scopes []*yaml.Node, token, moved []string) bool {
+	if pathExists(root, moved) {
+		return false
+	}
+	for _, scope := range scopes {
+		if pathExists(scope, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// pathExists reports whether the dotted path resolves to a node under mapping.
+func pathExists(mapping *yaml.Node, segments []string) bool {
+	_, err := pathGet(mapping, strings.Join(segments, "."))
+	return err == nil
 }
 
 func isPrefix(prefix, segments []string) bool {

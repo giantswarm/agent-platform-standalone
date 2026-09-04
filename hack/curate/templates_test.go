@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // renderFixtureTemplates runs the template pipeline over fixtureTemplates.
@@ -141,4 +142,41 @@ func TestRenderTemplatesExplicitRewriteWins(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(templates["netpol.yaml"]), ".Values.muster.enabled",
 		"without the rewrite the source path stands: muster.enabled is a real key here")
+}
+
+func TestRewriteValuesCommentsKeepsBlockRelativePaths(t *testing.T) {
+	// The generated layout after the kagent component moved under its
+	// subchart key: the outer block's comments name the kagent chart's keys
+	// (absolute fleet paths), the model-manager block's comments name its own
+	// kagent.* keys, which merely share the first segment.
+	source := `# kagent.namespaceOverride at the root is the kagent chart's key
+kagent:
+  kagent:
+    namespaceOverride: kagent
+# ModelConfigs are wired into kagent.namespace, which must be the kagent
+# component's namespace (kagent.namespaceOverride); an install without kagent
+# sets kagent.disableWiring: true.
+model-manager:
+  kagent:
+    namespace: kagent
+    disableWiring: false
+  mcp:
+    # kagent.namespace is the block's own key here too, two levels down
+    enabled: true
+  # kagent.missing resolves nowhere, so the move stands
+  other: 1
+`
+	var document yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &document))
+	moves := []PathMove{{From: []string{"kagent"}, To: []string{"kagent", "kagent"}}}
+	rewriteValuesComments(&document, moves, []string{"kagent", "model-manager"})
+	out, err := encodeYAML(&document)
+	require.NoError(t, err)
+	text := string(out)
+	require.Contains(t, text, "# kagent.kagent.namespaceOverride at the root", "a root comment moves")
+	require.Contains(t, text, "wired into kagent.namespace, which", "the block's own key stays")
+	require.Contains(t, text, "namespace (kagent.kagent.namespaceOverride); an install", "the kagent chart's key moves inside the block too")
+	require.Contains(t, text, "sets kagent.disableWiring: true", "the block's own key stays")
+	require.Contains(t, text, "# kagent.namespace is the block's own key here too", "an enclosing block is a scope for nested comments")
+	require.Contains(t, text, "# kagent.kagent.missing resolves nowhere", "a path that resolves in no block moves")
 }
