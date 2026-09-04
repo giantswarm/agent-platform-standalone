@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `components.model-manager.networkPolicy.egress` (`fqdns`, `cidrs`, both empty; agent-platform 3.5.0): further destinations of model-manager on 443 whatever the backend — the same knob `components.agent-manager.networkPolicy.egress` already is — with `# @schema item` constraints for both arrays. `components.model-manager.networkPolicy.ingress.additionalPeers` / `components.agent-manager.networkPolicy.ingress.additionalPeers` (agent-platform 3.4.0): extra same-namespace callers admitted on the Service port; the Backstage-peer `templates.patch` entries are re-anchored behind the upstream `range $peers` block and still gate the peer on `components.backstage.enabled`.
 
+### Changed
+
+- `components.backstage.configReload.image.version` default `1.33.4` → `v1.37.0`. `gsoci.azurecr.io/giantswarm/kubectl` tags carry a `v` since 1.33.5, which the org `# registry:` Renovate manager keeps outside its version capture: Renovate wrote `v1.37.0`, read back `1.37.0` and aborted the branch ("Error updating branch: update failure", under Errored in the Dependency Dashboard since 2026-09-02). The pin now carries the literal `v` and an `extractVersion` rule in `renovate-custom.json5` (kubectl, `docker.io/vllm/vllm-openai`) strips it from the registry versions too, so Renovate bumps the digits behind it.
+
 ### Fixed
 
 - Fleet chart 3.5.0: the model-manager and agent-manager cilium egress policies open the identity provider for `oauth.provider: google` — `accounts.google.com` (discovery), `www.googleapis.com` (JWKS, userinfo) and `oauth2.googleapis.com` (token) by name next to the cluster entity — instead of naming nothing, which left both services unable to validate the forwarded Google id_token under `policyEnforcementMode: always` and needed a hand-written `world:443` supplement (#106). The Dex render is unchanged; the kubernetes flavor already opened every public destination on 443 while OAuth is on. `make verify-model-manager` / `verify-agent-manager` assert both providers.

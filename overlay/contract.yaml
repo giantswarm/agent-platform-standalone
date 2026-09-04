@@ -118,8 +118,10 @@ components:
       image:
         registry: gsoci.azurecr.io
         name: giantswarm/kubectl
+        # The registry tags this image `v1.33.5`, `v1.37.0`, ...: the `v` is part
+        # of the tag, Renovate bumps the digits after it (renovate-custom.json5).
         # registry: gsoci.azurecr.io/giantswarm/kubectl
-        version: "1.33.4"
+        version: "v1.37.0"
   # The bundled Kubernetes MCP server. Its own values are the mcp-kubernetes
   # chart's (`mcp-kubernetes:` block below); this block carries what the
   # umbrella renders around it: the MCPServer CR that registers it with

@@ -25,4 +25,28 @@
   gitIgnoredAuthors: [
     'dev@giantswarm.io',
   ],
+  packageRules: [
+    {
+      // These registries tag with a `v` prefix (kubectl since 1.33.5: `v1.33.5`,
+      // `v1.37.0`; vllm-openai: `v0.28.0`). The org `# registry:` manager keeps
+      // that prefix outside its version capture, so the pin in
+      // overlay/contract.yaml carries the literal `v` and Renovate sees the
+      // digits. Stripping the prefix from the registry's versions as well keeps
+      // both sides in the same shape: the replacement turns `v1.37.0` into
+      // `v1.37.1`. Without this Renovate writes the tag verbatim, re-extracts
+      // the digits, finds them unequal to its new value and aborts the branch
+      // with "Error updating branch: update failure" (the kubectl 1.33.4 →
+      // v1.37.0 update sat under Errored in the Dependency Dashboard since
+      // 2026-09-02), or, for a pin that already carries the `v`, would write
+      // `vv1.37.1`.
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'gsoci.azurecr.io/giantswarm/kubectl',
+        'docker.io/vllm/vllm-openai',
+      ],
+      extractVersion: '^v?(?<version>.*)$',
+    },
+  ],
 }
