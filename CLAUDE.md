@@ -107,3 +107,13 @@ commits (`cliff.toml`): a docs-only PR cuts no release and is listed in no
 release notes; its change ships with the next release. The `docs` skip is not
 in the devctl template that generates `cliff.toml`, so an align-files PR drops
 it and `make verify-release-config` fails until the line is restored.
+
+The tag pipeline runs `build-chart`, `verify` and `push-chart-release` only
+(`atsBranchOnly` on this repo's entry in giantswarm/github); the chart is
+pullable about two minutes after the merge. The chart tests run on the PR
+instead of again on the tag, which holds because the branch protection on
+`main` makes them binding: `ci/circleci: execute-chart-tests` and
+`ci/circleci: verify` are required checks next to the GitHub Actions ones, and
+the branch must be up to date with `main` before it merges (strict), so the
+tag is the tree the PR tested. Never take a status off the required list or
+turn strict off without putting the tag-time test back.
