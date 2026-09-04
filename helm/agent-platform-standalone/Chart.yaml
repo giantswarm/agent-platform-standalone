@@ -45,7 +45,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agentgateway.enabled
   - name: agent-platform-mcps
-    version: "0.6.8"  # range 0.x
+    version: "0.7.0"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-platform-mcps.enabled
   - name: klaus-gateway
