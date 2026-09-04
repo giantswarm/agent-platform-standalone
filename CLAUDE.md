@@ -93,8 +93,11 @@ registry for newer versions.
 ## Commits and releases
 
 Conventional commit titles; the PR squashes to one commit, and a single-commit
-PR squashes with that commit's message. `feat` and `fix` cut a release through
-the auto-release workflow and publish the chart to
-`oci://gsoci.azurecr.io/charts/giantswarm/agent-platform-standalone`; `docs`
-and `chore` do not. Comment-only fixes that must reach the published chart
-README are `fix` commits.
+PR squashes with that commit's message. Every conventional commit on `main`
+cuts a release through the auto-release workflow and publishes the chart to
+`oci://gsoci.azurecr.io/charts/giantswarm/agent-platform-standalone`: `feat`
+bumps the minor version, a breaking change the major, every other type
+(`fix`, `docs`, `chore`, `ci`, ...) the patch; only `style` commits release
+nothing. A docs-only PR therefore publishes an identical chart under a new
+patch version, so small documentation fixes ride along with the next real
+change when they can.
