@@ -25,5 +25,12 @@ if [ ! -f "${chart_archive}" ]; then
   exit 1
 fi
 
+# --force-conflicts: the CRDs of the installed release are owned by the field
+# manager "helm" (Helm 4 installs them with server-side apply). A server-side
+# apply by kubectl of a CRD whose spec changed in the candidate — first seen
+# with the mcpservers.muster.giantswarm.io CRD of muster 5.8.0 — is rejected
+# with "conflict with \"helm\": .spec.versions" unless kubectl takes the
+# fields over. Taking them over is the intent of this step: the candidate's
+# CRDs are the desired state, and the next helm upgrade does not touch them.
 echo "Applying the candidate's CRDs before the upgrade (helm upgrade skips crds/)"
-helm show crds "${chart_archive}" | kubectl apply --server-side -f -
+helm show crds "${chart_archive}" | kubectl apply --server-side --force-conflicts -f -

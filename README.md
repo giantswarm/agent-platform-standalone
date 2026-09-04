@@ -782,8 +782,15 @@ dependencies, so apply the candidate's CRDs first — one line, prints the
 dependency CRDs too (including those of disabled dependencies, harmless):
 
 ```sh
-helm show crds helm/agent-platform-standalone | kubectl apply --server-side -f -
+helm show crds helm/agent-platform-standalone | kubectl apply --server-side --force-conflicts -f -
 ```
+
+`--force-conflicts` is required, not optional: the CRDs the release installed
+are owned by the field manager `helm`, and a server-side apply of a CRD whose
+schema changed in the new version is rejected with `conflict with "helm":
+.spec.versions` unless kubectl takes the fields over — which is the point of
+this step. The first bump to need it was muster 5.8.0 (its `MCPServer` CRD
+gained `spec.auth.authorizationServer` fields).
 
 The CI upgrade test runs exactly this step between the last published chart
 and the release candidate (`tests/ats/upgrade-hook.sh`). The KServe CRD
