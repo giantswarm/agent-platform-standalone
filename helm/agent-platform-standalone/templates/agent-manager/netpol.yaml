@@ -5,7 +5,6 @@
 {{- $musterOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "muster") }}
 {{- $mcpOn := and $musterOn (dig "muster" "mcpServer" "enabled" false $chart) }}
 {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
-{{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
 {{- /* Extra same-namespace callers admitted on the Service port
 (components.agent-manager.networkPolicy.ingress.additionalPeers): pod label maps, each
 rendered as one more ingress peer in the flavor's own dialect. */ -}}
@@ -52,12 +51,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
         {{- end }}
-        {{- if $backstageOn }}
-        - matchLabels:
-            app.kubernetes.io/name: backstage
-            io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-        {{- end }}
-        {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
+        {{- if not (or $am.route.enabled $mcpOn $peers) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - matchLabels:
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
@@ -220,12 +214,7 @@ spec:
             matchLabels:
               {{- toYaml . | nindent 14 }}
         {{- end }}
-        {{- if $backstageOn }}
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: backstage
-        {{- end }}
-        {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
+        {{- if not (or $am.route.enabled $mcpOn $peers) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - podSelector:
             matchLabels:

@@ -303,6 +303,12 @@ annotations:
   components.model-manager.networkPolicy.egress.cidrs: "item: string"
   components.agent-manager.networkPolicy.egress.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
   components.agent-manager.networkPolicy.egress.cidrs: "item: string"
+  # The managers' extra ingress peers are pod label maps; the contract's one
+  # item (Backstage) would freeze the item shape to that label key, so the
+  # items validate against the Kubernetes labels map instead (ObjectMeta's
+  # labels, bundled from the k8s schema like the EnvVar items above).
+  components.model-manager.networkPolicy.ingress.additionalPeers: "itemRef: $k8s/objectmeta.json#/properties/labels"  # yamllint disable-line rule:line-length
+  components.agent-manager.networkPolicy.ingress.additionalPeers: "itemRef: $k8s/objectmeta.json#/properties/labels"  # yamllint disable-line rule:line-length
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
   global.networkPolicy.flavor: "enum:[cilium,kubernetes]"
   # Operator-set authorize-request parameters (e.g. Google's
@@ -510,107 +516,6 @@ templates:
         {{- fail "klaus-gateway.agentgatewayRoute renders agentgateway.dev resources on the agentgateway Gateway; it requires an agentgateway-* ingress.mode" -}}
         {{- end -}}
         {{- end -}}
-    # The manager network policies admit the agentgateway data plane and
-    # muster; this chart runs Backstage (an in-cluster caller of both APIs)
-    # in the same release namespace and admits it too — the shape the
-    # hand-authored policies had before the templates came from the
-    # connectivity chart. The fleet's Backstage lives in another namespace, so
-    # upstream has no such peer. agent-platform#256 (3.4.0) added the
-    # configurable ingress-peer list these patches are anchored behind
-    # (`range $peers`); moving the Backstage peer onto
-    # components.<chart>.networkPolicy.ingress.additionalPeers retires them.
-    - file: model-manager/netpol.yaml
-      find: |-
-        {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
-      replace: |-
-        {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
-        {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
-    - file: model-manager/netpol.yaml
-      find: |-
-        {{- range $peers }}
-                - matchLabels:
-                    {{- toYaml . | nindent 12 }}
-                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
-                {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $peers) }}
-      replace: |-
-        {{- range $peers }}
-                - matchLabels:
-                    {{- toYaml . | nindent 12 }}
-                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
-                {{- end }}
-                {{- if $backstageOn }}
-                - matchLabels:
-                    app.kubernetes.io/name: backstage
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-                {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
-    - file: model-manager/netpol.yaml
-      find: |-
-        {{- range $peers }}
-                - podSelector:
-                    matchLabels:
-                      {{- toYaml . | nindent 14 }}
-                {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $peers) }}
-      replace: |-
-        {{- range $peers }}
-                - podSelector:
-                    matchLabels:
-                      {{- toYaml . | nindent 14 }}
-                {{- end }}
-                {{- if $backstageOn }}
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: backstage
-                {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
-    - file: agent-manager/netpol.yaml
-      find: |-
-        {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
-      replace: |-
-        {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
-        {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
-    - file: agent-manager/netpol.yaml
-      find: |-
-        {{- range $peers }}
-                - matchLabels:
-                    {{- toYaml . | nindent 12 }}
-                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
-                {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $peers) }}
-      replace: |-
-        {{- range $peers }}
-                - matchLabels:
-                    {{- toYaml . | nindent 12 }}
-                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
-                {{- end }}
-                {{- if $backstageOn }}
-                - matchLabels:
-                    app.kubernetes.io/name: backstage
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-                {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
-    - file: agent-manager/netpol.yaml
-      find: |-
-        {{- range $peers }}
-                - podSelector:
-                    matchLabels:
-                      {{- toYaml . | nindent 14 }}
-                {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $peers) }}
-      replace: |-
-        {{- range $peers }}
-                - podSelector:
-                    matchLabels:
-                      {{- toYaml . | nindent 14 }}
-                {{- end }}
-                {{- if $backstageOn }}
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: backstage
-                {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
     # The fleet does not bundle KServe, this chart does (components.kserve, and
     # the modelServing component runs on it): the kserve-backend API guard
     # defers to them — with the kserve component on, templates/kserve/validate.yaml
