@@ -823,6 +823,10 @@ version pinned in `curate.yaml`, and:
 6. copies the connectivity chart's templates, with the helper names prefixed by
    the chart name and every values path the transform moved rewritten from the
    same rules (`.Values.networkPolicy` becomes `.Values.global.networkPolicy`).
+   Paths named in prose (fail messages, the copied values comments) follow the
+   same moves; a path that names a key of the block its comment sits in
+   (model-manager's own `kagent.namespace`, not the kagent component's) stays
+   as written when the moved form exists nowhere in the generated values.
    A template the connectivity chart drops is deleted here; `templates.extra`
    in `curate.yaml` names the files this chart owns itself (`NOTES.txt`, the
    Backstage app-config and route, the model-serving templates). A component

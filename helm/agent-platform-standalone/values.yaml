@@ -1834,9 +1834,9 @@ cloudnative-pg: {}  # @schema skipProperties: true; additionalProperties: true
 # from pods; the chart's own default is a Docker Desktop guess), `kserve`
 # manages InferenceServices on a KServe the cluster already has (the Agent
 # Platform does not bundle it), configured through the chart's kserve.* keys.
-# ModelConfigs are wired into kagent.kagent.namespace, which must be the kagent
+# ModelConfigs are wired into kagent.namespace, which must be the kagent
 # component's namespace (kagent.kagent.namespaceOverride); an install without kagent
-# sets kagent.kagent.disableWiring: true. The MCP endpoint is registered with muster
+# sets kagent.disableWiring: true. The MCP endpoint is registered with muster
 # through the chart's own MCPServer CR (tools appear as x_model-manager_<tool>).
 #
 # The user's identity, not a ServiceAccount: oauth.enabled makes model-manager
@@ -1903,7 +1903,7 @@ model-manager:  # @schema skipProperties: true; additionalProperties: true
 # flow composes — validated against the chart's values.schema.json, as REST
 # and MCP (tools appear as x_agent-manager_<tool> through the chart's own
 # MCPServer CR). It needs the kagent component (the agents it manages, in
-# kagent.kagent.namespace = kagent.kagent.namespaceOverride) and Flux's helm and source
+# kagent.namespace = kagent.kagent.namespaceOverride) and Flux's helm and source
 # controllers on the cluster. The HelmReleases it writes carry
 # flux.helmReleaseServiceAccount: the Flux multi-tenancy admission policy on
 # Giant Swarm clusters requires one in tenant namespaces, and the
