@@ -13,7 +13,7 @@ dependencies:
   version: 2.0.4
 - name: agent-platform-mcps
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.6.8
+  version: 0.7.0
 - name: klaus-gateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.38.1
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:5596c07af0b25b2ccf6219d7dea3ce4737d491adec74689b4752977fc0e66759
-generated: "2026-09-04T13:50:13.007651347Z"
+digest: sha256:22fb872ae9f4e38ff053c013f7e787455f5adb3f2baa19b14802db16a0109a5e
+generated: "2026-09-04T15:58:59.798851354Z"
