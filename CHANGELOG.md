@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- A `docs` commit no longer cuts a release: git-cliff skips the type in `cliff.toml` (release notes and bump decision alike), so a docs-only PR ships with the next `feat`/`fix`/`chore` release instead of publishing an identical chart under a new patch version. `make verify-release-config` keeps the skip across align-files regenerations of `cliff.toml`, which the devctl template does not carry.
+- A `docs` commit no longer cuts a release: git-cliff skips the type in `cliff.toml` (release notes and bump decision alike), so a docs-only PR ships with the next `feat`/`fix`/`chore` release instead of publishing an identical chart under a new patch version. The rule lives in the devctl template that generates `cliff.toml` (devctl#2151); the interim repo-local `make verify-release-config` guard is gone.
 - `components.backstage.configReload.image.version` default `1.33.4` → `v1.37.0`. `gsoci.azurecr.io/giantswarm/kubectl` tags carry a `v` since 1.33.5, which the org `# registry:` Renovate manager keeps outside its version capture: Renovate wrote `v1.37.0`, read back `1.37.0` and aborted the branch ("Error updating branch: update failure", under Errored in the Dependency Dashboard since 2026-09-02). The pin now carries the literal `v` and an `extractVersion` rule in `renovate-custom.json5` (kubectl, `docker.io/vllm/vllm-openai`) strips it from the registry versions too, so Renovate bumps the digits behind it.
 
 ### Fixed
