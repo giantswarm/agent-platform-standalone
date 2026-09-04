@@ -742,16 +742,9 @@ helm install agent-platform helm/agent-platform-standalone \
   -f examples/kind-lab-dex.yaml
 ```
 
-muster restarts until the edge Gateway and the lab Dex answer its OIDC
-discovery — that settles itself. Backstage does not: its login-provider
-check probes the Dex issuer for only ~15 seconds at startup and a failed
-backend keeps serving readiness 503 without exiting, so when Backstage boots
-before the edge Gateway on a fresh install it stays NotReady until restarted
-(the CI smoke does the same):
-
-```sh
-kubectl -n agent-platform rollout restart deployment backstage
-```
+muster restarts and Backstage waits (NotReady, retrying its Dex issuer
+discovery with backoff) until the edge Gateway and the lab Dex answer their
+OIDC discovery — both settle on their own once the Gateway is up.
 
 To use the platform from the host, forward
 the edge (port 443 needs root; outside the cluster the public nip.io wildcard
