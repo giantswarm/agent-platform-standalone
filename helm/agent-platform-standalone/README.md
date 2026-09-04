@@ -145,7 +145,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.model-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
 | components.model-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
 | components.model-manager.kserve.requireApi | bool | `true` |  |
-| components.model-manager.networkPolicy.ingress.additionalPeers | list | `[]` |  |
+| components.model-manager.networkPolicy.ingress.additionalPeers[0]."app.kubernetes.io/name" | string | `"backstage"` |  |
 | components.model-manager.networkPolicy.huggingFace.fqdns[0].matchName | string | `"huggingface.co"` |  |
 | components.model-manager.networkPolicy.huggingFace.fqdns[1].matchPattern | string | `"*.huggingface.co"` |  |
 | components.model-manager.networkPolicy.huggingFace.fqdns[2].matchPattern | string | `"*.hf.co"` |  |
@@ -168,7 +168,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.agent-manager.route.jwtAuthentication.jwks.tls.enabled | bool | `false` |  |
 | components.agent-manager.route.jwtAuthentication.jwks.tls.caSecretName | string | `""` |  |
 | components.agent-manager.flux.requireApi | bool | `false` |  |
-| components.agent-manager.networkPolicy.ingress.additionalPeers | list | `[]` |  |
+| components.agent-manager.networkPolicy.ingress.additionalPeers[0]."app.kubernetes.io/name" | string | `"backstage"` |  |
 | components.agent-manager.networkPolicy.egress.fqdns[0].matchPattern | string | `"*.blob.core.windows.net"` |  |
 | components.agent-manager.networkPolicy.egress.fqdns[1].matchName | string | `"api.github.com"` |  |
 | components.agent-manager.networkPolicy.egress.cidrs | list | `[]` |  |

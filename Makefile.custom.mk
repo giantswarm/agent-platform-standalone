@@ -251,12 +251,12 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 	for pattern in 'host: agent-manager\..*\.svc\.cluster\.local' 'name: agent-manager-public' 'name: agent-manager-jwks' 'name: agent-manager-jwt' 'replacePrefixMatch: /' 'value: /agent-manager$$'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager route render lacks $$pattern"; exit 1; }; \
 	done
-	@echo "--> network policies in both flavors: ingress from the data plane, muster and Backstage, probes (cilium), egress to the registry and GitHub"
+	@echo "--> network policies in both flavors: ingress from the data plane, muster and Backstage (the contract's networkPolicy.ingress.additionalPeers), probes (cilium), egress to the registry and GitHub"
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
 	for pattern in 'kind: CiliumNetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'matchName: gsoci.azurecr.io' 'matchName: api.github.com' 'blob\.core\.windows\.net' '- host' '- remote-node' '- kube-apiserver'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager cilium policies lack $$pattern"; exit 1; }; \
 	done; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the standalone patch)"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the contract's networkPolicy.ingress.additionalPeers)"; exit 1; }; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium agent-manager egress lacks the IdP (agent-manager.oauth is on)"; exit 1; }; \
 	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium agent-manager egress names Google endpoints for the dex provider"; exit 1; fi
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=kubernetes); \
@@ -304,7 +304,7 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | grep -q 'name: model-manager-public' && { echo "FAIL: layer-1 model-manager route rendered with the edge as data plane"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'apiBaseUrl: https://agentgateway.127.0.0.1.nip.io/model-manager$$' || { echo "FAIL: lab apiBaseUrl not rendered"; exit 1; }; \
 	printf '%s' "$$out" | grep -A3 'caCertificateRefs:' | grep -q 'name: agent-platform-idp-ca' || { echo "FAIL: JWKS TLS CA reference not rendered from global.identity.ca"; exit 1; }
-	@echo "--> network policies: both flavors render the ingress/egress pair and the Ollama /32; a hostname endpoint opens the port; the ingress admits Backstage (the standalone patch) and the egress names the IdP"
+	@echo "--> network policies: both flavors render the ingress/egress pair and the Ollama /32; a hostname endpoint opens the port; the ingress admits Backstage (the contract's networkPolicy.ingress.additionalPeers) and the egress names the IdP"
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true); \
 	for pattern in 'name: agent-platform-standalone-model-manager-ingress' 'name: agent-platform-standalone-model-manager-egress' 'name: agent-platform-standalone-dataplane-to-model-manager' 'name: agent-platform-standalone-muster-to-model-manager' 'cidr: 192.0.2.10/32'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kubernetes-flavor render lacks $$pattern"; exit 1; }; \
@@ -316,6 +316,9 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium model-manager ingress lacks the Backstage peer"; exit 1; }; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium model-manager egress lacks the IdP (model-manager.oauth is on)"; exit 1; }; \
 	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium model-manager egress names Google endpoints for the dex provider"; exit 1; fi
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium --set-json 'components.model-manager.networkPolicy.ingress.additionalPeers=[{"app.kubernetes.io/name":"backstage"},{"app.kubernetes.io/name":"portal","app.kubernetes.io/component":"backend"}]'); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -B1 -A1 'app.kubernetes.io/name: portal' | grep -q 'app.kubernetes.io/component: backend' || { echo "FAIL: an operator-added ingress peer (a multi-label map) did not reach the cilium model-manager ingress whole"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -A1 'app.kubernetes.io/name: portal' | grep -q 'io.kubernetes.pod.namespace: ' || { echo "FAIL: the operator-added ingress peer is not pinned to the release namespace"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set 'model-manager.ollama.endpoint=http://ollama.example.internal:11434'); \
 	printf '%s' "$$out" | grep -q 'cidr: 0.0.0.0/0' || { echo "FAIL: hostname endpoint did not open the port"; exit 1; }
 	@echo "--> a Google-shaped model-manager (oauth.provider google): the cilium egress names Google's discovery, JWKS/userinfo and token hosts instead of a Dex issuer (agent-platform-standalone#106); the egress knob adds names (cilium) and blocks (both flavors)"

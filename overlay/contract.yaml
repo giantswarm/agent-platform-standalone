@@ -147,6 +147,15 @@ components:
   # endpoint in-cluster (the chart's MCPServer CR). See the README section
   # "Model manager".
   model-manager:
+    # Backstage, an in-cluster caller of both manager APIs, runs in the release
+    # namespace: admit it on the Service port next to the agentgateway data
+    # plane and muster (the fleet's knob, agent-platform#256; this chart
+    # patched the peer into the generated policies before). Inert while the
+    # backstage component is off: the selector matches no pod.
+    networkPolicy:
+      ingress:
+        additionalPeers:
+          - app.kubernetes.io/name: backstage
     route:
       parentRef:
         # The standalone default: empty follows the chart-owned edge, else
@@ -164,6 +173,15 @@ components:
   # from its agentManager block. See the README section "Agent manager".
   agent-manager:
     enabled: true
+    # Backstage, an in-cluster caller of both manager APIs, runs in the release
+    # namespace: admit it on the Service port next to the agentgateway data
+    # plane and muster (the fleet's knob, agent-platform#256; this chart
+    # patched the peer into the generated policies before). Inert while the
+    # backstage component is off: the selector matches no pod.
+    networkPolicy:
+      ingress:
+        additionalPeers:
+          - app.kubernetes.io/name: backstage
     route:
       parentRef:
         # The standalone default: empty follows the chart-owned edge, else
