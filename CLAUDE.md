@@ -106,8 +106,9 @@ release and is listed in no release notes; its change ships with the next
 release.
 
 The tag pipeline runs `build-chart`, `verify` and `push-chart-release` only
-(`atsBranchOnly` on this repo's entry in giantswarm/github); the chart is
-pullable about two minutes after the merge. The chart tests run on the PR
+(the devctl default since v8.45.0: chart tests run on branches, never on the
+release tag; `gen.ci.atsOnRelease` would bring the tag-time run back); the
+chart is pullable about two minutes after the merge. The chart tests run on the PR
 instead of again on the tag, which holds because the branch protection on
 `main` makes them binding: `ci/circleci: execute-chart-tests` and
 `ci/circleci: verify` are required checks next to the GitHub Actions ones, and
