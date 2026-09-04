@@ -34,3 +34,17 @@ workflows:
           filters:
             tags:
               only: /^v.*/
+      # EXPERIMENT (never merged): the same ATS smoke on a 4-vCPU machine, run in
+      # the same pipeline as the generated execute-chart-tests (medium, 2 vCPU)
+      # so registry and network conditions are shared. Compares whether the
+      # smoke is CPU-bound; the winner, if any, is wired through the devctl
+      # generator rather than this file.
+      - architect/run-tests-with-ats:
+          name: execute-chart-tests-large
+          resource_class: large
+          requires:
+            - build-chart
+          filters:
+            branches:
+              ignore:
+                - main
