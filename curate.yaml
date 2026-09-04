@@ -128,7 +128,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.14.0"
+    version: "0.15.0"
   # The agent-manager service (the agent write surface of the Agent Control
   # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
   # inspects kagent agents as Flux HelmReleases of the agent chart, validated
