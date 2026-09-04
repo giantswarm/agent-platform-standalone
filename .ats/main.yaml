@@ -10,23 +10,26 @@
 # examples/kind-lab-dex.yaml after preparing the cluster — the same order and
 # the same Helm 4 CLI path the README quick start documents.
 #
-# The upgrade scenario is SKIPPED (issue #32): ATS installs the baseline
-# (latest stable catalog release) before any cluster preparation runs, and
-# since 0.2.0 the baseline is the full umbrella that cannot come up without
-# the prerequisites. With ATS >= 1.0 all scenarios share the job's cluster, so
-# the prerequisites the smoke applies persist; re-enabling needs the smoke
-# release uninstalled first (a post-hook) so the baseline lands on a prepared,
-# empty namespace with the values below. The wiring is kept for that moment.
+# The upgrade scenario runs on the same cluster afterwards (issue #32): the
+# smoke's post-hook (tests/ats/post-hook.sh) uninstalls the smoke's release,
+# the prerequisites it applied stay, and ATS installs the latest stable chart
+# from the OCI catalog with the same values, runs `helm upgrade` to the
+# candidate (tests/ats/upgrade-hook.sh applies the candidate's CRDs first) and
+# re-checks auth and readiness (test_upgrade).
 #
 # The functional step stays skipped: smoke covers install + auth, and there
 # is no third scenario yet.
 app-tests-app-config-file: examples/kind-lab-dex.yaml
 app-tests-deploy-namespace: agent-platform
 app-tests-skip-app-deploy: true
+app-tests-post-hook: tests/ats/post-hook.sh
 
-upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
+# The HTTP index at giantswarm.github.io/giantswarm-catalog stopped at 0.35.6;
+# the OCI repository carries every release, and ATS resolves `stable` there
+# through the registry tags API (anonymous pull token).
+upgrade-tests-app-catalog-url: oci://gsoci.azurecr.io/charts/giantswarm
 upgrade-tests-app-version: stable
 upgrade-tests-app-config-file: examples/kind-lab-dex.yaml
 upgrade-tests-upgrade-hook: tests/ats/upgrade-hook.sh
 
-skip-steps: [functional, upgrade]
+skip-steps: [functional]

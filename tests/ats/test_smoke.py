@@ -14,10 +14,11 @@ The smoke proves the chart on every PR, end to end, on the ATS kind cluster:
      registration, authorization code + PKCE, the Dex login form), and a
      kagent Agent reaches Ready against a fake model provider.
 
-The upgrade scenario reuses the same helpers: ATS installs the last stable
-chart from the catalog with Helm, tests/ats/upgrade-hook.sh runs the documented
-CRD re-apply one-liner, ATS runs `helm upgrade` to the candidate, and the
-post-upgrade stage re-runs the readiness and auth assertions.
+The upgrade scenario reuses the same helpers on the same cluster: the smoke's
+post-hook (tests/ats/post-hook.sh) uninstalls the smoke's release, ATS installs
+the latest stable chart from the OCI catalog with Helm, tests/ats/upgrade-hook.sh
+runs the documented CRD re-apply one-liner, ATS runs `helm upgrade` to the
+candidate, and the post-upgrade stage re-runs the readiness and auth assertions.
 
 The edge Gateway Service is ClusterIP, so the tests reach it through a
 `kubectl port-forward` on a high port. Hostnames stay the real
@@ -673,9 +674,9 @@ def test_upgrade(
 ) -> None:
     stage = test_extra_info.get("upgrade_test_stage", "")
     if stage == "pre_upgrade":
-        # The stable release is installed; put the prerequisites in place so
-        # the upcoming candidate upgrade lands on a prepared cluster (the
-        # cluster is fresh when the upgrade scenario runs on its own).
+        # The stable release is installed. The prerequisites are idempotent:
+        # already applied when the smoke ran first on the shared cluster, and
+        # put in place here when the upgrade scenario runs on its own.
         request.getfixturevalue("prerequisites")
         return
 
