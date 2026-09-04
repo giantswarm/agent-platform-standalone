@@ -889,9 +889,12 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   unauthenticated `/mcp` answering 401 with the `WWW-Authenticate` discovery
   chain, a lab Dex static-user login reaching `/mcp` with 200, and a kagent
   `Agent` reaching Ready against a fake model provider. The upgrade scenario
-  installs the last published chart, applies the candidate's CRDs (the
-  documented one-liner, `tests/ats/upgrade-hook.sh`), upgrades, and re-runs
-  the readiness and auth assertions. Runs on branches only: it is a required
+  runs on the same kind cluster afterwards: the smoke's post-hook
+  (`tests/ats/post-hook.sh`) uninstalls the smoke's release, the prerequisites
+  stay, ATS installs the latest stable chart from the OCI catalog with the
+  same values, applies the candidate's CRDs (the documented one-liner,
+  `tests/ats/upgrade-hook.sh`), upgrades, and re-runs the readiness and auth
+  assertions. Runs on branches only: it is a required
   check on `main` together with `verify`, and a branch must be up to date with
   `main` to merge, so the release tag ships the tree the PR tested and its
   pipeline is `build-chart`, `verify` and `push-chart-release` alone.
