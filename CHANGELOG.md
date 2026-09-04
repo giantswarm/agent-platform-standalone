@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The CRD step of an upgrade — the README one-liner and the ATS upgrade hook (`tests/ats/upgrade-hook.sh`) — now applies with `kubectl apply --server-side --force-conflicts`. The CRDs a release installed are owned by the field manager `helm`, so a plain server-side apply of a CRD whose schema changed in the candidate was rejected with `conflict with "helm": .spec.versions`; the re-enabled ATS upgrade scenario failed that way on the first dependency bump carrying a CRD change (muster 5.8.0, `MCPServer` CRD), and a user following the README would have hit the same conflict.
 - Fleet chart 3.5.0: the model-manager and agent-manager cilium egress policies open the identity provider for `oauth.provider: google` — `accounts.google.com` (discovery), `www.googleapis.com` (JWKS, userinfo) and `oauth2.googleapis.com` (token) by name next to the cluster entity — instead of naming nothing, which left both services unable to validate the forwarded Google id_token under `policyEnforcementMode: always` and needed a hand-written `world:443` supplement (#106). The Dex render is unchanged; the kubernetes flavor already opened every public destination on 443 while OAuth is on. `make verify-model-manager` / `verify-agent-manager` assert both providers.
 
 - `hack/curate.sh`, the generator that produces `Chart.yaml`, `Chart.lock` and `values.yaml` from the `agent-platform` fleet chart through a deny-unknown transform configured in `curate.yaml` and `overlay/vanilla.yaml`.
