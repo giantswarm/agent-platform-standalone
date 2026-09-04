@@ -44,11 +44,16 @@ deps: ## Pull the pinned dependencies (helm dependency build, never update).
 ##@ Verification
 
 .PHONY: verify
-verify: test verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager verify-agent-manager verify-kserve ## Everything CI runs.
+verify: test verify-release-config verify-curate verify-render verify-schema verify-decisions verify-model-serving verify-model-manager verify-agent-manager verify-kserve ## Everything CI runs.
 
 .PHONY: test
 test: ## Unit tests of the generator.
 	go test ./...
+
+.PHONY: verify-release-config
+verify-release-config: ## cliff.toml keeps the docs skip: a docs-only merge cuts no release (devctl regenerates the file without it).
+	@grep -Eq '^\s*\{\s*message\s*=\s*"\^docs",\s*skip\s*=\s*true\s*\},?\s*$$' cliff.toml \
+		|| { echo 'cliff.toml: the ^docs commit parser must carry skip = true (CLAUDE.md, Commits and releases)'; exit 1; }
 
 .PHONY: verify-curate
 verify-curate: ## Fail when the generated files or Chart.lock are stale.

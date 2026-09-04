@@ -83,15 +83,17 @@ commit_preprocessors = [
 # feat -> Added, fix -> Fixed, all "internal change" types -> Changed,
 # security -> Security.
 #
-# `style` is the only type marked skip.
-# Bump decision is unaffected by these group names: git-cliff only bumps on
-# feat / fix / breaking regardless.
+# `style` and `docs` are marked skip. A skipped commit is left out of the
+# release notes AND of the bump decision; every other conventional type bumps
+# at least the patch version, so a docs-only merge cuts no release. The devctl
+# template does not carry the `docs` skip yet: `make verify-release-config`
+# guards the line (CLAUDE.md, "Commits and releases").
 commit_parsers = [
   { message = "^feat",     group = "Added" },
   { message = "^fix",      group = "Fixed" },
   { message = "^refactor", group = "Changed" },
   { message = "^perf",     group = "Changed" },
-  { message = "^docs",     group = "Changed" },
+  { message = "^docs",     skip = true },
   { message = "^chore",    group = "Changed" },
   { message = "^test",     group = "Changed" },
   { message = "^build",    group = "Changed" },
