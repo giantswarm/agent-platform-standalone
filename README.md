@@ -897,7 +897,10 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   `Agent` reaching Ready against a fake model provider. The upgrade scenario
   installs the last published chart, applies the candidate's CRDs (the
   documented one-liner, `tests/ats/upgrade-hook.sh`), upgrades, and re-runs
-  the readiness and auth assertions.
+  the readiness and auth assertions. Runs on branches only: it is a required
+  check on `main` together with `verify`, and a branch must be up to date with
+  `main` to merge, so the release tag ships the tree the PR tested and its
+  pipeline is `build-chart`, `verify` and `push-chart-release` alone.
 - Renovate bumps the exact pins in `curate.yaml` (one PR per component
   release, matched by the `# registry:` hints); the `curate-regen` workflow
   regenerates `Chart.yaml`, `Chart.lock` and the chart README on that branch.
