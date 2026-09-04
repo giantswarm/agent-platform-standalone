@@ -6,6 +6,15 @@
 {{- $mcpOn := and $musterOn (dig "muster" "mcpServer" "enabled" false $chart) }}
 {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
 {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
+{{- /* Extra same-namespace callers admitted on the Service port
+(components.agent-manager.networkPolicy.ingress.additionalPeers): pod label maps, each
+rendered as one more ingress peer in the flavor's own dialect. */ -}}
+{{- $peers := $am.networkPolicy.ingress.additionalPeers }}
+{{- range $peers }}
+{{- if or (not (kindIs "map" .)) (not .) }}
+{{- fail (printf "components.agent-manager.networkPolicy.ingress.additionalPeers: every item is a non-empty pod label map (matchLabels), e.g. {app.kubernetes.io/name: backstage}; got %v" .) }}
+{{- end }}
+{{- end }}
 {{- $egress := $am.networkPolicy.egress }}
 {{- $registryHost := include "agent-platform-standalone.agentManager.registryHost" . }}
 
@@ -38,12 +47,17 @@ spec:
             app.kubernetes.io/name: muster
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
         {{- end }}
+        {{- range $peers }}
+        - matchLabels:
+            {{- toYaml . | nindent 12 }}
+            io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
+        {{- end }}
         {{- if $backstageOn }}
         - matchLabels:
             app.kubernetes.io/name: backstage
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
         {{- end }}
-        {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+        {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - matchLabels:
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
@@ -65,9 +79,11 @@ spec:
 # Egress from agent-manager: DNS (with Cilium's proxy clause so the FQDN
 # selectors below resolve), the Kubernetes API (HelmReleases, OCIRepositories,
 # Agents, ModelConfigs, workloads — as the caller), the identity provider
-# (agent-manager.oauth: the issuer's JWKS and token endpoint), the agent
-# chart's OCI registry (versions, values schema; blob downloads redirect to the
-# registry's storage front) and GitHub (skill discovery) — by name, on 443.
+# (agent-manager.oauth: the discovery, JWKS, userinfo and token endpoints — the
+# Dex issuer by name, or the three Google hosts for the google provider), the
+# agent chart's OCI registry (versions, values schema; blob downloads redirect
+# to the registry's storage front) and GitHub (skill discovery) — by name, on
+# 443.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -84,7 +100,7 @@ spec:
     - toEntities:
         - kube-apiserver
     {{- if $oauthOn }}
-    {{- include "agent-platform-standalone.idpEgress.cilium" (dict "issuerUrl" (include "agent-platform-standalone.agentManager.issuerUrl" .)) | trim | nindent 4 }}
+    {{- include "agent-platform-standalone.idpEgress.cilium" (dict "provider" (include "agent-platform-standalone.agentManager.oauthProvider" .) "issuerUrl" (include "agent-platform-standalone.agentManager.issuerUrl" .)) | trim | nindent 4 }}
     {{- end }}
     - toFQDNs:
         - matchName: {{ $registryHost }}
@@ -199,12 +215,17 @@ spec:
             matchLabels:
               app.kubernetes.io/name: muster
         {{- end }}
+        {{- range $peers }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
         {{- if $backstageOn }}
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: backstage
         {{- end }}
-        {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+        {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - podSelector:
             matchLabels:
@@ -216,9 +237,9 @@ spec:
 ---
 # Egress from agent-manager: DNS, the Kubernetes API, and — vanilla
 # NetworkPolicy has no FQDN selector — every public destination on 443 for the
-# identity provider, the chart registry and GitHub (components.agent-manager.networkPolicy
-# .egress.cidrs narrows it; a private identity provider needs its address in
-# global.networkPolicy.additionalEgressCIDRs).
+# identity provider (Dex or Google), the chart registry and GitHub
+# (components.agent-manager.networkPolicy.egress.cidrs narrows it; a private identity
+# provider needs its address in global.networkPolicy.additionalEgressCIDRs).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

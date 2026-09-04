@@ -1516,6 +1516,15 @@
                                             }
                                         }
                                     }
+                                },
+                                "ingress": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "additionalPeers": {
+                                            "type": "array"
+                                        }
+                                    }
                                 }
                             }
                         },
@@ -1964,6 +1973,33 @@
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
+                                "egress": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cidrs": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "fqdns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                    "matchName": {
+                                                        "type": "string"
+                                                    },
+                                                    "matchPattern": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
                                 "huggingFace": {
                                     "type": "object",
                                     "additionalProperties": false,
@@ -1988,6 +2024,15 @@
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                },
+                                "ingress": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "additionalPeers": {
+                                            "type": "array"
                                         }
                                     }
                                 }
