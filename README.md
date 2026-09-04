@@ -507,9 +507,11 @@ components:
       jwtAuthentication:
         enabled: true            # no Dex token, no API (401 at the gateway)
 model-manager:
-  backend: ollama                # ollama | kserve
+  backend: ollama                # ollama | kserve | lemonade
   ollama:
     endpoint: http://172.21.0.1:11434   # REQUIRED for ollama: Ollama as pods reach it
+  # lemonade:
+  #   endpoint: http://172.21.0.1:13305 # REQUIRED for lemonade: the Lemonade Server as pods reach it
 gateway:
   jwksEgress:
     enabled: true                # the data plane fetches the JWKS from Dex
@@ -518,7 +520,11 @@ gateway:
 - **Backends.** `ollama` proxies a host Ollama — the laptop / agentlab dev
   loop (the Ollama backend ADR); `ollama.endpoint` is required (on kind the
   docker network gateway; `ollama.agentHost` when agent pods dial a different
-  address). `kserve` manages `InferenceService`s on the
+  address). `lemonade` proxies a host [Lemonade Server](https://lemonade-server.ai)
+  the same way — FastFlowLM on AMD Ryzen AI NPUs, llama.cpp on GPU/CPU behind
+  one OpenAI-compatible API (the Lemonade backend ADR); `lemonade.endpoint` is
+  required (Lemonade listens on 13305 by default), `lemonade.agentHost` when
+  agent pods dial a different address. `kserve` manages `InferenceService`s on the
   [Model serving](#model-serving) component's KServe: pull = a pre-warm
   download Job into the HF cache, load = an `InferenceService` from a
   serving preset, plus fit checks, node inventory and Hugging Face search.
@@ -569,11 +575,13 @@ gateway:
   must be the kagent component's namespace (`kagent.kagent.namespaceOverride`,
   `kagent` by default); an install without kagent sets
   `model-manager.kagent.disableWiring: true`. The Ollama backend wires
-  models with kagent's native keyless `Ollama` provider.
+  models with kagent's native keyless `Ollama` provider; the Lemonade backend
+  with kagent's `OpenAI` provider against `<lemonade.agentHost>/api/v1` plus
+  the placeholder API-key Secret the runtime insists on (the kserve rule).
 - **Network policies** (`global.networkPolicy`, both flavors): ingress to
   model-manager from the agentgateway data plane, muster and Backstage on the
-  Service port; egress to DNS, the Kubernetes API and — for the ollama
-  backend — the endpoint (an IP endpoint gets a `/32`; a hostname opens the
+  Service port; egress to DNS, the Kubernetes API and — for the ollama and
+  lemonade backends — the endpoint (an IP endpoint gets a `/32`; a hostname opens the
   port to every destination, since neither flavor resolves names here); the
   data plane's and muster's egress to model-manager; on the `kserve`
   backend, egress to the Hugging Face Hub from the modelServing component's
