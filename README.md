@@ -890,7 +890,11 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   installs the last published chart, applies the candidate's CRDs (the
   documented one-liner, `tests/ats/upgrade-hook.sh`), upgrades, and re-runs
   the readiness and auth assertions.
-- Renovate does not touch chart dependencies. The generator owns the BOM.
+- Renovate bumps the exact pins in `curate.yaml` (one PR per component
+  release, matched by the `# registry:` hints); the `curate-regen` workflow
+  regenerates `Chart.yaml`, `Chart.lock` and the chart README on that branch.
+  The helm Renovate managers are disabled: `Chart.yaml` and `Chart.lock` stay
+  generator output.
 
 The templates and component values are regenerated from the fleet charts on
 every `make curate` run and byte-checked by `hack/curate.sh --check`, so
