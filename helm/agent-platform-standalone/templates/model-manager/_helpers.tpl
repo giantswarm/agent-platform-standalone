@@ -62,13 +62,29 @@ The Ollama API base URL model-manager dials (model-manager.ollama.endpoint).
 {{- end -}}
 
 {{/*
-The Ollama endpoint split for network policies, as JSON:
+The Lemonade Server base URL model-manager dials (model-manager.lemonade.endpoint).
+*/}}
+{{- define "agent-platform-standalone.modelManager.lemonadeEndpoint" -}}
+{{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
+{{- dig "lemonade" "endpoint" "" $chart -}}
+{{- end -}}
+
+{{/*
+The endpoint of a host-proxying backend — ollama: model-manager.ollama.endpoint,
+lemonade: model-manager.lemonade.endpoint. Empty for kserve, which has none.
+*/}}
+{{- define "agent-platform-standalone.modelManager.hostEndpoint" -}}
+{{- $backend := include "agent-platform-standalone.modelManager.backend" . -}}
+{{- if eq $backend "ollama" -}}{{ include "agent-platform-standalone.modelManager.ollamaEndpoint" . }}{{- else if eq $backend "lemonade" -}}{{ include "agent-platform-standalone.modelManager.lemonadeEndpoint" . }}{{- end -}}
+{{- end -}}
+
+{{/*
+An endpoint URL (the argument) split for network policies, as JSON:
   { "host": "<host>", "port": <int>, "isIP": bool }
 The port defaults from the scheme (80 / 443) when the URL carries none.
 */}}
-{{- define "agent-platform-standalone.modelManager.ollamaTarget" -}}
-{{- $endpoint := include "agent-platform-standalone.modelManager.ollamaEndpoint" . -}}
-{{- $url := urlParse $endpoint -}}
+{{- define "agent-platform-standalone.modelManager.endpointTarget" -}}
+{{- $url := urlParse . -}}
 {{- $hostport := $url.host | default "" -}}
 {{- $host := $hostport -}}
 {{- $port := 80 -}}
@@ -78,6 +94,22 @@ The port defaults from the scheme (80 / 443) when the URL carries none.
 {{- $port = regexFind "[0-9]+$" $hostport | int -}}
 {{- end -}}
 {{- dict "host" $host "port" $port "isIP" (regexMatch `^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$` $host) | toJson -}}
+{{- end -}}
+
+{{/*
+The Ollama endpoint split for network policies (endpointTarget of ollamaEndpoint).
+*/}}
+{{- define "agent-platform-standalone.modelManager.ollamaTarget" -}}
+{{- include "agent-platform-standalone.modelManager.endpointTarget" (include "agent-platform-standalone.modelManager.ollamaEndpoint" .) -}}
+{{- end -}}
+
+{{/*
+The host backend's endpoint split for network policies — ollama or lemonade;
+an empty JSON object for kserve.
+*/}}
+{{- define "agent-platform-standalone.modelManager.hostTarget" -}}
+{{- $endpoint := include "agent-platform-standalone.modelManager.hostEndpoint" . -}}
+{{- if $endpoint -}}{{ include "agent-platform-standalone.modelManager.endpointTarget" $endpoint }}{{- else -}}{}{{- end -}}
 {{- end -}}
 
 {{/*
