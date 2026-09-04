@@ -1,9 +1,12 @@
 name: curate-regen
-# Renovate bumps the exact pins in curate.yaml (the `# registry:` hints) but
-# cannot run the curation generator, so on Renovate branches this workflow
-# regenerates Chart.yaml, Chart.lock, the chart templates and the helm-docs
-# README from the bumped pins and pushes the result back onto the PR branch.
-# The second run after that push finds a clean tree and no-ops.
+# Renovate bumps the exact pins in curate.yaml and overlay/contract.yaml (the
+# `# registry:` hints) but cannot run the curation generator, so on Renovate
+# branches this workflow regenerates Chart.yaml, Chart.lock, values.yaml, the
+# chart templates and the helm-docs README from the bumped pins and pushes the
+# result back onto the PR branch. The second run after that push finds a clean
+# tree and no-ops. Renovate ignores the pushing author (gitIgnoredAuthors in
+# renovate-custom.json5), so the extra commit does not stop it from rebasing
+# or autoclosing the PR.
 on:
   pull_request:
     branches:
@@ -26,12 +29,30 @@ jobs:
           # retrigger the required checks on the regenerated commit, leaving
           # the PR stuck on "Expected" statuses.
           token: ${{ secrets.TAYLORBOT_GITHUB_ACTION }}
+      - name: Read the helm-docs release the pre-commit hook pins
+        # The README has to come out byte-identical to what the pre-commit
+        # check regenerates, so install the release named by the helm-docs
+        # hook in .pre-commit-config.yaml instead of keeping a second pin here.
+        id: helm-docs
+        run: |
+          rev="$(yq -r '.repos[] | select(.repo == "https://github.com/norwoodj/helm-docs") | .rev' .pre-commit-config.yaml | tr -d '"')"
+          test -n "$rev" || { echo "no helm-docs hook in .pre-commit-config.yaml"; exit 1; }
+          echo "version=${rev#v}" >> "$GITHUB_OUTPUT"
+      - name: Install helm-docs
+        uses: giantswarm/install-binary-action@5bef88f65012037dd836117c8d344b21bb559854 # v4.1.0
+        with:
+          binary: helm-docs
+          version: ${{ steps.helm-docs.outputs.version }}
+          download_url: "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_${version}_Linux_x86_64.tar.gz"
+          tarball_binary_path: "helm-docs"
       - name: Regenerate the curated chart from the bumped pins
         run: hack/curate.sh
       - name: Regenerate the chart README
-        # The hook exits non-zero when it rewrites files - that is the point
-        # here; a genuinely broken run still surfaces in the pre-commit check.
-        run: pipx run pre-commit run helm-docs --all-files || true
+        # Same arguments as the helm-docs hook in .pre-commit-config.yaml. The
+        # binary runs directly: the pre-commit hook only wraps it, and its
+        # non-zero exit on a rewrite (wanted here) could not be told apart
+        # from a missing binary or a broken run.
+        run: helm-docs --chart-search-root=helm --sort-values-order=file
       - name: Push the regenerated files
         run: |
           if [ -z "$(git status --porcelain)" ]; then
