@@ -393,7 +393,8 @@ components:
     networkPolicy:
       ingress:
         additionalPeers:  # @schema itemRef: $k8s/objectmeta.json#/properties/labels
-          - app.kubernetes.io/name: backstage
+          - app.kubernetes.io/instance: backstage
+            component: backstage
       huggingFace:
         # cilium flavor: Cilium FQDN selectors (matchName, matchPattern) for the
         # kserve backend's Hub calls (search, fit checks, revision lookups),
@@ -472,7 +473,8 @@ components:
     networkPolicy:
       ingress:
         additionalPeers:  # @schema itemRef: $k8s/objectmeta.json#/properties/labels
-          - app.kubernetes.io/name: backstage
+          - app.kubernetes.io/instance: backstage
+            component: backstage
       egress:
         # cilium flavor: Cilium FQDN selectors (matchName, matchPattern) next to
         # the registry host, resolved through the DNS proxy rule the policy
