@@ -76,10 +76,12 @@ kagent:
       resources:
         requests:
           cpu: 50m
+    # The kagent UI stays off: nothing in the lab or the CI smoke reaches it
+    # (Backstage is the portal), and its image is the second-largest pull of
+    # the whole install. The kagent chart has no ui.enabled switch; zero
+    # replicas keeps the Deployment and Service without a pod or a pull.
     ui:
-      resources:
-        requests:
-          cpu: 50m
+      replicas: 0
     database:
       postgres:
         bundled:
