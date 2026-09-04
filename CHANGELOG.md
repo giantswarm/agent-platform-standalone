@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `components.model-manager.networkPolicy.egress` (`fqdns`, `cidrs`, both empty; agent-platform 3.5.0): further destinations of model-manager on 443 whatever the backend — the same knob `components.agent-manager.networkPolicy.egress` already is — with `# @schema item` constraints for both arrays. `components.model-manager.networkPolicy.ingress.additionalPeers` / `components.agent-manager.networkPolicy.ingress.additionalPeers` (agent-platform 3.4.0): extra same-namespace callers admitted on the Service port; the Backstage-peer `templates.patch` entries are re-anchored behind the upstream `range $peers` block and still gate the peer on `components.backstage.enabled`.
+
+### Fixed
+
+- Fleet chart 3.5.0: the model-manager and agent-manager cilium egress policies open the identity provider for `oauth.provider: google` — `accounts.google.com` (discovery), `www.googleapis.com` (JWKS, userinfo) and `oauth2.googleapis.com` (token) by name next to the cluster entity — instead of naming nothing, which left both services unable to validate the forwarded Google id_token under `policyEnforcementMode: always` and needed a hand-written `world:443` supplement (#106). The Dex render is unchanged; the kubernetes flavor already opened every public destination on 443 while OAuth is on. `make verify-model-manager` / `verify-agent-manager` assert both providers.
+
 - `hack/curate.sh`, the generator that produces `Chart.yaml`, `Chart.lock` and `values.yaml` from the `agent-platform` fleet chart through a deny-unknown transform configured in `curate.yaml` and `overlay/vanilla.yaml`.
 - Umbrella chart with one dependency per component (`muster`, `valkey`, `kagent`, `agentgateway`, `agent-platform-mcps`, `klaus-gateway`, `dicebear`, `agent-sandbox`, `backstage`, `cloudnative-pg`), toggled by `components.<name>.enabled`, pinned to exact versions.
 - Wiring templates (routes, agentgateway data-plane Gateway, network policies, kagent CRs, CloudNativePG Cluster) generated from `agent-platform-connectivity`: helper names take the chart-name prefix, and every values path the transform moves is rewritten from the same rules. A template that reads a key this chart does not carry fails the run, and `--check` fails on a hand edit.

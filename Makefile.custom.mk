@@ -237,7 +237,12 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 	printf '%s' "$$out" | grep -q -e 'forwardToken: true' || { echo "FAIL: agent-manager google MCPServer lacks forwardToken"; exit 1; }; \
 	if printf '%s' "$$out" | grep -q -e 'dex-k8s-authenticator'; then echo "FAIL: agent-manager google MCPServer still requests the Dex audience"; exit 1; fi; \
 	out=$$($(VANILLA) $$GOOGLE --show-only charts/agent-manager/templates/rbac.yaml 2>&1); \
-	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC under the google override"; exit 1; fi
+	if printf '%s' "$$out" | grep -q -e 'kind: Role'; then echo "FAIL: the agent-manager chart rendered RBAC under the google override"; exit 1; fi; \
+	out=$$($(VANILLA) $$GOOGLE --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/'); \
+	for h in accounts.google.com www.googleapis.com oauth2.googleapis.com; do \
+		printf '%s' "$$out" | grep -q "matchName: $$h$$" || { echo "FAIL: cilium agent-manager egress lacks $$h under the google override (agent-platform-standalone#106)"; exit 1; }; \
+	done; \
+	if printf '%s' "$$out" | grep -q 'matchName: dex.ci.example.com'; then echo "FAIL: cilium agent-manager egress names the Dex issuer under the google override"; exit 1; fi
 	@echo "--> agent-manager off: the render carries no agent-manager object"
 	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false'); \
 	if printf '%s' "$$out" | grep -q -e 'agent-manager'; then echo "FAIL: render with agent-manager off contains agent-manager"; exit 1; fi
@@ -252,7 +257,8 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager cilium policies lack $$pattern"; exit 1; }; \
 	done; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the standalone patch)"; exit 1; }; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium agent-manager egress lacks the IdP (agent-manager.oauth is on)"; exit 1; }
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium agent-manager egress lacks the IdP (agent-manager.oauth is on)"; exit 1; }; \
+	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium agent-manager egress names Google endpoints for the dex provider"; exit 1; fi
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=kubernetes); \
 	for pattern in 'kind: NetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'cidr: 0.0.0.0/0'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager kubernetes policies lack $$pattern"; exit 1; }; \
@@ -308,9 +314,24 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' || { echo "FAIL: no CiliumNetworkPolicy"; exit 1; }; \
 	printf '%s' "$$out" | grep -q -- '- 192.0.2.10/32' || { echo "FAIL: cilium toCIDR missing"; exit 1; }; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium model-manager ingress lacks the Backstage peer"; exit 1; }; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium model-manager egress lacks the IdP (model-manager.oauth is on)"; exit 1; }
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium model-manager egress lacks the IdP (model-manager.oauth is on)"; exit 1; }; \
+	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium model-manager egress names Google endpoints for the dex provider"; exit 1; fi
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set 'model-manager.ollama.endpoint=http://ollama.example.internal:11434'); \
 	printf '%s' "$$out" | grep -q 'cidr: 0.0.0.0/0' || { echo "FAIL: hostname endpoint did not open the port"; exit 1; }
+	@echo "--> a Google-shaped model-manager (oauth.provider google): the cilium egress names Google's discovery, JWKS/userinfo and token hosts instead of a Dex issuer (agent-platform-standalone#106); the egress knob adds names (cilium) and blocks (both flavors)"
+	@GOOGLE_MM="--set model-manager.oauth.provider=google --set model-manager.oauth.baseURL=https://muster.example.com/model-manager --set model-manager.oauth.google.clientID=gid --set model-manager.oauth.existingSecret=google-oauth --set-json model-manager.muster.mcpServer.auth.requiredAudiences=[] --set-json model-manager.oauth.trustedAudiences=[\"gid\"] --set components.model-manager.route.jwtAuthentication.issuer=https://accounts.google.com"; \
+	out=$$($(MODEL_MANAGER) $$GOOGLE_MM --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/'); \
+	for h in accounts.google.com www.googleapis.com oauth2.googleapis.com; do \
+		printf '%s' "$$out" | grep -q "matchName: $$h$$" || { echo "FAIL: cilium model-manager egress lacks $$h under the google override"; exit 1; }; \
+	done; \
+	if printf '%s' "$$out" | grep -q 'matchName: dex.ci.example.com'; then echo "FAIL: cilium model-manager egress names the Dex issuer under the google override"; exit 1; fi; \
+	printf '%s' "$$out" | grep -q -- '- cluster' || { echo "FAIL: cilium model-manager egress lost the cluster entity under the google override"; exit 1; }
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium --set-json 'components.model-manager.networkPolicy.egress.fqdns=[{"matchName":"idp.example.internal"},{"matchPattern":"*.mirror.example.internal"}]' --set-json 'components.model-manager.networkPolicy.egress.cidrs=["198.51.100.0/24"]' | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/'); \
+	for pattern in 'matchName: idp.example.internal' "matchPattern: '\*.mirror.example.internal'" '\- 198.51.100.0/24' '\- 192.0.2.10/32'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: cilium model-manager egress lacks $$pattern (components.model-manager.networkPolicy.egress)"; exit 1; }; \
+	done
+	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set-json 'components.model-manager.networkPolicy.egress.cidrs=["198.51.100.0/24"]' | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/'); \
+	printf '%s' "$$out" | grep -q 'cidr: "198.51.100.0/24"' || { echo "FAIL: kubernetes model-manager egress lacks the egress.cidrs block"; exit 1; }
 	@echo "--> guards: ollama without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
 	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=' >/dev/null 2>&1; then \
 		echo "FAIL: ollama backend without an endpoint accepted"; exit 1; fi

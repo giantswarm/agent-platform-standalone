@@ -7,7 +7,17 @@
 {{- $mcpOn := and $musterOn (dig "muster" "mcpServer" "enabled" false $chart) }}
 {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
 {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
+{{- /* Extra same-namespace callers admitted on the Service port
+(components.model-manager.networkPolicy.ingress.additionalPeers): pod label maps, each
+rendered as one more ingress peer in the flavor's own dialect. */ -}}
+{{- $peers := $mm.networkPolicy.ingress.additionalPeers }}
+{{- range $peers }}
+{{- if or (not (kindIs "map" .)) (not .) }}
+{{- fail (printf "components.model-manager.networkPolicy.ingress.additionalPeers: every item is a non-empty pod label map (matchLabels), e.g. {app.kubernetes.io/name: backstage}; got %v" .) }}
+{{- end }}
+{{- end }}
 {{- $hf := $mm.networkPolicy.huggingFace }}
+{{- $egress := $mm.networkPolicy.egress }}
 {{- $ollama := dict }}
 {{- if eq $backend "ollama" }}
 {{- $ollama = include "agent-platform-standalone.modelManager.ollamaTarget" . | fromJson }}
@@ -42,12 +52,17 @@ spec:
             app.kubernetes.io/name: muster
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
         {{- end }}
+        {{- range $peers }}
+        - matchLabels:
+            {{- toYaml . | nindent 12 }}
+            io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
+        {{- end }}
         {{- if $backstageOn }}
         - matchLabels:
             app.kubernetes.io/name: backstage
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
         {{- end }}
-        {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+        {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - matchLabels:
             io.kubernetes.pod.namespace: {{ .Release.Namespace }}
@@ -69,9 +84,11 @@ spec:
 # Egress from model-manager: DNS (with Cilium's proxy clause so the FQDN
 # selectors below resolve), the Kubernetes API (ModelConfig wiring,
 # InferenceServices, download Jobs — as the caller), the identity provider
-# (model-manager.oauth: the issuer's JWKS and token endpoint), for the ollama
-# backend the host Ollama endpoint and for the kserve backend the Hugging Face
-# Hub.
+# (model-manager.oauth: the discovery, JWKS, userinfo and token endpoints — the
+# Dex issuer by name, or the three Google hosts for the google provider), for
+# the ollama backend the host Ollama endpoint, for the kserve backend the
+# Hugging Face Hub, and the names and blocks of components.model-manager.networkPolicy
+# .egress.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -88,7 +105,7 @@ spec:
     - toEntities:
         - kube-apiserver
     {{- if $oauthOn }}
-    {{- include "agent-platform-standalone.idpEgress.cilium" (dict "issuerUrl" (include "agent-platform-standalone.modelManager.issuerUrl" .)) | trim | nindent 4 }}
+    {{- include "agent-platform-standalone.idpEgress.cilium" (dict "provider" (include "agent-platform-standalone.modelManager.oauthProvider" .) "issuerUrl" (include "agent-platform-standalone.modelManager.issuerUrl" .)) | trim | nindent 4 }}
     {{- end }}
     {{- if eq $backend "kserve" }}
     {{- with $hf.fqdns }}
@@ -103,6 +120,26 @@ spec:
     {{- end }}
     {{- with $hf.cidrs }}
     # Hugging Face by address (a mirror, a proxy, an S3 endpoint).
+    - toCIDR:
+        {{- toYaml . | nindent 8 }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    {{- end }}
+    {{- end }}
+    {{- with $egress.fqdns }}
+    # Further destinations of the service by name, whatever the backend
+    # (components.model-manager.networkPolicy.egress.fqdns).
+    - toFQDNs:
+        {{- toYaml . | nindent 8 }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    {{- end }}
+    {{- with $egress.cidrs }}
+    # Further destinations by address (components.model-manager.networkPolicy.egress.cidrs).
     - toCIDR:
         {{- toYaml . | nindent 8 }}
       toPorts:
@@ -125,7 +162,6 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    {{- end }}
     {{- end }}
     {{- if eq $backend "ollama" }}
     {{- if $ollama.isIP }}
@@ -234,12 +270,17 @@ spec:
             matchLabels:
               app.kubernetes.io/name: muster
         {{- end }}
+        {{- range $peers }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
         {{- if $backstageOn }}
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: backstage
         {{- end }}
-        {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+        {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
         # No platform caller is on: nothing reaches the API but the probes.
         - podSelector:
             matchLabels:
@@ -251,10 +292,11 @@ spec:
 ---
 # Egress from model-manager: DNS, the Kubernetes API, and — vanilla
 # NetworkPolicy has no FQDN selector — every public destination on 443 (the
-# identity provider, the Hugging Face Hub for the kserve backend;
-# components.model-manager.networkPolicy.huggingFace.cidrs narrows the latter), plus for
-# the ollama backend the host Ollama endpoint. A private identity provider
-# needs its address in global.networkPolicy.additionalEgressCIDRs.
+# identity provider, Dex or Google; the Hugging Face Hub for the kserve
+# backend; components.model-manager.networkPolicy.huggingFace.cidrs narrows the latter),
+# plus for the ollama backend the host Ollama endpoint. A private identity
+# provider needs its address in components.model-manager.networkPolicy.egress.cidrs or
+# global.networkPolicy.additionalEgressCIDRs.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -310,6 +352,17 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: {{ toYaml .Values.global.networkPolicy.kubernetes.worldExcludedCIDRs | nindent 14 }}
+      ports:
+        - port: 443
+          protocol: TCP
+    {{- end }}
+    {{- with $egress.cidrs }}
+    # Further destinations by address (components.model-manager.networkPolicy.egress.cidrs).
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
       ports:
         - port: 443
           protocol: TCP

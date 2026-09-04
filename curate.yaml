@@ -21,7 +21,7 @@ fleet:
   # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
   # customManager convention).
   # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
-  version: 3.3.1
+  version: 3.5.0
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -299,6 +299,8 @@ annotations:
   # array defaults would freeze the item shape (the first item's key only).
   components.model-manager.networkPolicy.huggingFace.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
   components.model-manager.networkPolicy.huggingFace.cidrs: "item: string"
+  components.model-manager.networkPolicy.egress.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
+  components.model-manager.networkPolicy.egress.cidrs: "item: string"
   components.agent-manager.networkPolicy.egress.fqdns: "item: object; itemProperties: {matchName: {type: string}, matchPattern: {type: string}}"  # yamllint disable-line rule:line-length
   components.agent-manager.networkPolicy.egress.cidrs: "item: string"
   components.agent-sandbox.podSecurity.podSecurityContext: "additionalProperties: true"
@@ -513,8 +515,10 @@ templates:
     # in the same release namespace and admits it too — the shape the
     # hand-authored policies had before the templates came from the
     # connectivity chart. The fleet's Backstage lives in another namespace, so
-    # upstream has no such peer. Retires with agent-platform#256 (a
-    # configurable ingress-peer list on both blocks).
+    # upstream has no such peer. agent-platform#256 (3.4.0) added the
+    # configurable ingress-peer list these patches are anchored behind
+    # (`range $peers`); moving the Backstage peer onto
+    # components.<chart>.networkPolicy.ingress.additionalPeers retires them.
     - file: model-manager/netpol.yaml
       find: |-
         {{- $oauthOn := include "agent-platform-standalone.modelManager.oauthEnabled" . }}
@@ -523,44 +527,44 @@ templates:
         {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
     - file: model-manager/netpol.yaml
       find: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - matchLabels:
-                    app.kubernetes.io/name: muster
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                    {{- toYaml . | nindent 12 }}
+                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
                 {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn) }}
+                {{- if not (or $mm.route.enabled $mcpOn $peers) }}
       replace: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - matchLabels:
-                    app.kubernetes.io/name: muster
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                    {{- toYaml . | nindent 12 }}
+                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
                 {{- end }}
                 {{- if $backstageOn }}
                 - matchLabels:
                     app.kubernetes.io/name: backstage
                     io.kubernetes.pod.namespace: {{ .Release.Namespace }}
                 {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+                {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
     - file: model-manager/netpol.yaml
       find: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: muster
+                      {{- toYaml . | nindent 14 }}
                 {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn) }}
+                {{- if not (or $mm.route.enabled $mcpOn $peers) }}
       replace: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: muster
+                      {{- toYaml . | nindent 14 }}
                 {{- end }}
                 {{- if $backstageOn }}
                 - podSelector:
                     matchLabels:
                       app.kubernetes.io/name: backstage
                 {{- end }}
-                {{- if not (or $mm.route.enabled $mcpOn $backstageOn) }}
+                {{- if not (or $mm.route.enabled $mcpOn $peers $backstageOn) }}
     - file: agent-manager/netpol.yaml
       find: |-
         {{- $oauthOn := include "agent-platform-standalone.agentManager.oauthEnabled" . }}
@@ -569,44 +573,44 @@ templates:
         {{- $backstageOn := include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "backstage") }}
     - file: agent-manager/netpol.yaml
       find: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - matchLabels:
-                    app.kubernetes.io/name: muster
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                    {{- toYaml . | nindent 12 }}
+                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
                 {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn) }}
+                {{- if not (or $am.route.enabled $mcpOn $peers) }}
       replace: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - matchLabels:
-                    app.kubernetes.io/name: muster
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                    {{- toYaml . | nindent 12 }}
+                    io.kubernetes.pod.namespace: {{ $.Release.Namespace }}
                 {{- end }}
                 {{- if $backstageOn }}
                 - matchLabels:
                     app.kubernetes.io/name: backstage
                     io.kubernetes.pod.namespace: {{ .Release.Namespace }}
                 {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+                {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
     - file: agent-manager/netpol.yaml
       find: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: muster
+                      {{- toYaml . | nindent 14 }}
                 {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn) }}
+                {{- if not (or $am.route.enabled $mcpOn $peers) }}
       replace: |-
-        {{- if $mcpOn }}
+        {{- range $peers }}
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: muster
+                      {{- toYaml . | nindent 14 }}
                 {{- end }}
                 {{- if $backstageOn }}
                 - podSelector:
                     matchLabels:
                       app.kubernetes.io/name: backstage
                 {{- end }}
-                {{- if not (or $am.route.enabled $mcpOn $backstageOn) }}
+                {{- if not (or $am.route.enabled $mcpOn $peers $backstageOn) }}
     # The fleet does not bundle KServe, this chart does (components.kserve, and
     # the modelServing component runs on it): the kserve-backend API guard
     # defers to them — with the kserve component on, templates/kserve/validate.yaml
