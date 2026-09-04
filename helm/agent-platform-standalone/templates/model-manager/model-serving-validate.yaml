@@ -1,5 +1,6 @@
 {{- /*
-Render-time guards between the kserve-backend model-manager and the
+Render-time guards between a model-manager with the kserve backend among its
+backends (model-manager.backends, else model-manager.backend) and the
 modelServing umbrella component. Hand-authored: listed in curate.yaml
 templates.extra, never generated — the connectivity chart's model-manager
 guards (validate.yaml next to this file) know no modelServing component.
@@ -13,7 +14,7 @@ install) with an actionable message instead of shipping a model-manager that
 manages InferenceServices in a namespace the runtime, presets and cache do not
 target.
 */ -}}
-{{- if and (include "agent-platform-standalone.modelManager.enabled" .) (eq (include "agent-platform-standalone.modelManager.backend" .) "kserve") (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing")) }}
+{{- if and (include "agent-platform-standalone.modelManager.enabled" .) (include "agent-platform-standalone.modelManager.hasBackend" (dict "root" . "name" "kserve")) (include "agent-platform-standalone.componentEnabled" (dict "root" . "name" "modelServing")) }}
   {{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson }}
   {{- $ms := .Values.components.modelServing }}
   {{- $servingNs := include "agent-platform-standalone.modelServing.namespace" . }}
