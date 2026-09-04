@@ -15,4 +15,14 @@
   'helm-values': {
     enabled: false,
   },
+  // The curate-regen workflow pushes the regenerated files onto every Renovate
+  // branch as Taylor Bot. Renovate reads a commit by any author other than
+  // itself as a manual edit of the PR: it stops rebasing the branch when a
+  // newer release appears and, once main carries the bump by other means,
+  // retitles the PR "- abandoned" instead of closing it. Listing the regen
+  // author here makes those commits Renovate's own: a rebase drops the regen
+  // commit and the workflow recreates it on the rebased branch.
+  gitIgnoredAuthors: [
+    'dev@giantswarm.io',
+  ],
 }
