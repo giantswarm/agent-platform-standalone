@@ -5,7 +5,10 @@
 # verify: the generator and render checks (`make verify`): unit tests of
 # hack/curate, `hack/curate.sh --check` (generated files current, Chart.lock in
 # sync via `helm dependency build`, never `update`), every example rendered,
-# schema strictness. Runs on branches and tags.
+# schema strictness. Runs on PR branches and on release tags, not on main: a
+# push to main only repeats the PR's run, and the tag pipeline verifies the
+# release once more. With build-chart and execute-chart-tests also ignoring
+# main, a main push has no eligible job and CircleCI shows no build workflow.
 version: 2.1
 
 jobs:
@@ -34,3 +37,5 @@ workflows:
           filters:
             tags:
               only: /^v.*/
+            branches:
+              ignore: main
