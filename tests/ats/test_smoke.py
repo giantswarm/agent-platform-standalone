@@ -386,33 +386,6 @@ def _dump_auth_logs(kube_cluster: Cluster) -> None:
             logger.error("fetching logs of %s failed: %s", target, exc)
 
 
-def heal_backstage_startup_race(kube_cluster: Cluster) -> None:
-    """Restart Backstage if it lost the boot race against the edge Gateway.
-
-    Backstage's GS auth module probes the Dex issuer at startup with a bounded
-    retry budget (5 attempts, ~15s) and is designed to crash the pod when the
-    issuer stays unreachable — but the failed backend keeps serving liveness
-    200 / readiness 503 without exiting, so the pod never restarts (upstream
-    giantswarm/backstage issue). On a fresh install Backstage can boot before
-    the chart's edge Gateway (which fronts the lab Dex) is up. Callers invoke
-    this once the edge is provably healthy; the restart is skipped when
-    Backstage made it on its own.
-    """
-    backstage = [
-        d
-        for d in _deployments(kube_cluster.kube_client, NAMESPACE)
-        if "backstage" in d.name
-    ]
-    for dep in backstage:
-        if _deployment_ready(dep):
-            continue
-        logger.info("restarting %s: it likely lost the startup race", dep.name)
-        kube_cluster.kubectl(
-            f"-n {NAMESPACE} rollout restart deployment {dep.name}",
-            output_format="",
-        )
-
-
 # ---------------------------------------------------------------------------
 # The auth assertions (shared by smoke and post-upgrade)
 # ---------------------------------------------------------------------------
@@ -590,9 +563,9 @@ def test_deployments_ready(
     kube_cluster: Cluster, app_deployment: ConfiguredApp, edge: Edge
 ) -> None:
     # Prove the auth chain (edge listener, CoreDNS rewrite, lab Dex, muster's
-    # OIDC discovery) before judging Backstage: its startup depends on it.
+    # OIDC discovery) before judging the rest: Backstage and muster both wait
+    # on the Dex issuer at startup.
     wait_for_muster_healthy(edge)
-    heal_backstage_startup_race(kube_cluster)
     names = wait_for_all_deployments_ready(kube_cluster)
     logger.info("Ready deployments: %s", sorted(names))
 
@@ -690,7 +663,6 @@ def test_upgrade(
     request.getfixturevalue("prerequisites")
     edge_fixture: Edge = request.getfixturevalue("edge")
     wait_for_muster_healthy(edge_fixture)
-    heal_backstage_startup_race(kube_cluster)
     wait_for_all_deployments_ready(kube_cluster)
     assert_unauthenticated_mcp_401(edge_fixture)
     try:
