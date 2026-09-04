@@ -128,7 +128,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.backstage.configReload.enabled | bool | `true` |  |
 | components.backstage.configReload.image.registry | string | `"gsoci.azurecr.io"` |  |
 | components.backstage.configReload.image.name | string | `"giantswarm/kubectl"` |  |
-| components.backstage.configReload.image.version | string | `"1.33.4"` |  |
+| components.backstage.configReload.image.version | string | `"v1.37.0"` |  |
 | components.cloudnative-pg.enabled | bool | `false` |  |
 | components.model-manager.enabled | bool | `false` |  |
 | components.model-manager.route.enabled | bool | `false` |  |
