@@ -4,7 +4,8 @@ The smoke proves the chart on every PR, end to end, on the ATS kind cluster:
 
   1. prerequisites go on first (Gateway API CRDs, prerequisites/lab-dex.yaml),
      exactly like the README quick start;
-  2. the candidate chart is installed with examples/kind-lab-dex.yaml (ATS's
+  2. the candidate chart is installed with `helm upgrade --install` and
+     examples/kind-lab-dex.yaml, the way the README quick start does it (ATS's
      own pre-test deploy is skipped via app-tests-skip-app-deploy, because the
      chart cannot install before the prerequisites);
   3. every Deployment becomes Ready, an unauthenticated /mcp returns 401 with
@@ -13,10 +14,10 @@ The smoke proves the chart on every PR, end to end, on the ATS kind cluster:
      registration, authorization code + PKCE, the Dex login form), and a
      kagent Agent reaches Ready against a fake model provider.
 
-The upgrade scenario reuses the same helpers: ATS installs the last published
-chart from the catalog, tests/ats/upgrade-hook.sh runs the documented CRD
-re-apply one-liner, ATS upgrades to the candidate, and the post-upgrade stage
-re-runs the readiness and auth assertions.
+The upgrade scenario reuses the same helpers: ATS installs the last stable
+chart from the catalog with Helm, tests/ats/upgrade-hook.sh runs the documented
+CRD re-apply one-liner, ATS runs `helm upgrade` to the candidate, and the
+post-upgrade stage re-runs the readiness and auth assertions.
 
 The edge Gateway Service is ClusterIP, so the tests reach it through a
 `kubectl port-forward` on a high port. Hostnames stay the real
@@ -45,10 +46,6 @@ import pytest
 import requests
 import yaml
 from pytest_helm_charts.clusters import Cluster
-from pytest_helm_charts.giantswarm_app_platform.app import (
-    AppFactoryFunc,
-    ConfiguredApp,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +54,6 @@ APP_NAME = "agent-platform-standalone"
 NAMESPACE = "agent-platform"
 KAGENT_NAMESPACE = "kagent"
 DOMAIN = "127.0.0.1.nip.io"
-CHARTMUSEUM_URL = "http://chartmuseum.giantswarm.svc.cluster.local.:8080/"
 GATEWAY_API_CRDS = (
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/"
     "v1.5.0/standard-install.yaml"
@@ -129,30 +125,54 @@ def prerequisites(kube_cluster: Cluster) -> None:
 
 @pytest.fixture(scope="module")
 def app_deployment(
-    kube_cluster: Cluster,
-    app_factory: AppFactoryFunc,
-    chart_version: str,
-    prerequisites: None,
-) -> ConfiguredApp:
-    """Install the candidate chart with examples/kind-lab-dex.yaml.
+    kube_cluster: Cluster, chart_path: str, prerequisites: None
+) -> str:
+    """Install the candidate chart with examples/kind-lab-dex.yaml, the way the
+    README quick start does it (the Helm 4 CLI; helm ships in the ATS image).
 
-    The chart archive was uploaded to the in-cluster chartmuseum by ATS; a
-    separately named Catalog CR avoids clashing with the one apptestctl owns.
+    ``chart_path`` is the archive the CI job copied next to .ats/, relative to
+    the working directory ATS runs in; pytest runs in tests/ats, hence the
+    resolution against the repo root. No ``--wait``: the tests own readiness.
+    Returns the release name.
     """
-    values = yaml.safe_load(
-        (REPO_ROOT / "examples" / "kind-lab-dex.yaml").read_text()
+    archive = Path(chart_path)
+    if not archive.is_absolute():
+        archive = REPO_ROOT / archive
+    assert archive.is_file(), f"chart archive not found: {archive}"
+    # PolicyException objects of Giant Swarm charts live in this namespace, which
+    # Helm does not create (ATS's own deploy path ensures it the same way).
+    kube_cluster.kubectl(
+        "apply",
+        std_input=yaml.safe_dump(
+            {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": "policy-exceptions"},
+            }
+        ),
+        filename="-",
+        output_format="",
     )
-    return app_factory(
-        APP_NAME,
-        chart_version,
-        "chartmuseum-smoke",
-        NAMESPACE,
-        CHARTMUSEUM_URL,
-        timeout_sec=900,
-        namespace=NAMESPACE,
-        deployment_namespace=NAMESPACE,
-        config_values=values,
+    subprocess.run(  # nosec: fixed argv, the archive path comes from ATS
+        [
+            "helm",
+            "--kubeconfig",
+            kube_cluster.kube_config_path,
+            "upgrade",
+            "--install",
+            APP_NAME,
+            str(archive),
+            "--namespace",
+            NAMESPACE,
+            "--create-namespace",
+            "--values",
+            str(REPO_ROOT / "examples" / "kind-lab-dex.yaml"),
+            "--timeout",
+            "15m",
+        ],
+        check=True,
     )
+    return APP_NAME
 
 
 def _deployments(kube_client: pykube.HTTPClient, namespace: str) -> List[Any]:
@@ -560,7 +580,7 @@ def test_api_working(kube_cluster: Cluster) -> None:
 
 @pytest.mark.smoke
 def test_deployments_ready(
-    kube_cluster: Cluster, app_deployment: ConfiguredApp, edge: Edge
+    kube_cluster: Cluster, app_deployment: str, edge: Edge
 ) -> None:
     # Prove the auth chain (edge listener, CoreDNS rewrite, lab Dex, muster's
     # OIDC discovery) before judging the rest: Backstage and muster both wait
@@ -573,7 +593,7 @@ def test_deployments_ready(
 @pytest.mark.smoke
 @pytest.mark.flaky(reruns=2, reruns_delay=30)
 def test_unauthenticated_mcp_gets_401_with_discovery_chain(
-    app_deployment: ConfiguredApp, edge: Edge
+    app_deployment: str, edge: Edge
 ) -> None:
     wait_for_muster_healthy(edge)
     assert_unauthenticated_mcp_401(edge)
@@ -582,7 +602,7 @@ def test_unauthenticated_mcp_gets_401_with_discovery_chain(
 @pytest.mark.smoke
 @pytest.mark.flaky(reruns=2, reruns_delay=30)
 def test_static_user_login_reaches_mcp(
-    kube_cluster: Cluster, app_deployment: ConfiguredApp, edge: Edge
+    kube_cluster: Cluster, app_deployment: str, edge: Edge
 ) -> None:
     wait_for_muster_healthy(edge)
     try:
@@ -594,7 +614,7 @@ def test_static_user_login_reaches_mcp(
 
 @pytest.mark.smoke
 def test_kagent_agent_reaches_ready(
-    kube_cluster: Cluster, app_deployment: ConfiguredApp
+    kube_cluster: Cluster, app_deployment: str
 ) -> None:
     """A minimal declarative Agent against the default ModelConfig.
 
@@ -640,8 +660,8 @@ def test_kagent_agent_reaches_ready(
 
 
 # ---------------------------------------------------------------------------
-# Upgrade: last published chart -> candidate (ATS drives the App CR; the CRD
-# re-apply one-liner runs in tests/ats/upgrade-hook.sh between the stages)
+# Upgrade: last stable chart -> candidate (ATS drives helm install/upgrade; the
+# CRD re-apply one-liner runs in tests/ats/upgrade-hook.sh between the stages)
 # ---------------------------------------------------------------------------
 
 
