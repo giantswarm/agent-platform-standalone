@@ -5,11 +5,7 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  # TEMPORARY (trial of app-test-suite 1.x, see the PR): the dev orb of
-  # architect-orb branch run-tests-with-ats-kind and the app-test-suite main
-  # dev image. The permanent form is devctl's --ats-version knob emitting the
-  # two job parameters below on the released orb; align-files regenerates.
-  architect: giantswarm/architect@dev:run-tests-with-ats-kind
+  architect: giantswarm/architect@10.3.0
 
 workflows:
   build:
@@ -41,8 +37,10 @@ workflows:
     # push avoids an ImagePullBackOff race.
     - architect/run-tests-with-ats:
         name: execute-chart-tests
+        app-test-suite_container_tag: "1.0.0"
+        # app-test-suite 1.x provisions no cluster: the job creates the kind
+        # cluster and runs the pinned image against its kubeconfig.
         create_kind_cluster: true
-        app-test-suite_container_tag: "0.15.1-dev.gh-readonl--ab3270cae7f.2026-08-20.21-58-02.h4162ff7"
         requires:
         - build-chart
         filters:
