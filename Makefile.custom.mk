@@ -256,7 +256,7 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 	for pattern in 'kind: CiliumNetworkPolicy' 'agent-manager-ingress' 'agent-manager-egress' 'dataplane-to-agent-manager' 'muster-to-agent-manager' 'matchName: gsoci.azurecr.io' 'matchName: api.github.com' 'blob\.core\.windows\.net' '- host' '- remote-node' '- kube-apiserver'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: agent-manager cilium policies lack $$pattern"; exit 1; }; \
 	done; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the contract's networkPolicy.ingress.additionalPeers)"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-ingress$$/,/^---/' | grep -q 'component: backstage' || { echo "FAIL: cilium agent-manager ingress lacks the Backstage peer (the contract's networkPolicy.ingress.additionalPeers)"; exit 1; }; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-agent-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium agent-manager egress lacks the IdP (agent-manager.oauth is on)"; exit 1; }; \
 	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium agent-manager egress names Google endpoints for the dex provider"; exit 1; fi
 	@out=$$($(AGENT_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=kubernetes); \
@@ -309,11 +309,11 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	for pattern in 'name: agent-platform-standalone-model-manager-ingress' 'name: agent-platform-standalone-model-manager-egress' 'name: agent-platform-standalone-dataplane-to-model-manager' 'name: agent-platform-standalone-muster-to-model-manager' 'cidr: 192.0.2.10/32'; do \
 		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: kubernetes-flavor render lacks $$pattern"; exit 1; }; \
 	done; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: kubernetes-flavor model-manager ingress lacks the Backstage peer"; exit 1; }
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'component: backstage' || { echo "FAIL: kubernetes-flavor model-manager ingress lacks the Backstage peer"; exit 1; }
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
 	printf '%s' "$$out" | grep -q 'kind: CiliumNetworkPolicy' || { echo "FAIL: no CiliumNetworkPolicy"; exit 1; }; \
 	printf '%s' "$$out" | grep -q -- '- 192.0.2.10/32' || { echo "FAIL: cilium toCIDR missing"; exit 1; }; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'app.kubernetes.io/name: backstage' || { echo "FAIL: cilium model-manager ingress lacks the Backstage peer"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-ingress$$/,/^---/' | grep -q 'component: backstage' || { echo "FAIL: cilium model-manager ingress lacks the Backstage peer"; exit 1; }; \
 	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/' | grep -q 'matchName: dex.ci.example.com' || { echo "FAIL: cilium model-manager egress lacks the IdP (model-manager.oauth is on)"; exit 1; }; \
 	if printf '%s' "$$out" | grep -q 'matchName: .*google'; then echo "FAIL: cilium model-manager egress names Google endpoints for the dex provider"; exit 1; fi
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium --set-json 'components.model-manager.networkPolicy.ingress.additionalPeers=[{"app.kubernetes.io/name":"backstage"},{"app.kubernetes.io/name":"portal","app.kubernetes.io/component":"backend"}]'); \
