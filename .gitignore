@@ -8,3 +8,6 @@ build/
 
 # Python bytecode (ATS test runs)
 __pycache__/
+
+# uv virtualenv of the ATS test suite (created by `uv sync` in tests/ats)
+tests/ats/.venv/

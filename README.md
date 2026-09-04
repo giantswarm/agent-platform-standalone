@@ -709,9 +709,10 @@ Swarm installation sets on top of the vanilla defaults.
 > dependency payload shrinks below ~750 KiB (`kagent` dominates). Helm 4's
 > server-side apply used to reject the chart on
 > [giantswarm/agent-platform#250](https://github.com/giantswarm/agent-platform/issues/250);
-> fixed since the chart curates agent-platform 3.2.2. Installs through the
-> Giant Swarm app platform (App CR — what the CI smoke runs) are unaffected
-> and work under either constraint. Rendering, linting and
+> fixed since the chart curates agent-platform 3.2.2. The CI smoke installs
+> the chart with the Helm 4 CLI too (the one bundled in the app-test-suite
+> image). Installs through the Giant Swarm app platform (App CR) are
+> unaffected and work under either constraint. Rendering, linting and
 > `helm dependency build` work on both majors.
 
 ### Lab quick start (kind)

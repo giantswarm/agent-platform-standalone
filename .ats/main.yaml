@@ -1,21 +1,22 @@
-# app-test-suite config, consumed by the generated `run-tests-with-ats`
-# CircleCI job (execute-chart-tests).
+# app-test-suite (ATS >= 1.0) config, consumed by the generated
+# `run-tests-with-ats` CircleCI job (execute-chart-tests). The job creates the
+# kind cluster and hands ATS its kubeconfig; helm and kubectl come with the
+# ATS image.
 #
 # The smoke installs the chart itself (tests/ats/test_smoke.py): the chart
 # needs cluster prerequisites first (Gateway API CRDs, prerequisites/
-# lab-dex.yaml), so ATS's own pre-test deploy is skipped and the test deploys
-# the candidate from the in-cluster chartmuseum with
-# examples/kind-lab-dex.yaml after preparing the cluster — the same order the
-# README quick start documents.
+# lab-dex.yaml), so ATS's own pre-test deploy is skipped and the test runs
+# `helm upgrade --install` on the candidate archive with
+# examples/kind-lab-dex.yaml after preparing the cluster — the same order and
+# the same Helm 4 CLI path the README quick start documents.
 #
 # The upgrade scenario is SKIPPED (issue #32): ATS installs the baseline
-# (latest catalog release) before any cluster preparation runs, and since
-# 0.2.0 the baseline is the full umbrella that cannot come up without the
-# prerequisites (lab-dex secret, Gateway API CRDs) — the App CR never
-# converges and CI kills the silent wait after 10 minutes, which blocked
-# every chart publish after 0.2.0. Re-enable once the baseline can install
-# cleanly on a bare cluster or ATS can prepare the cluster first; the old
-# scenario wiring (upgrade-tests-*) is kept below for that moment.
+# (latest stable catalog release) before any cluster preparation runs, and
+# since 0.2.0 the baseline is the full umbrella that cannot come up without
+# the prerequisites. With ATS >= 1.0 all scenarios share the job's cluster, so
+# the prerequisites the smoke applies persist; re-enabling needs the smoke
+# release uninstalled first (a post-hook) so the baseline lands on a prepared,
+# empty namespace with the values below. The wiring is kept for that moment.
 #
 # The functional step stays skipped: smoke covers install + auth, and there
 # is no third scenario yet.
@@ -23,11 +24,9 @@ app-tests-app-config-file: examples/kind-lab-dex.yaml
 app-tests-deploy-namespace: agent-platform
 app-tests-skip-app-deploy: true
 
-smoke-tests-cluster-type: kind
-upgrade-tests-cluster-type: kind
-
 upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
-upgrade-tests-app-version: latest
+upgrade-tests-app-version: stable
+upgrade-tests-app-config-file: examples/kind-lab-dex.yaml
 upgrade-tests-upgrade-hook: tests/ats/upgrade-hook.sh
 
 skip-steps: [functional, upgrade]
