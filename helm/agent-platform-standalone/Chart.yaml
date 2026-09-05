@@ -29,7 +29,7 @@ annotations:
 # Chart.lock mirrors these pins; CI runs `helm dependency build` and fails on drift.
 dependencies:
   - name: muster
-    version: "5.8.2"  # range 5.x
+    version: "5.10.0"  # range 5.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.muster.enabled
   - name: valkey
@@ -37,7 +37,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.valkey.enabled
   - name: kagent
-    version: "0.1.43"  # range 0.x
+    version: "0.1.45"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kagent.enabled
   - name: agentgateway
@@ -45,7 +45,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agentgateway.enabled
   - name: agent-platform-mcps
-    version: "0.7.1"  # range 0.x
+    version: "0.8.0"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-platform-mcps.enabled
   - name: klaus-gateway
@@ -57,15 +57,15 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
-    version: "0.2.30"  # range 0.x
+    version: "0.2.31"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: mcp-kubernetes
-    version: "1.1.1"  # range 1.x
+    version: "1.1.7"  # range 1.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.mcp-kubernetes.enabled
   - name: backstage
-    version: "0.228.1"  # range 0.x
+    version: "0.230.0"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg
@@ -73,7 +73,7 @@ dependencies:
     repository: oci://ghcr.io/cloudnative-pg/charts
     condition: components.cloudnative-pg.enabled
   - name: model-manager
-    version: "0.17.6"  # range 0.x
+    version: "0.17.9"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.model-manager.enabled
   - name: agent-manager
@@ -81,7 +81,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-manager.enabled
   - name: kserve-crd
-    version: "0.2.1"  # range 0.x
+    version: "0.2.2"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
   - name: kserve-resources
