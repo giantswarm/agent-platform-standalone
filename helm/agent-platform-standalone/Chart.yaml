@@ -61,7 +61,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-sandbox.enabled
   - name: mcp-kubernetes
-    version: "1.1.1"  # range 1.x
+    version: "1.1.6"  # range 1.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.mcp-kubernetes.enabled
   - name: backstage
