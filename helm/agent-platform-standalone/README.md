@@ -25,7 +25,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.230.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.10 |
-| oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.45 |
+| oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.46 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.4 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.2 |
