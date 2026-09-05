@@ -21,7 +21,7 @@ fleet:
   # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
   # customManager convention).
   # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
-  version: 3.7.0
+  version: 3.7.2
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -77,17 +77,17 @@ dependencies:
   - name: kagent
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kagent
-    version: "0.1.40"
+    version: "0.1.43"
   - name: agentgateway
     # The 2.x line flattened the upstream keys onto the chart root, so the fleet
     # forwards this block unnested. A 1.x chart would read none of it.
     range: "2.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agentgateway
-    version: "2.0.4"
+    version: "2.0.7"
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
-    version: "0.7.0"
+    version: "0.7.1"
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
@@ -95,7 +95,7 @@ dependencies:
   - name: dicebear
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
-    version: "0.3.8"
+    version: "0.3.10"
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
@@ -109,7 +109,7 @@ dependencies:
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.226.0"
+    version: "0.228.1"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: cloudnative-pg
@@ -128,7 +128,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.17.0"
+    version: "0.17.6"
   # The agent-manager service (the agent write surface of the Agent Control
   # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
   # inspects kagent agents as Flux HelmReleases of the agent chart, validated
@@ -142,7 +142,7 @@ dependencies:
   - name: agent-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-manager
-    version: "0.2.0"
+    version: "0.2.7"
   # The KServe control plane (ADR 2026-09-02 "KServe bundled optionally",
   # revising decision D1 of the Model Manager PDR): the CRD chart and the
   # controller chart of giantswarm/kserve, switched together by the umbrella
@@ -159,7 +159,7 @@ dependencies:
   - name: kserve-crd
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-crd
-    version: "0.2.0"
+    version: "0.2.1"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
   - name: kserve-resources
