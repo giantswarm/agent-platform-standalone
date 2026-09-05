@@ -19,7 +19,7 @@ dependencies:
   version: 0.38.4
 - name: dicebear
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.3.8
+  version: 0.3.10
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.30
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:5c1b3504e13346429de268fa9fff4265db42af215bf96e9e2ce4b2aff014d827
-generated: "2026-09-05T11:00:21.84429597Z"
+digest: sha256:2c57ec01dedb90de8c9da5f6c1c12ac61991b404aba38d39aba60e8dc141b6d3
+generated: "2026-09-05T11:24:11.137044943Z"

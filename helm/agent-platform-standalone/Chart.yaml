@@ -53,7 +53,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.klaus-gateway.enabled
   - name: dicebear
-    version: "0.3.8"  # range 0.x
+    version: "0.3.10"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
