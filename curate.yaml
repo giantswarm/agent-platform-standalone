@@ -159,7 +159,7 @@ dependencies:
   - name: kserve-crd
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-crd
-    version: "0.2.0"
+    version: "0.2.2"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
   - name: kserve-resources
