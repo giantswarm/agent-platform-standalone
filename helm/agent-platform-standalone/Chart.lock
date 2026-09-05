@@ -43,9 +43,9 @@ dependencies:
   version: 0.2.1
 - name: kserve-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.0
+  version: 0.2.2
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.2
-digest: sha256:aa75a425a5ef61060bd4be78b2d27b2efd315efdfcce6d1e5c03a1e6afeb71a9
-generated: "2026-09-05T12:09:38.981311505Z"
+digest: sha256:1d3c872a948d9685c13221cdea1399d2ca1d92016191fa0c39d01106de7a7a98
+generated: "2026-09-05T12:24:28.39236677Z"
