@@ -27,6 +27,28 @@
   ],
   packageRules: [
     {
+      // Every chart pin bump in curate.yaml makes the curate-regen workflow
+      // rewrite Chart.lock (its dependency digest), so any two open pin PRs
+      // conflict on that file. main requires up-to-date branches (strict
+      // status checks), so each merge sends every remaining pin PR through
+      // rebase -> regen -> the full ATS smoke again, one merge cycle per pin
+      // (2026-09-05: nine pin PRs had to be folded by hand, see #161). One
+      // grouped PR carries every pending component pin instead: one regen,
+      // one smoke, one release, and Renovate rebases it as a unit. The image
+      // pins in overlay/contract.yaml ride along: they share the regen run and
+      // the rebase churn. A major update still gets its own branch
+      // (renovate/major-component-pins, separateMajorMinor), so a cross-major
+      // bump that the curate `range` guard rejects cannot hold the rest back.
+      // Both branch names keep the renovate/ prefix the curate-regen workflow
+      // triggers on.
+      description: 'Group the component pins into one PR: every pin regenerates Chart.lock, so separate pin PRs conflict and re-run CI after each merge (#161)',
+      matchFileNames: [
+        'curate.yaml',
+        'overlay/contract.yaml',
+      ],
+      groupName: 'component pins',
+    },
+    {
       // These registries tag with a `v` prefix (kubectl since 1.33.5: `v1.33.5`,
       // `v1.37.0`; vllm-openai: `v0.28.0`). The org `# registry:` manager keeps
       // that prefix outside its version capture, so the pin in
