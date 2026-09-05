@@ -37,15 +37,15 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.valkey.enabled
   - name: kagent
-    version: "0.1.40"  # range 0.x
+    version: "0.1.43"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kagent.enabled
   - name: agentgateway
-    version: "2.0.4"  # range 2.x
+    version: "2.0.7"  # range 2.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agentgateway.enabled
   - name: agent-platform-mcps
-    version: "0.7.0"  # range 0.x
+    version: "0.7.1"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-platform-mcps.enabled
   - name: klaus-gateway
@@ -53,7 +53,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.klaus-gateway.enabled
   - name: dicebear
-    version: "0.3.8"  # range 0.x
+    version: "0.3.10"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.dicebear.enabled
   - name: agent-sandbox
@@ -65,7 +65,7 @@ dependencies:
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.mcp-kubernetes.enabled
   - name: backstage
-    version: "0.226.0"  # range 0.x
+    version: "0.228.1"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.backstage.enabled
   - name: cloudnative-pg
@@ -73,15 +73,15 @@ dependencies:
     repository: oci://ghcr.io/cloudnative-pg/charts
     condition: components.cloudnative-pg.enabled
   - name: model-manager
-    version: "0.17.0"  # range 0.x
+    version: "0.17.6"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.model-manager.enabled
   - name: agent-manager
-    version: "0.2.0"  # range 0.x
+    version: "0.2.7"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.agent-manager.enabled
   - name: kserve-crd
-    version: "0.2.0"  # range 0.x
+    version: "0.2.1"  # range 0.x
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
   - name: kserve-resources
