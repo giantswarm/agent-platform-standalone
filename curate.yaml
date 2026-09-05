@@ -87,7 +87,7 @@ dependencies:
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
-    version: "0.7.0"
+    version: "0.7.1"
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
