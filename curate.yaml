@@ -99,7 +99,7 @@ dependencies:
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
-    version: "0.2.26"
+    version: "0.2.30"
   - name: mcp-kubernetes
     range: "1.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
