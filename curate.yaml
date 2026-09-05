@@ -77,7 +77,7 @@ dependencies:
   - name: kagent
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kagent
-    version: "0.1.40"
+    version: "0.1.43"
   - name: agentgateway
     # The 2.x line flattened the upstream keys onto the chart root, so the fleet
     # forwards this block unnested. A 1.x chart would read none of it.
