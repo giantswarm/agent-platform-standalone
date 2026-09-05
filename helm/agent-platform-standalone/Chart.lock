@@ -1,19 +1,19 @@
 dependencies:
 - name: muster
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 5.8.2
+  version: 5.10.0
 - name: valkey
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.1.4
 - name: kagent
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.1.43
+  version: 0.1.46
 - name: agentgateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 2.0.7
 - name: agent-platform-mcps
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.7.1
+  version: 0.8.0
 - name: klaus-gateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.38.4
@@ -22,30 +22,30 @@ dependencies:
   version: 0.3.10
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.30
+  version: 0.2.31
 - name: mcp-kubernetes
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 1.1.1
+  version: 1.1.7
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.228.1
+  version: 0.230.0
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
 - name: model-manager
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.17.6
+  version: 0.17.9
 - name: agent-manager
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.7
 - name: kserve-crd
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.1
+  version: 0.2.2
 - name: kserve-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.2
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.2
-digest: sha256:1d3c872a948d9685c13221cdea1399d2ca1d92016191fa0c39d01106de7a7a98
-generated: "2026-09-05T12:24:28.39236677Z"
+digest: sha256:009876caf071270c397811b9d7e2010e1abb0327848fe4b6eb622318cf7955d0
+generated: "2026-09-05T20:12:25.463645339+02:00"
