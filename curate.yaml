@@ -21,7 +21,7 @@ fleet:
   # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
   # customManager convention).
   # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
-  version: 3.7.0
+  version: 3.7.2
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
