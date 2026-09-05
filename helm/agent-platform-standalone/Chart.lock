@@ -7,7 +7,7 @@ dependencies:
   version: 0.1.4
 - name: kagent
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.1.43
+  version: 0.1.45
 - name: agentgateway
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 2.0.7
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.2
-digest: sha256:1d3c872a948d9685c13221cdea1399d2ca1d92016191fa0c39d01106de7a7a98
-generated: "2026-09-05T12:24:28.39236677Z"
+digest: sha256:a1aba385c2f1f27d436387091277d5f95ff6dc96ea8ae9197ebe3d21718b2769
+generated: "2026-09-05T13:34:57.346159433Z"
