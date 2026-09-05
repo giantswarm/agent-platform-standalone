@@ -22,7 +22,7 @@ dependencies:
   version: 0.3.8
 - name: agent-sandbox
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.2.26
+  version: 0.2.30
 - name: mcp-kubernetes
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 1.1.1
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.0
-digest: sha256:734f105e9b9cebcf4dcb47d02d4750f139e19c13242e3ad822a1b99fdbcf14bc
-generated: "2026-09-04T16:22:06.443838733Z"
+digest: sha256:75323ca2d0ca6761a9e90e0374b910739733e38ce363f5dc6e6e6bc281ee372b
+generated: "2026-09-05T06:41:52.329622722Z"
