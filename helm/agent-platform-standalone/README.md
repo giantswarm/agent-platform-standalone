@@ -227,7 +227,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | components.modelServing.policies.enabled | bool | `false` |  |
 | components.modelServing.policies.cacheInit.image.registry | string | `"gsoci.azurecr.io"` |  |
 | components.modelServing.policies.cacheInit.image.name | string | `"giantswarm/alpine"` |  |
-| components.modelServing.policies.cacheInit.image.version | string | `"3.22.1"` |  |
+| components.modelServing.policies.cacheInit.image.version | string | `"3.24.1"` |  |
 | components.modelServing.policies.cacheInit.resources.requests.cpu | string | `"10m"` |  |
 | components.modelServing.policies.cacheInit.resources.requests.memory | string | `"16Mi"` |  |
 | components.modelServing.policies.cacheInit.resources.limits.cpu | string | `"100m"` |  |

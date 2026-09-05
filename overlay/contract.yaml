@@ -397,7 +397,7 @@ components:
           registry: gsoci.azurecr.io
           name: giantswarm/alpine
           # registry: gsoci.azurecr.io/giantswarm/alpine
-          version: "3.22.1"
+          version: "3.24.1"
         resources:
           requests:  # @schema type: object; additionalProperties: true
             cpu: 10m
