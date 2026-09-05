@@ -69,7 +69,7 @@ dependencies:
   - name: muster
     range: "5.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/muster
-    version: "5.8.2"
+    version: "5.10.0"
   - name: valkey
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/valkey
@@ -77,7 +77,7 @@ dependencies:
   - name: kagent
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kagent
-    version: "0.1.43"
+    version: "0.1.45"
   - name: agentgateway
     # The 2.x line flattened the upstream keys onto the chart root, so the fleet
     # forwards this block unnested. A 1.x chart would read none of it.
@@ -87,7 +87,7 @@ dependencies:
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
-    version: "0.7.1"
+    version: "0.8.0"
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
@@ -99,17 +99,17 @@ dependencies:
   - name: agent-sandbox
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-sandbox
-    version: "0.2.30"
+    version: "0.2.31"
   - name: mcp-kubernetes
     range: "1.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
-    version: "1.1.1"
+    version: "1.1.7"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.228.1"
+    version: "0.230.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: cloudnative-pg
@@ -128,7 +128,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.17.6"
+    version: "0.17.9"
   # The agent-manager service (the agent write surface of the Agent Control
   # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
   # inspects kagent agents as Flux HelmReleases of the agent chart, validated
@@ -159,7 +159,7 @@ dependencies:
   - name: kserve-crd
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-crd
-    version: "0.2.1"
+    version: "0.2.2"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.enabled
   - name: kserve-resources
