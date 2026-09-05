@@ -171,7 +171,7 @@ dependencies:
   - name: kserve-llmisvc-resources
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kserve-llmisvc-resources
-    version: "0.2.0"
+    version: "0.2.2"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     condition: components.kserve.llmisvc.enabled
 
