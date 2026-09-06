@@ -1,7 +1,7 @@
 dependencies:
 - name: muster
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 5.10.0
+  version: 5.10.2
 - name: valkey
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.1.4
@@ -28,7 +28,7 @@ dependencies:
   version: 1.1.7
 - name: backstage
   repository: oci://gsoci.azurecr.io/charts/giantswarm
-  version: 0.230.0
+  version: 0.230.1
 - name: cloudnative-pg
   repository: oci://ghcr.io/cloudnative-pg/charts
   version: 0.29.0
@@ -47,5 +47,5 @@ dependencies:
 - name: kserve-llmisvc-resources
   repository: oci://gsoci.azurecr.io/charts/giantswarm
   version: 0.2.2
-digest: sha256:009876caf071270c397811b9d7e2010e1abb0327848fe4b6eb622318cf7955d0
-generated: "2026-09-05T20:12:25.463645339+02:00"
+digest: sha256:b1dd7ed2dcc36fd663f5bd5daa5f2525573236a89cc372bf45e7f1fce6318ddd
+generated: "2026-09-05T21:27:21.656909504Z"
