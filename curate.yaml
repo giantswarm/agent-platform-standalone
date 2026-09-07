@@ -21,7 +21,7 @@ fleet:
   # Exact pin, bumped by Renovate (the `# registry:` hint is the org preset's
   # customManager convention).
   # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform
-  version: 3.7.2
+  version: 3.10.0
   # Fleet components that are not dependencies: this chart renders their
   # templates itself, generated from the connectivity chart on every run.
   inlineComponents:
@@ -69,7 +69,7 @@ dependencies:
   - name: muster
     range: "5.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/muster
-    version: "5.10.2"
+    version: "5.10.3"
   - name: valkey
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/valkey
@@ -77,7 +77,7 @@ dependencies:
   - name: kagent
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/kagent
-    version: "0.1.46"
+    version: "0.1.48"
   - name: agentgateway
     # The 2.x line flattened the upstream keys onto the chart root, so the fleet
     # forwards this block unnested. A 1.x chart would read none of it.
@@ -91,7 +91,7 @@ dependencies:
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
-    version: "0.38.4"
+    version: "0.39.0"
   - name: dicebear
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/dicebear
@@ -109,7 +109,7 @@ dependencies:
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.230.1"
+    version: "0.237.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: cloudnative-pg
