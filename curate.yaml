@@ -69,7 +69,7 @@ dependencies:
   - name: muster
     range: "5.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/muster
-    version: "5.10.3"
+    version: "5.12.0"
   - name: valkey
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/valkey
@@ -87,7 +87,7 @@ dependencies:
   - name: agent-platform-mcps
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-platform-mcps
-    version: "0.8.0"
+    version: "0.9.0"
   - name: klaus-gateway
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/klaus-gateway
@@ -103,13 +103,13 @@ dependencies:
   - name: mcp-kubernetes
     range: "1.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/mcp-kubernetes
-    version: "1.1.7"
+    version: "1.1.8"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: backstage
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/backstage
-    version: "0.237.0"
+    version: "0.238.0"
     repository: oci://gsoci.azurecr.io/charts/giantswarm
     enabled: true
   - name: cloudnative-pg
@@ -128,7 +128,7 @@ dependencies:
   - name: model-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/model-manager
-    version: "0.17.9"
+    version: "0.18.0"
   # The agent-manager service (the agent write surface of the Agent Control
   # Plane, giantswarm/giantswarm#36796): creates, updates, deletes and
   # inspects kagent agents as Flux HelmReleases of the agent chart, validated
@@ -142,7 +142,7 @@ dependencies:
   - name: agent-manager
     range: "0.x"
     # registry: gsoci.azurecr.io/charts/giantswarm/agent-manager
-    version: "0.2.7"
+    version: "0.4.0"
   # The KServe control plane (ADR 2026-09-02 "KServe bundled optionally",
   # revising decision D1 of the Model Manager PDR): the CRD chart and the
   # controller chart of giantswarm/kserve, switched together by the umbrella
