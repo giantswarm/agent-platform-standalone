@@ -2,11 +2,18 @@ name: curate-regen
 # Renovate bumps the exact pins in curate.yaml and overlay/contract.yaml (the
 # `# registry:` hints) but cannot run the curation generator, so on Renovate
 # branches this workflow regenerates Chart.yaml, Chart.lock, values.yaml, the
-# chart templates and the helm-docs README from the bumped pins and pushes the
-# result back onto the PR branch. The second run after that push finds a clean
-# tree and no-ops. Renovate ignores the pushing author (gitIgnoredAuthors in
-# renovate-custom.json5), so the extra commit does not stop it from rebasing
-# or autoclosing the PR.
+# chart templates, values.schema.json and the helm-docs README from the bumped
+# pins and pushes the result back onto the PR branch. The second run after that
+# push finds a clean tree and no-ops. Renovate ignores the pushing author
+# (gitIgnoredAuthors in renovate-custom.json5), so the extra commit does not
+# stop it from rebasing or autoclosing the PR.
+#
+# The schema matters as soon as a bumped component ships a new values key: the
+# generator copies the fleet defaults into values.yaml, and the committed
+# values.schema.json (additionalProperties: false for the umbrella-owned keys)
+# then rejects the new key in check-values-schema, pre-commit, the ABS lint of
+# build-chart and every render in `make verify` (2026-09-06: agent-platform
+# 3.8.0 added postgres.backup and three regen runs failed the same way).
 on:
   pull_request:
     branches:
@@ -45,8 +52,39 @@ jobs:
           version: ${{ steps.helm-docs.outputs.version }}
           download_url: "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_${version}_Linux_x86_64.tar.gz"
           tarball_binary_path: "helm-docs"
+      - name: Read the helm schema plugin release the pre-commit workflow pins
+        # Same reasoning as helm-docs: the schema has to come out byte-identical
+        # to what the pre-commit check regenerates, and that check installs the
+        # plugin version named in the generated pre-commit workflow.
+        id: helm-schema
+        run: |
+          version="$(yq -r '.env.HELM_VALUES_SCHEMA_JSON_VERSION' .github/workflows/zz_generated.pre-commit.yaml)"
+          test -n "$version" && test "$version" != "null" || { echo "no HELM_VALUES_SCHEMA_JSON_VERSION in .github/workflows/zz_generated.pre-commit.yaml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install the helm schema plugin
+        run: helm plugin install https://github.com/losisin/helm-values-schema-json --version "${{ steps.helm-schema.outputs.version }}"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+      - name: Cache the pre-commit hook environments
+        # The schema hook builds schemalint with `go install` on first use.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Regenerate the curated chart from the bumped pins
         run: hack/curate.sh
+      - name: Regenerate the values schema
+        # The schema pipeline (helm schema -> $ref fix -> schemalint normalize)
+        # is the local hook in .pre-commit-config.yaml; running that hook keeps
+        # this step on the pipeline and the schemalint release the hook pins.
+        # pre-commit fails a hook that rewrites a file, so the first run may
+        # fail on the rewrite. The committed schema is a fixed point of the
+        # pipeline, so the second run has to pass; a failure there is a broken
+        # pipeline (missing plugin, generator error), not a rewrite.
+        run: |
+          pre-commit run helm-schema-agent-platform-standalone --all-files || true
+          pre-commit run helm-schema-agent-platform-standalone --all-files
       - name: Regenerate the chart README
         # Same arguments as the helm-docs hook in .pre-commit-config.yaml. The
         # binary runs directly: the pre-commit hook only wraps it, and its

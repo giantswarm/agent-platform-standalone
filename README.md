@@ -905,11 +905,14 @@ a stale login is the cause: run `helm registry logout gsoci.azurecr.io` (or
   check on `main` together with `verify`, and a branch must be up to date with
   `main` to merge, so the release tag ships the tree the PR tested and its
   pipeline is `build-chart`, `verify` and `push-chart-release` alone.
-- Renovate bumps the exact pins in `curate.yaml` (one PR per component
-  release, matched by the `# registry:` hints); the `curate-regen` workflow
-  regenerates `Chart.yaml`, `Chart.lock` and the chart README on that branch.
-  The helm Renovate managers are disabled: `Chart.yaml` and `Chart.lock` stay
-  generator output.
+- Renovate bumps the exact pins in `curate.yaml` (one grouped PR for every
+  pending component release, matched by the `# registry:` hints); the
+  `curate-regen` workflow regenerates `Chart.yaml`, `Chart.lock`,
+  `values.yaml`, the templates, `values.schema.json` and the chart README on
+  that branch, with the same helm-docs release and schema pipeline the
+  pre-commit check uses, so a component that ships a new values key arrives
+  with a schema that admits it. The helm Renovate managers are disabled:
+  `Chart.yaml` and `Chart.lock` stay generator output.
 
 The templates and component values are regenerated from the fleet charts on
 every `make curate` run and byte-checked by `hack/curate.sh --check`, so
