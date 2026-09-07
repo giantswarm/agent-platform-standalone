@@ -23,7 +23,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.9.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.31 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.7 |
-| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.239.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.241.1 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.10 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.48 |
 | oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.39.0 |
@@ -32,7 +32,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.8 |
 | oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.18.0 |
-| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.12.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.13.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
 ## Values
