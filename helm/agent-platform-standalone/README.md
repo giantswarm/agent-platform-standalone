@@ -23,16 +23,16 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-platform-mcps | 0.8.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agent-sandbox | 0.2.31 |
 | oci://gsoci.azurecr.io/charts/giantswarm | agentgateway | 2.0.7 |
-| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.230.1 |
+| oci://gsoci.azurecr.io/charts/giantswarm | backstage | 0.237.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | dicebear | 0.3.10 |
-| oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.46 |
-| oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.38.4 |
+| oci://gsoci.azurecr.io/charts/giantswarm | kagent | 0.1.48 |
+| oci://gsoci.azurecr.io/charts/giantswarm | klaus-gateway | 0.39.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-crd | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.7 |
 | oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.17.9 |
-| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.10.2 |
+| oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.10.3 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
 ## Values
@@ -311,6 +311,60 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | postgres.sessionsDatabase.enabled | bool | `false` |  |
 | postgres.sessionsDatabase.name | string | `"sessions"` |  |
 | postgres.sessionsDatabase.owner | string | `"sessions"` |  |
+| postgres.backup.enabled | bool | `false` |  |
+| postgres.backup.method | string | `"plugin"` |  |
+| postgres.backup.schedule | string | `"0 0 2 * * *"` |  |
+| postgres.backup.immediate | bool | `true` |  |
+| postgres.backup.suspend | bool | `false` |  |
+| postgres.backup.serverName | string | `""` |  |
+| postgres.backup.objectStore.existingName | string | `""` |  |
+| postgres.backup.objectStore.destinationPath | string | `""` |  |
+| postgres.backup.objectStore.endpointURL | string | `""` |  |
+| postgres.backup.objectStore.retentionPolicy | string | `"30d"` |  |
+| postgres.backup.objectStore.wal.compression | string | `"gzip"` |  |
+| postgres.backup.objectStore.wal.maxParallel | int | `1` |  |
+| postgres.backup.objectStore.data.compression | string | `"gzip"` |  |
+| postgres.backup.objectStore.s3.inheritFromIAMRole | bool | `false` |  |
+| postgres.backup.objectStore.s3.accessKeyId.name | string | `""` |  |
+| postgres.backup.objectStore.s3.accessKeyId.key | string | `"ACCESS_KEY_ID"` |  |
+| postgres.backup.objectStore.s3.secretAccessKey.name | string | `""` |  |
+| postgres.backup.objectStore.s3.secretAccessKey.key | string | `"ACCESS_SECRET_KEY"` |  |
+| postgres.backup.objectStore.azure.inheritFromAzureAD | bool | `false` |  |
+| postgres.backup.objectStore.azure.connectionString.name | string | `""` |  |
+| postgres.backup.objectStore.azure.connectionString.key | string | `""` |  |
+| postgres.backup.objectStore.azure.storageAccount.name | string | `""` |  |
+| postgres.backup.objectStore.azure.storageAccount.key | string | `""` |  |
+| postgres.backup.objectStore.azure.storageKey.name | string | `""` |  |
+| postgres.backup.objectStore.azure.storageKey.key | string | `""` |  |
+| postgres.backup.objectStore.sidecar.resources | object | `{}` |  |
+| postgres.backup.volumeSnapshot.className | string | `""` |  |
+| postgres.backup.volumeSnapshot.walClassName | string | `""` |  |
+| postgres.backup.volumeSnapshot.online | bool | `true` |  |
+| postgres.backup.serviceAccount.annotations | object | `{}` |  |
+| postgres.backup.networkPolicy.ports[0] | string | `"443"` |  |
+| postgres.backup.networkPolicy.fqdns | list | `[]` |  |
+| postgres.backup.networkPolicy.cidrs | list | `[]` |  |
+| postgres.backup.crossplane.enabled | bool | `false` |  |
+| postgres.backup.crossplane.provider | string | `"aws"` |  |
+| postgres.backup.crossplane.providerConfigRef | string | `""` |  |
+| postgres.backup.crossplane.region | string | `""` |  |
+| postgres.backup.crossplane.observeOnly | bool | `false` |  |
+| postgres.backup.crossplane.tags | object | `{}` |  |
+| postgres.backup.crossplane.aws.bucketName | string | `""` |  |
+| postgres.backup.crossplane.aws.accountId | string | `""` |  |
+| postgres.backup.crossplane.aws.oidcProvider | string | `""` |  |
+| postgres.backup.crossplane.aws.roleName | string | `""` |  |
+| postgres.backup.crossplane.aws.lifecycleDays | int | `45` |  |
+| postgres.backup.crossplane.azure.storageAccountName | string | `""` |  |
+| postgres.backup.crossplane.azure.containerName | string | `""` |  |
+| postgres.backup.crossplane.azure.resourceGroup | string | `""` |  |
+| postgres.backup.crossplane.azure.replicationType | string | `"LRS"` |  |
+| postgres.backup.crossplane.azure.lifecycleDays | int | `45` |  |
+| postgres.backup.crossplane.azure.private | bool | `false` |  |
+| postgres.backup.crossplane.azure.subscriptionId | string | `""` |  |
+| postgres.backup.crossplane.azure.vnetName | string | `""` |  |
+| postgres.backup.crossplane.azure.subnetName | string | `"node-subnet"` |  |
+| postgres.backup.crossplane.azure.privateDnsZoneRef | string | `""` |  |
 | muster.enabled | bool | `true` |  |
 | muster.image.registry | string | `"gsoci.azurecr.io"` |  |
 | muster.fullnameOverride | string | `"muster"` |  |
@@ -523,6 +577,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | klaus-gateway.obo.storePath | string | `""` |  |
 | klaus-gateway.obo.persistence.enabled | bool | `false` |  |
 | klaus-gateway.obo.persistence.size | string | `"64Mi"` |  |
+| klaus-gateway.obo.existingSecret | string | `""` |  |
 | klaus-gateway.obo.stateKey | string | `""` |  |
 | klaus-gateway.obo.storeKey | string | `""` |  |
 | klaus-gateway.obo.connectors.enabled | bool | `false` |  |
