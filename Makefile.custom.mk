@@ -348,13 +348,28 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	done
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set-json 'components.model-manager.networkPolicy.egress.cidrs=["198.51.100.0/24"]' | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/'); \
 	printf '%s' "$$out" | grep -q 'cidr: "198.51.100.0/24"' || { echo "FAIL: kubernetes model-manager egress lacks the egress.cidrs block"; exit 1; }
-	@echo "--> guards: ollama without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
+	@echo "--> lmstudio backend: its endpoint reaches the Deployment and the host egress, and no other host driver's flags do"
+	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=lmstudio' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true); \
+	printf '%s' "$$out" | grep -q -e '--lmstudio-endpoint=http://192.0.2.11:1234' || { echo "FAIL: the lmstudio endpoint did not reach the Deployment"; exit 1; }; \
+	printf '%s' "$$out" | grep -q -e '--ollama-endpoint' && { echo "FAIL: the lmstudio backend rendered ollama flags"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q '192.0.2.11/32' || { echo "FAIL: the lmstudio host is not in the model-manager egress"; exit 1; }
+	@echo "--> lmstudio next to ollama: one model-manager, both endpoints, both hosts in the egress"
+	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backends={ollama,lmstudio}' --set 'model-manager.ollama.endpoint=http://192.0.2.10:11434' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true); \
+	printf '%s' "$$out" | grep -q -e '--backends=ollama,lmstudio' || { echo "FAIL: --backends=ollama,lmstudio missing"; exit 1; }; \
+	for host in 192.0.2.10/32 192.0.2.11/32; do \
+		printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q "$$host" || { echo "FAIL: $$host is not in the model-manager egress"; exit 1; }; \
+	done
+	@echo "--> guards: ollama and lmstudio without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
 	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=' >/dev/null 2>&1; then \
 		echo "FAIL: ollama backend without an endpoint accepted"; exit 1; fi
 	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=ollama:11434' >/dev/null 2>&1; then \
 		echo "FAIL: ollama endpoint without a scheme accepted"; exit 1; fi
 	@if $(MODEL_MANAGER) --set 'model-manager.backend=vllm' >/dev/null 2>&1; then \
 		echo "FAIL: unknown backend accepted"; exit 1; fi
+	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=lmstudio' --set 'model-manager.lmstudio.endpoint=' >/dev/null 2>&1; then \
+		echo "FAIL: lmstudio backend without an endpoint accepted"; exit 1; fi
+	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=lmstudio' --set 'model-manager.lmstudio.endpoint=lmstudio:1234' >/dev/null 2>&1; then \
+		echo "FAIL: lmstudio endpoint without a scheme accepted"; exit 1; fi
 	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=kserve' 2>&1) && { \
 		echo "FAIL: kserve backend without KServe accepted"; exit 1; }; \
 	printf '%s' "$$out" | grep -q 'serving.kserve.io/v1beta1' || { echo "FAIL: render failed for another reason than the KServe guard"; exit 1; }

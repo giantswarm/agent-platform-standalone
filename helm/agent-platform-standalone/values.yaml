@@ -2122,6 +2122,12 @@ model-manager:  # @schema skipProperties: true; additionalProperties: true
     discovery:
       configMap: agent-platform-model-serving
       namespace: ""
+  # The lmstudio driver's chart default is a Docker Desktop guess
+  # (host.docker.internal:1234), which no install should inherit silently:
+  # empty makes templates/model-manager/validate.yaml name the missing
+  # endpoint, as it does for ollama and lemonade.
+  lmstudio:
+    endpoint: ""
 # === Agent manager (agent-manager) ===
 # Values forwarded verbatim to the agent-manager component release
 # (giantswarm/agent-manager, the agent write surface of the Agent Control
