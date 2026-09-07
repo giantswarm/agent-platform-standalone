@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `agent-platform.giantswarm.io/tool-group: infrastructure` on the bundled mcp-kubernetes `MCPServer` CR (`templates/mcp-kubernetes/mcpserver.yaml`), next to `muster.giantswarm.io/type`: the Agent Platform's MCP server tier, by which the portal's MCP servers page, the toolset presets and the docs group servers (Agent Platform / Infrastructure / Registered servers). agent-manager and model-manager stamp their own `agent-platform` label in their charts and reach this chart through their pins. `make verify-decisions` asserts the label on the rendered CR.
 - `components.model-manager.networkPolicy.egress` (`fqdns`, `cidrs`, both empty; agent-platform 3.5.0): further destinations of model-manager on 443 whatever the backend — the same knob `components.agent-manager.networkPolicy.egress` already is — with `# @schema item` constraints for both arrays. `components.model-manager.networkPolicy.ingress.additionalPeers` / `components.agent-manager.networkPolicy.ingress.additionalPeers` (agent-platform 3.4.0): extra same-namespace callers admitted on the Service port; the Backstage-peer `templates.patch` entries are re-anchored behind the upstream `range $peers` block and still gate the peer on `components.backstage.enabled`.
 
 ### Changed
