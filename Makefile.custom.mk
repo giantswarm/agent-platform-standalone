@@ -8,6 +8,10 @@ TEMPLATE := helm template agent-platform $(CHART_DIR) --kube-version $(KUBE_VERS
 # The vanilla defaults plus the inputs every install needs (a domain, an IdP,
 # a public Gateway); everything else stays at its default.
 VANILLA := $(TEMPLATE) -f $(CHART_DIR)/ci/ci-values.yaml --set 'components.klaus-gateway.enabled=false' --set 'components.dicebear.enabled=false' --set 'components.agent-sandbox.enabled=false' --set 'components.model-manager.enabled=false'
+# muster's toolsetPresets (fleet >= 3.11.0) name the managers in a preset
+# description inside muster's ConfigMap — muster configuration, not a manager
+# object. The component-off assertions drop that block before grepping.
+STRIP_TOOLSET_PRESETS := awk 'BEGIN{skip=0} /^ *toolsetPresets:/{skip=1; ind=match($$0,/[^ ]/); next} skip && ($$0 ~ /^ *$$/ || match($$0,/[^ ]/) > ind){next} {skip=0; print}'
 # The modelServing component on, against a cluster that has KServe: helm
 # template learns the cluster's APIs only from --api-versions.
 KSERVE_API := --api-versions serving.kserve.io/v1alpha1 --api-versions serving.kserve.io/v1beta1
@@ -104,6 +108,12 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 	@echo "--> the bundled mcp-kubernetes MCPServer carries the Agent Platform tier label (agent-platform.giantswarm.io/tool-group: infrastructure)"
 	@out=$$($(VANILLA) --show-only templates/mcp-kubernetes/mcpserver.yaml); \
 	printf '%s' "$$out" | grep -q '^    agent-platform.giantswarm.io/tool-group: infrastructure$$' || { echo "FAIL: mcp-kubernetes MCPServer lacks agent-platform.giantswarm.io/tool-group: infrastructure"; exit 1; }
+	@echo "--> muster carries the platform toolset presets (fleet muster.toolsetPresets): infrastructure and agent-platform select by the tool-group label, agent-platform adds muster's core tools"
+	@out=$$($(VANILLA) | awk '/^kind: ConfigMap/,/^---/'); \
+	printf '%s' "$$out" | grep -q 'toolsetPresets:' || { echo "FAIL: muster config lacks toolsetPresets"; exit 1; }; \
+	for pattern in 'infrastructure:' 'agent-platform:' '- label: agent-platform.giantswarm.io/tool-group=infrastructure' '- label: agent-platform.giantswarm.io/tool-group=agent-platform' '- pattern: core_\*'; do \
+		printf '%s' "$$out" | grep -q -e "$$pattern" || { echo "FAIL: muster toolsetPresets lack $$pattern"; exit 1; }; \
+	done
 	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience=' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
 	printf '%s' "$$out" | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences on the mcp-kubernetes MCPServer"; exit 1; }; true
 	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
@@ -247,7 +257,7 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 	done; \
 	if printf '%s' "$$out" | grep -q 'matchName: dex.ci.example.com'; then echo "FAIL: cilium agent-manager egress names the Dex issuer under the google override"; exit 1; fi
 	@echo "--> agent-manager off: the render carries no agent-manager object"
-	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false'); \
+	@out=$$($(VANILLA) --set 'components.agent-manager.enabled=false' | $(STRIP_TOOLSET_PRESETS)); \
 	if printf '%s' "$$out" | grep -q -e 'agent-manager'; then echo "FAIL: render with agent-manager off contains agent-manager"; exit 1; fi
 	@echo "--> agent-manager route + JWT: backends, routes, policy, prefix strip"
 	@out=$$($(AGENT_MANAGER)); \
@@ -276,7 +286,7 @@ verify-agent-manager: deps ## The agent-manager component renders the service + 
 .PHONY: verify-model-manager
 verify-model-manager: deps ## The model-manager component renders nothing while off, the service + route + JWT policy + app-config entry while on, and its guards fail inconsistent configs.
 	@echo "--> model-manager off (the default): the render carries no model-manager object"
-	@out=$$($(VANILLA)); \
+	@out=$$($(VANILLA) | $(STRIP_TOOLSET_PRESETS)); \
 	for pattern in 'model-manager' 'modelManager'; do \
 		if printf '%s' "$$out" | grep -q -e "$$pattern"; then echo "FAIL: default render contains $$pattern"; exit 1; fi; \
 	done
