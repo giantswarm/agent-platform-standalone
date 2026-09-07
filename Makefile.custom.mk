@@ -101,6 +101,9 @@ verify-decisions: deps ## The rendered objects express the vanilla defaults and 
 	done; \
 	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q 'forwardToken: true' || { echo "FAIL: mcp-kubernetes MCPServer lacks forwardToken"; exit 1; }; \
 	printf '%s' "$$out" | awk '/^kind: MCPServer/,/^---/' | awk '/name: mcp-kubernetes$$/,/^---/' | grep -q -- '- dex-k8s-authenticator' || { echo "FAIL: mcp-kubernetes MCPServer lacks the kube audience"; exit 1; }
+	@echo "--> the bundled mcp-kubernetes MCPServer carries the Agent Platform tier label (agent-platform.giantswarm.io/tool-group: infrastructure)"
+	@out=$$($(VANILLA) --show-only templates/mcp-kubernetes/mcpserver.yaml); \
+	printf '%s' "$$out" | grep -q '^    agent-platform.giantswarm.io/tool-group: infrastructure$$' || { echo "FAIL: mcp-kubernetes MCPServer lacks agent-platform.giantswarm.io/tool-group: infrastructure"; exit 1; }
 	@out=$$($(VANILLA) --set 'components.mcp-kubernetes.kubernetesAudience=' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
 	printf '%s' "$$out" | grep -q 'requiredAudiences' && { echo "FAIL: empty kubernetesAudience still rendered requiredAudiences on the mcp-kubernetes MCPServer"; exit 1; }; true
 	@out=$$($(VANILLA) --set 'mcp-kubernetes.mcpKubernetes.oauth.enabled=false' --show-only templates/mcp-kubernetes/mcpserver.yaml); \
