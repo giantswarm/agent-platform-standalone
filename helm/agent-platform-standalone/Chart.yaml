@@ -3,7 +3,14 @@
 apiVersion: v2
 name: agent-platform-standalone
 type: application
+# Retired: the Agent Platform ships as giantswarm/agent-platform (roadmap#4348).
+# `helm install` warns, ArtifactHub and `helm search` flag the chart; the README
+# carries the pointer, the values mapping and the migration notes.
+deprecated: true
 description: |
+  RETIRED: the Agent Platform ships as the giantswarm/agent-platform chart
+  (https://github.com/giantswarm/agent-platform); see the README for the
+  values mapping and the migration notes. This chart was the
   Giant Swarm Agent Platform as one plain Helm chart: muster (MCP gateway),
   kagent (agent runtime), agentgateway (data plane), valkey, the platform MCP
   servers, klaus-gateway, DiceBear avatars, agent-sandbox, Backstage and the

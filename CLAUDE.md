@@ -1,5 +1,9 @@
 # agent-platform-standalone
 
+**Retired and archived** (roadmap#4348): the Agent Platform ships as
+`giantswarm/agent-platform`; the README carries the pointer, the values
+mapping and the migration notes. Nothing below is developed further.
+
 The Giant Swarm Agent Platform as one plain Helm chart, generated from the
 fleet charts. Most of the chart is generator output. Change the inputs, run
 the generator, verify. The README's section "The chart is generated" explains

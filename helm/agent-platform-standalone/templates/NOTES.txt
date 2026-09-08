@@ -1,3 +1,11 @@
+NOTICE: {{ .Chart.Name }} is retired. The Giant Swarm Agent Platform ships as one
+chart, giantswarm/agent-platform, which installs on a cluster without Flux (it
+brings its own engine) and carries this chart's components and wiring:
+  https://github.com/giantswarm/agent-platform
+The README of this repository maps this chart's values onto it and describes the
+migration of an existing installation. This repository is archived: the published
+versions stay pullable, there are no further releases.
+
 {{ .Chart.Name }} {{ .Chart.Version }} installed in namespace {{ .Release.Namespace }}.
 
 Components on: {{- range $name, $component := .Values.components }}{{- if $component.enabled }} {{ $name }}{{- end }}{{- end }}

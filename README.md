@@ -3,6 +3,171 @@
 
 # agent-platform-standalone
 
+> **This chart is retired.** The Giant Swarm Agent Platform ships as **one
+> chart**, [`giantswarm/agent-platform`](https://github.com/giantswarm/agent-platform):
+> it installs on a cluster without Flux (it brings its own engine), carries this
+> chart's extra dependencies as components and this chart's hand-written wiring
+> in its `agent-platform-connectivity` chart. This repository is archived and
+> read-only — no further releases, no issue tracking; every open issue was
+> closed with a pointer to its successor. The published versions stay pullable
+> from `oci://gsoci.azurecr.io/charts/giantswarm/agent-platform-standalone`;
+> **the last published version is the highest tag of this repository**
+> ([releases](https://github.com/giantswarm/agent-platform-standalone/releases)).
+> Decision: [roadmap#4348](https://github.com/giantswarm/roadmap/issues/4348).
+
+## Install the Agent Platform with `giantswarm/agent-platform`
+
+Three inputs — the domain, the identity provider, the components — and one
+`helm install`. The chart brings the Flux engine (the Flux Operator and one
+`FluxInstance` running source-controller + helm-controller) where the cluster
+has none; nothing about Flux in the values. Full documentation: the
+[chart README](https://github.com/giantswarm/agent-platform/blob/main/README.md)
+(quick start, self-management, clusters that run Flux, the standalone's extras)
+and [UPGRADE.md](https://github.com/giantswarm/agent-platform/blob/main/UPGRADE.md).
+
+```yaml
+# values.yaml
+global:
+  domain: platform.example.com               # muster., avatars., kagent.<domain> derive from it
+  identity:                                  # the platform's one OIDC provider
+    issuerUrl: https://dex.platform.example.com
+    clientId: agent-platform
+    existingSecret: agent-platform-idp       # dex-client-secret, registration-token, oauth-encryption-key, valkey-password
+  gatewayApi:
+    parentRefs:                              # the public Gateway every route attaches to
+      - name: public
+        namespace: gateway-system
+components:
+  kagent: { enabled: true }                  # pick the components you want; muster, dicebear and connectivity are always on
+  agent-manager: { enabled: true }
+```
+
+```sh
+# the one cluster prerequisite the chart does not bring: the Gateway API CRDs
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+helm install agent-platform oci://gsoci.azurecr.io/charts/giantswarm/agent-platform \
+  --namespace agent-platform --create-namespace -f values.yaml --wait --timeout 10m
+```
+
+That `helm install` is the last Helm command besides `helm uninstall`: the
+release manages itself through the engine it brought — the chart rolls forward
+inside its major on its own, a values change is a rewrite of the Secret
+`agent-platform-values`, and `helm upgrade` is refused. Component versions roll
+forward inside their `versionRange`s.
+
+A cluster that already runs Flux installs the chart **through that Flux** with
+`components.flux.enabled: false` — nothing of the engine reaches the cluster,
+and the render fails with `this cluster runs Flux; set
+components.flux.enabled=false or install the chart through it` when the value
+is left at `true`:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: agent-platform
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://gsoci.azurecr.io/charts/giantswarm/agent-platform
+  ref:
+    semver: ">=3.20.2 <4.0.0"
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agent-platform
+  namespace: flux-system
+spec:
+  interval: 10m
+  chartRef: { kind: OCIRepository, name: agent-platform }
+  install:
+    createNamespace: true
+  values:
+    components:
+      flux:
+        enabled: false               # this cluster runs Flux
+    gitops:
+      namespace: flux-system         # a namespace exempt from the tenancy policy holds the Flux CRs
+      targetNamespace: agent-platform  # the workloads land here
+```
+
+### Values of this chart → `agent-platform`
+
+The meta chart's keys are the fleet's. Where this chart lifted a component's
+wiring into `components.<name>.*`, the meta chart keeps it in the component's
+own block; where this chart moved a block under `global`, the meta chart
+reads the fleet path. The table is the one in the meta chart's README
+("Turning on the standalone's extras") and UPGRADE.md, with the shared
+components added:
+
+| agent-platform-standalone (this chart) | agent-platform |
+|---|---|
+| `components.<valkey, kagent, agentgateway, agent-platform-mcps, klaus-gateway, agent-sandbox, model-manager, agent-manager, backstage, mcp-kubernetes, cloudnative-pg>.enabled` | the same key; the defaults are the fleet's (see the contract row below) |
+| `components.muster.enabled`, `components.dicebear.enabled` | gone: muster, dicebear and the connectivity wiring are always on (`dicebear.route.enabled: auto` renders the avatar route where an Envoy Gateway is served) |
+| `components.kserve.enabled` | `components.kserve-crd.enabled` + `components.kserve-resources.enabled` |
+| `components.kserve.llmisvc.enabled` | `components.kserve-llmisvc-crd.enabled` + `components.kserve-llmisvc-resources.enabled` (the CRDs are a component now, not a hand-installed prerequisite) |
+| `components.kserve.certManager.requireApi`, `components.kserve.llmisvc.requireApi`, the two-phase first install | gone: `dependsOn` orders the CRD charts before the controllers and both before the connectivity and model-manager releases; cert-manager stays a documented prerequisite of `kserve-resources` |
+| `components.modelServing.enabled` | `components.modelServing.enabled` (unchanged) |
+| `components.modelServing.<kserve, namespace, runtime, serving, presets, shippedPresets, cache, policies, networkPolicy>` | `modelServing.<same key>` |
+| `components.modelServing.policies.enabled: false` (Kyverno was not a prerequisite) | `modelServing.policies.enabled: auto` (follows `kyvernoPolicies.enabled`; `true` / `false` force) |
+| `components.backstage.<hostname, parentRefs, extraScopes, startUrlSearchParams, enabledExtensions, disabledExtensions, skillsRepositories, catalogs, configReload>` | `backstage.<same key>` |
+| the release name as the portal's installation name (`gs.installations.<release>`) | `backstage.installationName` (default `agent-platform`) |
+| `components.mcp-kubernetes.kubernetesAudience` | `mcp-kubernetes.kubernetesAudience` |
+| `components.kagent.controllerRoute.*`, `components.kagent.uiRoute.*` | `kagent.controllerRoute.*`, `kagent.uiRoute.*` |
+| `components.model-manager.route.*`, `components.agent-manager.route.*` | `modelManager.route.*`, `agentManager.route.*` |
+| `components.model-manager.networkPolicy.*`, `components.agent-manager.networkPolicy.*` | `modelManager.networkPolicy.*`, `agentManager.networkPolicy.*` |
+| `global.networkPolicy.<enabled, flavor, additionalEgressCIDRs, additionalEgressFQDNs, kubernetes.*>` | `networkPolicy.<same key>` (`flavor: auto` detects Cilium) |
+| `kyvernoPolicies.enabled: false`, `global.observability.metrics.serviceMonitor.enabled: false` (the vanilla overlay) | drop them — `auto` renders by served API group |
+| `kagent.kagent.*`, `agentgateway.agentgateway.*` (nested subcharts) | `kagent.*`, `agentgateway.*` (the flattened 0.2.x / 2.x charts) |
+| `klaus-gateway.*`, `agent-sandbox.*` (component blocks keyed by chart name) | `klausGateway.*`, `agentSandbox.*` |
+| `muster.*`, `valkey.*`, `dicebear.*`, `agent-platform-mcps.*`, `model-manager.*`, `agent-manager.*`, `backstage.*`, `mcp-kubernetes.*`, `cloudnative-pg.*`, `kserve-crd.*`, `kserve-resources.*`, `kserve-llmisvc-resources.*` (the component blocks) | unchanged |
+| `global.domain`, `global.identity.<issuerUrl, clientId, existingSecret, ca.secretName>`, `global.gatewayApi.parentRefs`, `global.observability.traces.otlp` | unchanged |
+| `gatewayApi.gateway.<create, tls.secretName, serviceType>`, `ingress.*`, `gateway.*`, `kyvernoPolicies.*`, `postgres.*`, `extraObjects` | unchanged |
+| the contract's defaults: `global.identity.clientId: agent-platform`, `global.identity.existingSecret: agent-platform-idp`, `ingress.mode: agentgateway-muster`, `agent-platform-mcps.agentgateway.viaMuster: true`, `ingress.httpRoute.timeouts.request: 0s`, `components.<kagent, agentgateway, agent-platform-mcps, agent-manager, backstage, mcp-kubernetes>.enabled: true` | set them explicitly — the meta chart's defaults are the fleet's (empty identity, `muster-direct`, no route timeout, the six off) |
+| — (a Helm CLI install, no Flux) | `components.flux.enabled` (default `true`: the chart brings the engine; `false` on a cluster that runs Flux), `gitops.self.enabled` (`auto`: self-management follows the engine), `gitops.*` |
+| `helm show crds … \| kubectl apply --server-side --force-conflicts` before every upgrade | gone: the Flux Operator owns the Flux CRDs, the component `HelmRelease`s carry `crds: CreateReplace`, the KServe and CloudNativePG CRDs are templates |
+
+### Migrating an existing installation of this chart
+
+This chart was one Helm release; the meta chart's components are separate
+Helm releases named after their charts (`muster`, `kagent`,
+`agent-platform-connectivity`, …), reconciled by helm-controller. With the
+umbrella's release storage (its `sh.helm.release.v1.<release>.v*` Secrets)
+removed *without* `helm uninstall`, most of a standalone installation is
+adopted in place by the component releases. Three things do not adopt:
+
+- **Workloads whose selectors carry the old release name.** Pods of this
+  chart's workloads are labelled `app.kubernetes.io/instance: <umbrella
+  release>`; under the meta chart the instance label is the component's own
+  release name. Selectors are immutable, so those Deployments cannot be
+  adopted: the component release deletes and recreates them — a short
+  downtime per workload, a few minutes for the platform (state lives in the
+  volumes and databases, not in the pods). A network policy that selects by
+  the instance label should match both labels during the switch.
+- **Renamed wiring objects.** What this chart rendered as
+  `agent-platform-standalone-*` (network policies, RBAC, monitors, Kyverno
+  policies) the connectivity chart renders as `agent-platform-connectivity-*`;
+  the old objects become orphans to delete after the cutover.
+  `gateway.parameters.name` must equal the old release name for the
+  `AgentgatewayParameters` to be adopted in place.
+- **Session state.** muster may need one restart once its valkey has moved
+  (the session store).
+
+Before the cutover, back up Helm storage and the databases (the kagent and
+Backstage Postgres). During it, set `install.remediation.retries: 0` on the
+meta chart's `HelmRelease` — a remediation of a failed first install is an
+uninstall, which would delete the adopted objects, volumes included — and
+remove it once every component `HelmRelease` is Ready. The simple alternative
+is `helm uninstall` of this chart followed by a fresh install of the meta
+chart (the uninstall deletes the bundled databases' volumes unless they are
+kept: back up first).
+
+---
+
+*Everything below describes the chart as it was at its last release, for
+reference.*
+
 One Helm chart that installs the Giant Swarm Agent Platform on any conformant
 Kubernetes cluster with plain `helm install`. No GitOps controller is required.
 
