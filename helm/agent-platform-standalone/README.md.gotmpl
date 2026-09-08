@@ -1,6 +1,14 @@
 {{ template "chart.header" . }}
 {{ template "chart.deprecationWarning" . }}
 
+> **Retired.** The Giant Swarm Agent Platform ships as one chart,
+> [`giantswarm/agent-platform`](https://github.com/giantswarm/agent-platform): it
+> installs on a cluster without Flux (it brings its own engine) and carries this
+> chart's components and wiring. This repository is archived; the published
+> versions stay pullable and the last published version is the highest tag of
+> the repository. The [root README](../../README.md) maps this chart's values onto
+> the meta chart and describes the migration of an existing installation.
+
 {{ template "chart.description" . }}
 
 {{ template "chart.homepageLine" . }}

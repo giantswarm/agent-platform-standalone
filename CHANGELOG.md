@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The chart is retired** (roadmap#4348): the Agent Platform ships as one chart, `giantswarm/agent-platform`, which installs on a cluster without Flux (it brings its own engine), carries this chart's extra dependencies as components and its hand-written wiring in `agent-platform-connectivity`. The README opens with the pointer, the quick start of the meta chart, the values mapping (this chart's keys → the meta chart's) and the migration notes for an existing installation; the chart README and `NOTES.txt` carry the pointer, `Chart.yaml` is `deprecated: true`. This is the last release of this chart; the repository is archived afterwards and the published versions stay pullable.
+
 ### Added
 
 - `agent-platform.giantswarm.io/tool-group: infrastructure` on the bundled mcp-kubernetes `MCPServer` CR (`templates/mcp-kubernetes/mcpserver.yaml`), next to `muster.giantswarm.io/type`: the Agent Platform's MCP server tier, by which the portal's MCP servers page, the toolset presets and the docs group servers (Agent Platform / Infrastructure / Registered servers). agent-manager and model-manager stamp their own `agent-platform` label in their charts and reach this chart through their pins. `make verify-decisions` asserts the label on the rendered CR.

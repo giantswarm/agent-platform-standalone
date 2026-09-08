@@ -1,5 +1,18 @@
 # agent-platform-standalone
 
+> **:exclamation: This Helm Chart is deprecated!**
+
+> **Retired.** The Giant Swarm Agent Platform ships as one chart,
+> [`giantswarm/agent-platform`](https://github.com/giantswarm/agent-platform): it
+> installs on a cluster without Flux (it brings its own engine) and carries this
+> chart's components and wiring. This repository is archived; the published
+> versions stay pullable and the last published version is the highest tag of
+> the repository. The [root README](../../README.md) maps this chart's values onto
+> the meta chart and describes the migration of an existing installation.
+
+RETIRED: the Agent Platform ships as the giantswarm/agent-platform chart
+(https://github.com/giantswarm/agent-platform); see the README for the
+values mapping and the migration notes. This chart was the
 Giant Swarm Agent Platform as one plain Helm chart: muster (MCP gateway),
 kagent (agent runtime), agentgateway (data plane), valkey, the platform MCP
 servers, klaus-gateway, DiceBear avatars, agent-sandbox, Backstage and the
