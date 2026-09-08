@@ -122,6 +122,14 @@ func Transform(in Inputs) (*Result, error) {
 			if !ok {
 				return nil, fmt.Errorf("keys.%s: action component, but no fleet component has valuesFrom %q", key, key)
 			}
+			// A key the fleet omits from the forwarded block is one the component
+			// chart rejects; here it must be lifted to components.<chart>, or the
+			// generated chart forwards it.
+			for _, omitted := range component.OmitKeys {
+				if !slices.Contains(rule.Lift, omitted) {
+					return nil, fmt.Errorf("fleet component %q omits %q from the forwarded values but keys.%s does not lift it; add it to lift", component.Key, omitted, key)
+				}
+			}
 			block, err := componentBlock(keyNode, value, component, rule, entries[component.Chart])
 			if err != nil {
 				return nil, err

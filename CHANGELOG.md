@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `hack/curate` accepts a fleet component that declares `omitKeys` when every omitted key is in the block's `lift` rule in `curate.yaml`; a key that is omitted upstream but not lifted here still fails the run, because the generated chart would forward it to a component chart that rejects it. Prepares the kagent 0.2.x bump (giantswarm/agent-platform#277 adds `omitKeys` to the kagent component).
+
 ### Added
 
 - `agent-platform.giantswarm.io/tool-group: infrastructure` on the bundled mcp-kubernetes `MCPServer` CR (`templates/mcp-kubernetes/mcpserver.yaml`), next to `muster.giantswarm.io/type`: the Agent Platform's MCP server tier, by which the portal's MCP servers page, the toolset presets and the docs group servers (Agent Platform / Infrastructure / Registered servers). agent-manager and model-manager stamp their own `agent-platform` label in their charts and reach this chart through their pins. `make verify-decisions` asserts the label on the rendered CR.

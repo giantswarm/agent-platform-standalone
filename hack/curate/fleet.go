@@ -16,6 +16,11 @@ type FleetComponent struct {
 	// Enabled is the entry's own toggle, the single on/off switch. Absent means
 	// on, the reading of the fleet's own componentEnabled helper.
 	Enabled *bool
+	// OmitKeys are the block keys the fleet withholds from the forwarded values
+	// because the umbrella owns them, not the component chart. This generator
+	// has no equivalent: every one of them must be covered by the lift rule of
+	// the block's curate.yaml entry (transform.go checks that).
+	OmitKeys []string
 }
 
 // IsEnabled reports the component's default toggle.
@@ -54,13 +59,17 @@ func parseFleetComponents(components *yaml.Node) ([]FleetComponent, error) {
 			}
 			component.Enabled = &value
 		}
-		// omitKeys names a key the fleet withholds from a component's forwarded
-		// values because the umbrella owns it, not the component chart. This
-		// generator has no equivalent: such a key belongs in a lift rule, so an
-		// entry that declares one fails instead of forwarding a key the
-		// component chart rejects.
 		if _, omitKeys := mappingGet(entry, "omitKeys"); omitKeys != nil {
-			return nil, fmt.Errorf("fleet component %q declares omitKeys; lift those keys in curate.yaml", key)
+			if omitKeys.Kind != yaml.SequenceNode {
+				return nil, fmt.Errorf("fleet component %q field omitKeys is not a sequence", key)
+			}
+			for _, item := range omitKeys.Content {
+				text, err := scalarString(item, fmt.Sprintf("fleet component %q omitKeys item", key))
+				if err != nil {
+					return nil, err
+				}
+				component.OmitKeys = append(component.OmitKeys, text)
+			}
 		}
 		if component.Chart == "" || component.Repository == "" {
 			return nil, fmt.Errorf("fleet component %q lacks chart or repository", key)

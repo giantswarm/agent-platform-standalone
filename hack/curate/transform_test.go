@@ -200,11 +200,19 @@ func TestTransformRejectsLegacyToggle(t *testing.T) {
 	})
 }
 
-func TestTransformRejectsOmitKeys(t *testing.T) {
+func TestTransformRejectsUnliftedOmitKeys(t *testing.T) {
+	in := fixtureInputs(t)
+	in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "    valuesFrom: kagent\n", "    valuesFrom: kagent\n    omitKeys: [controllerRoute, serviceMonitor]\n", 1))
+	_, err := Transform(in)
+	require.ErrorContains(t, err, `fleet component "kagent" omits "serviceMonitor"`)
+	require.ErrorContains(t, err, `keys.kagent does not lift it`)
+}
+
+func TestTransformAcceptsLiftedOmitKeys(t *testing.T) {
 	in := fixtureInputs(t)
 	in.Fleet = parseDocument(t, strings.Replace(fixtureFleet, "    valuesFrom: kagent\n", "    valuesFrom: kagent\n    omitKeys: [controllerRoute]\n", 1))
 	_, err := Transform(in)
-	require.ErrorContains(t, err, `fleet component "kagent" declares omitKeys`)
+	require.NoError(t, err)
 }
 
 func TestTransformNewFleetComponentFails(t *testing.T) {
