@@ -348,16 +348,21 @@ verify-model-manager: deps ## The model-manager component renders nothing while 
 	done
 	@out=$$($(MODEL_MANAGER) --set global.networkPolicy.enabled=true --set-json 'components.model-manager.networkPolicy.egress.cidrs=["198.51.100.0/24"]' | awk '/name: agent-platform-standalone-model-manager-egress$$/,/^---/'); \
 	printf '%s' "$$out" | grep -q 'cidr: "198.51.100.0/24"' || { echo "FAIL: kubernetes model-manager egress lacks the egress.cidrs block"; exit 1; }
-	@echo "--> lmstudio backend: its endpoint reaches the Deployment and the host egress, and no other host driver's flags do"
+	@echo "--> lmstudio backend: its endpoint reaches the Deployment and the host egress in BOTH flavors, and no other host driver's flags do"
 	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=lmstudio' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true); \
 	printf '%s' "$$out" | grep -q -e '--lmstudio-endpoint=http://192.0.2.11:1234' || { echo "FAIL: the lmstudio endpoint did not reach the Deployment"; exit 1; }; \
 	printf '%s' "$$out" | grep -q -e '--ollama-endpoint' && { echo "FAIL: the lmstudio backend rendered ollama flags"; exit 1; }; \
-	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q '192.0.2.11/32' || { echo "FAIL: the lmstudio host is not in the model-manager egress"; exit 1; }
-	@echo "--> lmstudio next to ollama: one model-manager, both endpoints, both hosts in the egress"
-	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backends={ollama,lmstudio}' --set 'model-manager.ollama.endpoint=http://192.0.2.10:11434' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true); \
-	printf '%s' "$$out" | grep -q -e '--backends=ollama,lmstudio' || { echo "FAIL: --backends=ollama,lmstudio missing"; exit 1; }; \
-	for host in 192.0.2.10/32 192.0.2.11/32; do \
-		printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q "$$host" || { echo "FAIL: $$host is not in the model-manager egress"; exit 1; }; \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q 'cidr: 192.0.2.11/32' || { echo "FAIL: the lmstudio host is not in the kubernetes model-manager egress"; exit 1; }
+	@out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backend=lmstudio' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=cilium); \
+	printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q -e '- 192.0.2.11/32' || { echo "FAIL: the lmstudio host is not in the cilium model-manager egress (toCIDR)"; exit 1; }
+	@echo "--> lmstudio next to ollama: one model-manager, both endpoints, both hosts in the egress, in both flavors"
+	@for spec in "kubernetes|cidr: " "cilium|- "; do \
+		flavor=$${spec%%|*}; prefix=$${spec#*|}; \
+		out=$$($(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.backends={ollama,lmstudio}' --set 'model-manager.ollama.endpoint=http://192.0.2.10:11434' --set 'model-manager.lmstudio.endpoint=http://192.0.2.11:1234' --set global.networkPolicy.enabled=true --set global.networkPolicy.flavor=$$flavor); \
+		printf '%s' "$$out" | grep -q -e '--backends=ollama,lmstudio' || { echo "FAIL: --backends=ollama,lmstudio missing ($$flavor)"; exit 1; }; \
+		for host in 192.0.2.10/32 192.0.2.11/32; do \
+			printf '%s' "$$out" | awk '/name: agent-platform-standalone-model-manager-egress/,/^---/' | grep -q -e "$$prefix$$host" || { echo "FAIL: $$host is not in the $$flavor model-manager egress"; exit 1; }; \
+		done; \
 	done
 	@echo "--> guards: ollama and lmstudio without endpoint, an unknown backend, kserve without KServe, the route in muster-direct mode, JWT without jwksEgress, wiring without kagent, MCPServer without muster"
 	@if $(VANILLA) --set 'components.model-manager.enabled=true' --set 'model-manager.ollama.endpoint=' >/dev/null 2>&1; then \
