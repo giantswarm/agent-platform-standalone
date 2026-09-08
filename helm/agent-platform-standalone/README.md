@@ -31,7 +31,7 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-llmisvc-resources | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | kserve-resources | 0.2.2 |
 | oci://gsoci.azurecr.io/charts/giantswarm | mcp-kubernetes | 1.1.8 |
-| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.18.0 |
+| oci://gsoci.azurecr.io/charts/giantswarm | model-manager | 0.19.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | muster | 5.13.0 |
 | oci://gsoci.azurecr.io/charts/giantswarm | valkey | 0.1.4 |
 
@@ -632,6 +632,8 @@ Kubernetes cluster with `helm install`; no GitOps controller required.
 | model-manager.ollama.agentHost | string | `""` |  |
 | model-manager.lemonade.endpoint | string | `""` |  |
 | model-manager.lemonade.agentHost | string | `""` |  |
+| model-manager.lmstudio.endpoint | string | `""` |  |
+| model-manager.lmstudio.agentHost | string | `""` |  |
 | model-manager.kagent.namespace | string | `"kagent"` |  |
 | model-manager.kagent.disableWiring | bool | `false` |  |
 | model-manager.mcp.enabled | bool | `true` |  |

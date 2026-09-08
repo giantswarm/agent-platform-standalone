@@ -89,12 +89,21 @@ The Lemonade Server base URL model-manager dials (model-manager.lemonade.endpoin
 {{- end -}}
 
 {{/*
+The LM Studio base URL model-manager dials (model-manager.lmstudio.endpoint).
+*/}}
+{{- define "agent-platform-standalone.modelManager.lmstudioEndpoint" -}}
+{{- $chart := include "agent-platform-standalone.modelManager.chartValues" . | fromJson -}}
+{{- dig "lmstudio" "endpoint" "" $chart -}}
+{{- end -}}
+
+{{/*
 The endpoint of a host-proxying backend — ollama: model-manager.ollama.endpoint,
-lemonade: model-manager.lemonade.endpoint. Empty for kserve, which has none.
+lemonade: model-manager.lemonade.endpoint, lmstudio:
+model-manager.lmstudio.endpoint. Empty for kserve, which has none.
 */}}
 {{- define "agent-platform-standalone.modelManager.hostEndpoint" -}}
 {{- $backend := include "agent-platform-standalone.modelManager.backend" . -}}
-{{- if eq $backend "ollama" -}}{{ include "agent-platform-standalone.modelManager.ollamaEndpoint" . }}{{- else if eq $backend "lemonade" -}}{{ include "agent-platform-standalone.modelManager.lemonadeEndpoint" . }}{{- end -}}
+{{- if eq $backend "ollama" -}}{{ include "agent-platform-standalone.modelManager.ollamaEndpoint" . }}{{- else if eq $backend "lemonade" -}}{{ include "agent-platform-standalone.modelManager.lemonadeEndpoint" . }}{{- else if eq $backend "lmstudio" -}}{{ include "agent-platform-standalone.modelManager.lmstudioEndpoint" . }}{{- end -}}
 {{- end -}}
 
 {{/*
@@ -123,8 +132,8 @@ The Ollama endpoint split for network policies (endpointTarget of ollamaEndpoint
 {{- end -}}
 
 {{/*
-The host backend's endpoint split for network policies — ollama or lemonade;
-an empty JSON object for kserve.
+The host backend's endpoint split for network policies — ollama, lemonade or
+lmstudio; an empty JSON object for kserve.
 */}}
 {{- define "agent-platform-standalone.modelManager.hostTarget" -}}
 {{- $endpoint := include "agent-platform-standalone.modelManager.hostEndpoint" . -}}
@@ -132,8 +141,8 @@ an empty JSON object for kserve.
 {{- end -}}
 
 {{/*
-Every host model server among the component's backends (ollama, lemonade),
-split for network policies, as a JSON list of
+Every host model server among the component's backends (ollama, lemonade,
+lmstudio), split for network policies, as a JSON list of
   { "backend": "<name>", "host": "<host>", "port": <int>, "isIP": bool }
 in the order of the backends list. Empty when none is listed (kserve alone).
 */}}
@@ -143,6 +152,7 @@ in the order of the backends list. Empty when none is listed (kserve alone).
 {{- $endpoint := "" -}}
 {{- if eq $name "ollama" -}}{{- $endpoint = include "agent-platform-standalone.modelManager.ollamaEndpoint" $ -}}
 {{- else if eq $name "lemonade" -}}{{- $endpoint = include "agent-platform-standalone.modelManager.lemonadeEndpoint" $ -}}
+{{- else if eq $name "lmstudio" -}}{{- $endpoint = include "agent-platform-standalone.modelManager.lmstudioEndpoint" $ -}}
 {{- end -}}
 {{- if $endpoint -}}
 {{- $out = append $out (merge (dict "backend" $name) (include "agent-platform-standalone.modelManager.endpointTarget" $endpoint | fromJson)) -}}
